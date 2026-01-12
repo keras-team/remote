@@ -4,8 +4,8 @@ import os
 import shutil
 import tempfile
 
-from . import packager
-from . import infra
+from keras_remote import packager
+from keras_remote import infra
 
 def run(accelerator='v3-8', zone=None):
   def decorator(func):

@@ -1,1 +1,1 @@
-from .core import run
+from keras_remote.core import run
