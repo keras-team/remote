@@ -7,7 +7,9 @@ import tempfile
 from keras_remote import packager
 from keras_remote import infra
 
-def run(accelerator='v3-8', zone=None):
+logger = infra.logger
+
+def run(accelerator='v3-8', zone=None, project=None):
   def decorator(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
@@ -30,13 +32,13 @@ def run(accelerator='v3-8', zone=None):
         else:
           caller_path = os.getcwd() # Fallback
 
-        print(f"Packaging directory: {caller_path}...", flush=True)
+        logger.info(f"Packaging directory: {caller_path}...")
         packager.zip_working_dir(caller_path, context_zip)
-        print(f"Context zip created at {context_zip}", flush=True)
+        logger.info(f"Context zip created at {context_zip}")
 
-        print("Serializing payload...", flush=True)
+        logger.info("Serializing payload...")
         packager.save_payload(func, args, kwargs, payload_pkl)
-        print(f"Payload pickle created at {payload_pkl}", flush=True)
+        logger.info(f"Payload pickle created at {payload_pkl}")
 
         # Copy remote_runner.py to tmpdir
         this_dir = os.path.dirname(os.path.abspath(__file__))
@@ -46,13 +48,13 @@ def run(accelerator='v3-8', zone=None):
 
         # 2. Ensure TPU VM exists
         vm_name = f"remote-user-{accelerator}"
-        infra.ensure_tpu_vm(vm_name, accelerator, zone=zone)
+        infra.ensure_tpu_vm(vm_name, accelerator, zone=zone, project=project)
 
         # 3. Upload artifacts
-        print(f"Uploading files to {vm_name}...", flush=True)
-        infra.scp_to_vm(vm_name, context_zip, remote_context_zip_path, zone=zone)
-        infra.scp_to_vm(vm_name, payload_pkl, '/tmp/payload.pkl', zone=zone)
-        infra.scp_to_vm(vm_name, remote_runner_py, '/tmp/remote_runner.py', zone=zone)
+        logger.info(f"Uploading files to {vm_name}...")
+        infra.scp_to_vm(vm_name, context_zip, remote_context_zip_path, zone=zone, project=project)
+        infra.scp_to_vm(vm_name, payload_pkl, '/tmp/payload.pkl', zone=zone, project=project)
+        infra.scp_to_vm(vm_name, remote_runner_py, '/tmp/remote_runner.py', zone=zone, project=project)
 
         # Find and upload requirements.txt
         requirements_txt = None
@@ -68,18 +70,18 @@ def run(accelerator='v3-8', zone=None):
             search_dir = parent_dir
 
         if requirements_txt:
-            print(f"Using requirements.txt: {requirements_txt}", flush=True)
-            infra.scp_to_vm(vm_name, requirements_txt, '/tmp/requirements.txt', zone=zone)
+            logger.info(f"Using requirements.txt: {requirements_txt}")
+            infra.scp_to_vm(vm_name, requirements_txt, '/tmp/requirements.txt', zone=zone, project=project)
             use_requirements = True
         else:
-            print("No requirements.txt found.", flush=True)
+            logger.info("No requirements.txt found.")
             use_requirements = False
-        print("Upload complete.", flush=True)
+        logger.info("Upload complete.")
 
         # 4. Execute remote_runner.py on the VM
-        print("Executing remote script...", flush=True)
-        infra.ssh_execute(vm_name, '/tmp/remote_runner.py', context_zip_path=remote_context_zip_path, use_requirements=use_requirements, zone=zone)
-        print("Remote execution finished.", flush=True)
+        logger.info("Executing remote script...")
+        infra.ssh_execute(vm_name, '/tmp/remote_runner.py', context_zip_path=remote_context_zip_path, use_requirements=use_requirements, zone=zone, project=project)
+        logger.info("Remote execution finished.")
 
     return wrapper
   return decorator
