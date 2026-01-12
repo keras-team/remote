@@ -7,7 +7,7 @@ import tempfile
 from . import packager
 from . import infra
 
-def run(accelerator='v3-8'):
+def run(accelerator='v3-8', zone=None):
   def decorator(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
@@ -46,13 +46,13 @@ def run(accelerator='v3-8'):
 
         # 2. Ensure TPU VM exists
         vm_name = f"remote-user-{accelerator}"
-        infra.ensure_tpu_vm(vm_name, accelerator)
+        infra.ensure_tpu_vm(vm_name, accelerator, zone=zone)
 
         # 3. Upload artifacts
         print(f"Uploading files to {vm_name}...", flush=True)
-        infra.scp_to_vm(vm_name, context_zip, remote_context_zip_path)
-        infra.scp_to_vm(vm_name, payload_pkl, '/tmp/payload.pkl')
-        infra.scp_to_vm(vm_name, remote_runner_py, '/tmp/remote_runner.py')
+        infra.scp_to_vm(vm_name, context_zip, remote_context_zip_path, zone=zone)
+        infra.scp_to_vm(vm_name, payload_pkl, '/tmp/payload.pkl', zone=zone)
+        infra.scp_to_vm(vm_name, remote_runner_py, '/tmp/remote_runner.py', zone=zone)
 
         # Find and upload requirements.txt
         requirements_txt = None
@@ -69,7 +69,7 @@ def run(accelerator='v3-8'):
 
         if requirements_txt:
             print(f"Using requirements.txt: {requirements_txt}", flush=True)
-            infra.scp_to_vm(vm_name, requirements_txt, '/tmp/requirements.txt')
+            infra.scp_to_vm(vm_name, requirements_txt, '/tmp/requirements.txt', zone=zone)
             use_requirements = True
         else:
             print("No requirements.txt found.", flush=True)
@@ -78,7 +78,7 @@ def run(accelerator='v3-8'):
 
         # 4. Execute remote_runner.py on the VM
         print("Executing remote script...", flush=True)
-        infra.ssh_execute(vm_name, '/tmp/remote_runner.py', context_zip_path=remote_context_zip_path, use_requirements=use_requirements)
+        infra.ssh_execute(vm_name, '/tmp/remote_runner.py', context_zip_path=remote_context_zip_path, use_requirements=use_requirements, zone=zone)
         print("Remote execution finished.", flush=True)
 
     return wrapper

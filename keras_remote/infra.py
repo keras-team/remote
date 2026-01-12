@@ -1,8 +1,10 @@
 import subprocess
 import sys
 import json
+import os
 
-TPU_ZONE = "us-central1-a"
+def get_default_zone():
+  return os.environ.get("KERAS_REMOTE_ZONE", "us-central1-a")
 
 def run_cmd(cmd, stream=False):
   """Runs a shell command using subprocess.Popen, optionally streaming stdout."""
@@ -34,10 +36,13 @@ def run_cmd(cmd, stream=False):
   
   return stdout
 
-def ensure_tpu_vm(name, accelerator_type):
+def ensure_tpu_vm(name, accelerator_type, zone=None):
   """Ensures a TPU VM exists, creating it if necessary."""
+  if zone is None:
+    zone = get_default_zone()
+
   try:
-    list_cmd = f"gcloud compute tpus tpu-vm list --zone={TPU_ZONE} --format=json"
+    list_cmd = f"gcloud compute tpus tpu-vm list --zone={zone} --format=json"
     output = run_cmd(list_cmd)
     vms = json.loads(output)
     if any(vm['name'].endswith(name) for vm in vms):
@@ -51,21 +56,27 @@ def ensure_tpu_vm(name, accelerator_type):
   print(f"Creating TPU VM {name}...", flush=True)
   create_cmd = (
       "gcloud compute tpus tpu-vm create"
-      f" {name} --zone={TPU_ZONE} --accelerator-type={accelerator_type} --version=tpu-vm-base"
+      f" {name} --zone={zone} --accelerator-type={accelerator_type} --version=tpu-vm-base"
   )
   run_cmd(create_cmd, stream=True)
   print(f"TPU VM {name} created.", flush=True)
 
-def scp_to_vm(name, local, remote):
+def scp_to_vm(name, local, remote, zone=None):
   """Copies a local file to the remote VM."""
+  if zone is None:
+    zone = get_default_zone()
+
   scp_cmd = (
       "gcloud compute tpus tpu-vm scp"
-      f" {local} {name}:{remote} --zone={TPU_ZONE} --worker=all"
+      f" {local} {name}:{remote} --zone={zone} --worker=all"
   )
   run_cmd(scp_cmd)
 
-def ssh_execute(name, command, context_zip_path, use_requirements=False):
+def ssh_execute(name, command, context_zip_path, use_requirements=False, zone=None):
   """Executes the remote script inside a Docker container on the VM."""
+  if zone is None:
+    zone = get_default_zone()
+
   docker_image = "python:3.13-slim"
   
   # Commands to run inside the container
@@ -97,7 +108,7 @@ def ssh_execute(name, command, context_zip_path, use_requirements=False):
   )
   
   ssh_cmd = (
-      f"gcloud compute tpus tpu-vm ssh {name} --zone={TPU_ZONE} --worker=all"
+      f"gcloud compute tpus tpu-vm ssh {name} --zone={zone} --worker=all"
       f" --command=\"{docker_run_cmd}\""
   )
   

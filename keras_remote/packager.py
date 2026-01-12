@@ -6,7 +6,6 @@ import cloudpickle
 def zip_working_dir(base_dir, output_path):
   """Zips the base_dir into output_path, excluding .git and __pycache__."""
   with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-    print('DEBUG: base_dir', base_dir)
     for root, dirs, files in os.walk(base_dir):
       # Exclude .git and __pycache__ directories
       dirs[:] = [d for d in dirs if d not in ['.git', '__pycache__']]
