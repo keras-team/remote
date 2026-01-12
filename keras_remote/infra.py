@@ -3,6 +3,7 @@ import sys
 import json
 import os
 import logging
+import shlex
 
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -19,8 +20,9 @@ def get_default_project():
 
 def run_cmd(cmd, stream=False):
   """Runs a shell command using subprocess.Popen, optionally streaming stdout."""
-  logger.info(f"Running command: {cmd}")
-  process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+  cmd_str = " ".join(cmd)
+  logger.info(f"Running command: {cmd_str}")
+  process = subprocess.Popen(cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
   if stream:
     # Read stdout line by line
@@ -39,7 +41,7 @@ def run_cmd(cmd, stream=False):
   stdout, stderr = process.communicate()
 
   if process.returncode != 0:
-    logger.error(f"Error running command: {cmd}")
+    logger.error(f"Error running command: {cmd_str}")
     if not stream:
       logger.error(f"STDOUT: {stdout}")
       logger.error(f"STDERR: {stderr}")
@@ -55,10 +57,11 @@ def ensure_tpu_vm(name, accelerator_type, zone=None, project=None):
   if project is None:
     project = get_default_project()
 
-  project_flag = f"--project={project}" if project else ""
-
   try:
-    list_cmd = f"gcloud compute tpus tpu-vm list --zone={zone} {project_flag} --format=json"
+    list_cmd = ["gcloud", "compute", "tpus", "tpu-vm", "list", f"--zone={zone}", "--format=json"]
+    if project:
+      list_cmd.append(f"--project={project}")
+    
     output = run_cmd(list_cmd)
     vms = json.loads(output)
     if any(vm['name'].endswith(name) for vm in vms):
@@ -70,10 +73,15 @@ def ensure_tpu_vm(name, accelerator_type, zone=None, project=None):
     logger.info(f"Failed to parse TPU VM list output, assuming {name} does not exist.")
 
   logger.info(f"Creating TPU VM {name}...")
-  create_cmd = (
-      "gcloud compute tpus tpu-vm create"
-      f" {name} --zone={zone} --accelerator-type={accelerator_type} --version=tpu-vm-base {project_flag}"
-  )
+  create_cmd = [
+      "gcloud", "compute", "tpus", "tpu-vm", "create", name,
+      f"--zone={zone}",
+      f"--accelerator-type={accelerator_type}",
+      "--version=tpu-vm-base"
+  ]
+  if project:
+      create_cmd.append(f"--project={project}")
+
   run_cmd(create_cmd, stream=True)
   logger.info(f"TPU VM {name} created.")
 
@@ -85,12 +93,14 @@ def scp_to_vm(name, local, remote, zone=None, project=None):
   if project is None:
     project = get_default_project()
 
-  project_flag = f"--project={project}" if project else ""
+  scp_cmd = [
+      "gcloud", "compute", "tpus", "tpu-vm", "scp",
+      local, f"{name}:{remote}",
+      f"--zone={zone}", "--worker=all"
+  ]
+  if project:
+      scp_cmd.append(f"--project={project}")
 
-  scp_cmd = (
-      "gcloud compute tpus tpu-vm scp"
-      f" {local} {name}:{remote} --zone={zone} --worker=all {project_flag}"
-  )
   run_cmd(scp_cmd)
 
 
@@ -115,8 +125,6 @@ def ssh_execute(name, command, context_zip_path, use_requirements=False, zone=No
   if project is None:
     project = get_default_project()
 
-  project_flag = f"--project={project}" if project else ""
-
   docker_image = "python:3.13-slim"
 
   # Determine device flags
@@ -132,9 +140,10 @@ def ssh_execute(name, command, context_zip_path, use_requirements=False, zone=No
       "python3 -c 'import jax; import jax.experimental.libtpu' || python3 -m pip install jax[tpu] -f https://storage.googleapis.com/jax-releases/libtpu_releases.html",
       f"python3 -u {command} {context_zip_path}"
   ]
-  # Escape single quotes within each command for the bash -c '...' context
-  escaped_cmds = [cmd.replace("'", "'\\''") for cmd in container_cmds]
-  container_command = " && ".join(escaped_cmds)
+  
+  # Join commands and quote safely for bash -c
+  container_command = " && ".join(container_cmds)
+  safe_container_command = shlex.quote(container_command)
 
   # Docker run command to be executed on the VM
   docker_run_cmd = (
@@ -145,13 +154,17 @@ def ssh_execute(name, command, context_zip_path, use_requirements=False, zone=No
       f"{device_flags} "
       f"--privileged " # Often needed for TPU access
       f"{docker_image} "
-      f"bash -c '{container_command}'"
+      f"bash -c {safe_container_command}"
   )
 
-  ssh_cmd = (
-      f"gcloud compute tpus tpu-vm ssh {name} --zone={zone} --worker=all {project_flag}"
-      f" --command=\"{docker_run_cmd}\""
-  )
+  ssh_cmd = [
+      "gcloud", "compute", "tpus", "tpu-vm", "ssh", name,
+      f"--zone={zone}", "--worker=all"
+  ]
+  if project:
+      ssh_cmd.append(f"--project={project}")
+  
+  ssh_cmd.append(f"--command={docker_run_cmd}")
 
   logger.info(f"Running script inside Docker container on {name}")
   stdout = run_cmd(ssh_cmd, stream=True)
