@@ -1,7 +1,6 @@
 import os
 import socket
 
-print("[LOCAL] Setting KERAS_BACKEND to jax")
 os.environ["KERAS_BACKEND"] = "jax"
 
 import keras
@@ -9,7 +8,8 @@ import numpy as np
 import jax
 from keras_remote import core as keras_remote
 
-@keras_remote.run(accelerator='v3-8')
+
+@keras_remote.run(accelerator='v2-8')
 def train_keras_jax_model():
   host = socket.gethostname()
   print(f"[REMOTE] Running on host: {host}")

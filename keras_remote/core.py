@@ -1,4 +1,6 @@
+import datetime
 import functools
+import getpass
 import inspect
 import os
 import shutil
@@ -15,7 +17,6 @@ def run(accelerator='v3-8', zone=None, project=None):
     def wrapper(*args, **kwargs):
       with tempfile.TemporaryDirectory() as tmpdir:
 
-        import datetime
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         context_zip_name = f'context_{timestamp}.zip'
         remote_context_zip_path = f'/tmp/{context_zip_name}'
@@ -47,7 +48,8 @@ def run(accelerator='v3-8', zone=None, project=None):
         )
 
         # 2. Ensure TPU VM exists
-        vm_name = f"remote-user-{accelerator}"
+        user = getpass.getuser()
+        vm_name = f"remote-{user}-{accelerator}"
         infra.ensure_tpu_vm(vm_name, accelerator, zone=zone, project=project)
 
         # 3. Upload artifacts

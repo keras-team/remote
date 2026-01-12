@@ -9,7 +9,7 @@ def zip_working_dir(base_dir, output_path):
     for root, dirs, files in os.walk(base_dir):
       # Exclude .git and __pycache__ directories
       dirs[:] = [d for d in dirs if d not in ['.git', '__pycache__']]
-      
+
       for file in files:
         if "__pycache__" not in root:
           file_path = os.path.join(root, file)
@@ -22,7 +22,6 @@ def save_payload(func, args, kwargs, output_path):
     'func': func,
     'args': args,
     'kwargs': kwargs,
-    'env_vars': {} # Dummy for now
   }
   with open(output_path, 'wb') as f:
     cloudpickle.dump(payload, f)

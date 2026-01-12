@@ -6,8 +6,10 @@ import cloudpickle
 import traceback
 import argparse
 
+
 WORKSPACE_DIR = '/tmp/workspace'
 PAYLOAD_PKL = '/tmp/payload.pkl'
+
 
 def main():
   parser = argparse.ArgumentParser()
@@ -44,7 +46,6 @@ def main():
   func = payload['func']
   args = payload['args']
   kwargs = payload['kwargs']
-  # env_vars = payload['env_vars'] # Not used yet
 
   # 4. Execute the function
   print(f"[REMOTE] Executing function {func.__name__}", flush=True)
@@ -54,6 +55,7 @@ def main():
   except Exception as e:
     print(f"[REMOTE] Error during function execution:", flush=True)
     traceback.print_exc()
+
 
 if __name__ == "__main__":
   main()
