@@ -94,7 +94,21 @@ def scp_to_vm(name, local, remote, zone=None, project=None):
   run_cmd(scp_cmd)
 
 
-def ssh_execute(name, command, context_zip_path, use_requirements=False, zone=None, project=None):
+def get_device_count(accelerator_type):
+    """Determines the number of TPU chips (accel devices) per worker."""
+    # Heuristic: Most v2/v3/v4 TPU VMs have 4 chips (8 cores) per worker.
+    # Exceptions like v5e (litepod) can vary.
+    if "v5litepod-1" in accelerator_type:
+        return 1
+    if "v5litepod-4" in accelerator_type:
+        return 4
+    if "v5litepod-8" in accelerator_type:
+        return 8
+    # Default to 4 for v2-8, v3-8, v4-8 and their pod slices (per worker)
+    return 4
+
+
+def ssh_execute(name, command, context_zip_path, use_requirements=False, zone=None, project=None, accelerator_type="v3-8"):
   """Executes the remote script inside a Docker container on the VM."""
   if zone is None:
     zone = get_default_zone()
@@ -104,6 +118,10 @@ def ssh_execute(name, command, context_zip_path, use_requirements=False, zone=No
   project_flag = f"--project={project}" if project else ""
 
   docker_image = "python:3.13-slim"
+
+  # Determine device flags
+  num_devices = get_device_count(accelerator_type)
+  device_flags = " ".join([f"--device /dev/accel{i}:/dev/accel{i}" for i in range(num_devices)])
 
   # Commands to run inside the container
   container_cmds = [
@@ -124,10 +142,7 @@ def ssh_execute(name, command, context_zip_path, use_requirements=False, zone=No
       f"-v /tmp:/tmp "
       f"-e KERAS_BACKEND=jax "  # Set environment variable
       # Expose TPU devices to the container
-      f"--device /dev/accel0:/dev/accel0 "
-      f"--device /dev/accel1:/dev/accel1 "
-      f"--device /dev/accel2:/dev/accel2 "
-      f"--device /dev/accel3:/dev/accel3 "
+      f"{device_flags} "
       f"--privileged " # Often needed for TPU access
       f"{docker_image} "
       f"bash -c '{container_command}'"
@@ -139,4 +154,6 @@ def ssh_execute(name, command, context_zip_path, use_requirements=False, zone=No
   )
 
   logger.info(f"Running script inside Docker container on {name}")
-  run_cmd(ssh_cmd, stream=True)
+  stdout = run_cmd(ssh_cmd, stream=True)
+  # TODO: Parse stdout to extract and deserialize the function result.
+  return None

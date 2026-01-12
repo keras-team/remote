@@ -82,8 +82,10 @@ def run(accelerator='v3-8', zone=None, project=None):
 
         # 4. Execute remote_runner.py on the VM
         logger.info("Executing remote script...")
-        infra.ssh_execute(vm_name, '/tmp/remote_runner.py', context_zip_path=remote_context_zip_path, use_requirements=use_requirements, zone=zone, project=project)
+        result = infra.ssh_execute(vm_name, '/tmp/remote_runner.py', context_zip_path=remote_context_zip_path, use_requirements=use_requirements, zone=zone, project=project, accelerator_type=accelerator)
         logger.info("Remote execution finished.")
+        # TODO: Return the deserialized result from the remote function.
+        return result
 
     return wrapper
   return decorator
