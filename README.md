@@ -12,7 +12,6 @@ Run Keras models remotely on TPU as seamlessly as running the same code locally.
 
 ```bash
 pip install -r requirements.txt
-export PYTHONPATH=$PYTHONPATH:.
 ```
 
 ## Running the Demo

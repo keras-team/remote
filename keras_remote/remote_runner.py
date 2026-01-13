@@ -24,16 +24,12 @@ def main():
   for item in os.listdir(WORKSPACE_DIR):
       item_path = os.path.join(WORKSPACE_DIR, item)
       if os.path.isfile(item_path) or os.path.islink(item_path):
-          os.unlink(item_path)
+          os.remove(item_path)
       elif os.path.isdir(item_path):
           shutil.rmtree(item_path)
 
   with zipfile.ZipFile(context_zip_path, 'r') as zip_ref:
     zip_ref.extractall(WORKSPACE_DIR)
-
-  # 2. Add WORKSPACE_DIR to sys.path
-  print(f"[REMOTE] Adding {WORKSPACE_DIR} to sys.path", flush=True)
-  sys.path.insert(0, WORKSPACE_DIR)
 
   # 3. Load payload.pkl
   print(f"[REMOTE] Loading payload from {PAYLOAD_PKL}", flush=True)

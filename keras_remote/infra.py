@@ -20,8 +20,7 @@ def get_default_project():
 
 def run_cmd(cmd, stream=False):
   """Runs a shell command using subprocess.Popen, optionally streaming stdout."""
-  cmd_str = " ".join(cmd)
-  logger.info(f"Running command: {cmd_str}")
+  logger.info(f"Running command: {' '.join(cmd)}")
   process = subprocess.Popen(cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
   if stream:
@@ -41,7 +40,7 @@ def run_cmd(cmd, stream=False):
   stdout, stderr = process.communicate()
 
   if process.returncode != 0:
-    logger.error(f"Error running command: {cmd_str}")
+    logger.error(f"Error running command: {' '.join(cmd)}")
     if not stream:
       logger.error(f"STDOUT: {stdout}")
       logger.error(f"STDERR: {stderr}")
@@ -118,7 +117,7 @@ def get_device_count(accelerator_type):
     return 4
 
 
-def ssh_execute(name, command, context_zip_path, use_requirements=False, zone=None, project=None, accelerator_type="v3-8"):
+def ssh_execute(name, python_main_file, context_zip_path, use_requirements=False, zone=None, project=None, accelerator_type="v3-8"):
   """Executes the remote script inside a Docker container on the VM."""
   if zone is None:
     zone = get_default_zone()
@@ -134,12 +133,15 @@ def ssh_execute(name, command, context_zip_path, use_requirements=False, zone=No
   # Commands to run inside the container
   container_cmds = [
       "python3 -m pip install --upgrade pip", # Keep pip upgraded
-      # Install from requirements.txt only if key imports fail
-      "python3 -c 'import keras, numpy, cloudpickle' || python3 -m pip install -r /tmp/requirements.txt",
+  ]
+  if use_requirements:
+      container_cmds.append("python3 -m pip install -r /tmp/requirements.txt")
+
+  container_cmds.extend([
       # Install JAX/TPU only if jax import fails
       "python3 -c 'import jax; import jax.experimental.libtpu' || python3 -m pip install jax[tpu] -f https://storage.googleapis.com/jax-releases/libtpu_releases.html",
-      f"python3 -u {command} {context_zip_path}"
-  ]
+      f"python3 -u {python_main_file} {context_zip_path}"
+  ])
   
   # Join commands and quote safely for bash -c
   container_command = " && ".join(container_cmds)

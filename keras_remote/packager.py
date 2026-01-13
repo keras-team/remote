@@ -1,4 +1,3 @@
-
 import os
 import zipfile
 import cloudpickle
@@ -11,10 +10,9 @@ def zip_working_dir(base_dir, output_path):
       dirs[:] = [d for d in dirs if d not in ['.git', '__pycache__']]
 
       for file in files:
-        if "__pycache__" not in root:
-          file_path = os.path.join(root, file)
-          archive_name = os.path.relpath(file_path, base_dir)
-          zipf.write(file_path, archive_name)
+        file_path = os.path.join(root, file)
+        archive_name = os.path.relpath(file_path, base_dir)
+        zipf.write(file_path, archive_name)
 
 def save_payload(func, args, kwargs, output_path):
   """Uses cloudpickle to serialize the function, args, kwargs, and dummy env_vars."""
