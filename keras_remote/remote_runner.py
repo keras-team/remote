@@ -15,10 +15,10 @@ def main():
   args = parser.parse_args()
   context_zip_path = args.context_zip
 
-  print(f"[REMOTE] Starting remote execution", flush=True)
+  print(f"Starting remote execution", flush=True)
 
   # 1. Unzip context_zip_path to WORKSPACE_DIR
-  print(f"[REMOTE] Extracting {context_zip_path} to {WORKSPACE_DIR}", flush=True)
+  print(f"Extracting {context_zip_path} to {WORKSPACE_DIR}", flush=True)
   os.makedirs(WORKSPACE_DIR, exist_ok=True)
   # Clear out old workspace contents if any
   for item in os.listdir(WORKSPACE_DIR):
@@ -32,7 +32,7 @@ def main():
     zip_ref.extractall(WORKSPACE_DIR)
 
   # 3. Load payload.pkl
-  print(f"[REMOTE] Loading payload from {PAYLOAD_PKL}", flush=True)
+  print(f"Loading payload from {PAYLOAD_PKL}", flush=True)
   with open(PAYLOAD_PKL, 'rb') as f:
     payload = cloudpickle.load(f)
 
@@ -42,13 +42,13 @@ def main():
   # env_vars = payload['env_vars'] # Not used yet
 
   # 4. Execute the function
-  print(f"[REMOTE] Executing function {func.__name__}", flush=True)
+  print(f"Executing function {func.__name__}", flush=True)
   try:
     result = func(*args, **kwargs)
-    print(f"[REMOTE] Function execution completed. Result: {result}", flush=True)
+    print(f"Function execution completed. Result: {result}", flush=True)
     # TODO: Serialize result (e.g. base64 cloudpickle) and print to stdout for local capture.
   except Exception as e:
-    print(f"[REMOTE] Error during function execution:", flush=True)
+    print(f"Error during function execution:", flush=True)
     traceback.print_exc()
 
 if __name__ == "__main__":

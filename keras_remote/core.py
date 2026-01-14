@@ -53,6 +53,7 @@ def run(accelerator='v3-8', zone=None, project=None):
         infra.ensure_tpu_vm(vm_name, accelerator, zone=zone, project=project)
 
         # 3. Upload artifacts
+        # TODO(jeffcarp): Add everything to the same zip file.
         logger.info(f"Uploading files to {vm_name}...")
         infra.scp_to_vm(vm_name, context_zip, remote_context_zip_path, zone=zone, project=project)
         infra.scp_to_vm(vm_name, payload_pkl, '/tmp/payload.pkl', zone=zone, project=project)

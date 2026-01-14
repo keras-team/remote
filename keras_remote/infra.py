@@ -117,7 +117,15 @@ def get_device_count(accelerator_type):
     return 4
 
 
-def ssh_execute(name, python_main_file, context_zip_path, use_requirements=False, zone=None, project=None, accelerator_type="v3-8"):
+def ssh_execute(
+    name: str,
+    python_main_file: str,
+    context_zip_path: str,
+    use_requirements: bool = False,
+    zone: str | None = None,
+    project: str | None = None,
+    accelerator_type: str = "v3-8",
+) -> None:
   """Executes the remote script inside a Docker container on the VM."""
   if zone is None:
     zone = get_default_zone()

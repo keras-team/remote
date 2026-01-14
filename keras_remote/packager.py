@@ -23,4 +23,3 @@ def save_payload(func, args, kwargs, output_path):
   }
   with open(output_path, 'wb') as f:
     cloudpickle.dump(payload, f)
-
