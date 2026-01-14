@@ -145,7 +145,7 @@ def ssh_execute(
       "python3 -m pip install jax[tpu] -f https://storage.googleapis.com/jax-releases/libtpu_releases.html",
       f"python3 -u {python_main_file} {context_zip_path}",
   ])
-  
+
   # Join commands and quote safely for bash -c
   container_command = " && ".join(container_cmds)
   safe_container_command = shlex.quote(container_command)
@@ -154,7 +154,9 @@ def ssh_execute(
   docker_run_cmd = (
       f"sudo docker run --rm "
       f"-v /tmp:/tmp "
-      f"-e KERAS_BACKEND=jax "  # Set environment variable
+      # Set environment variable
+      # TODO: this shouldn't be hard-coded here
+      f"-e KERAS_BACKEND=jax "
       # Expose TPU devices to the container
       f"{device_flags} "
       # Often needed for TPU access
@@ -169,7 +171,7 @@ def ssh_execute(
   ]
   if project:
       ssh_cmd.append(f"--project={project}")
-  
+
   ssh_cmd.append(f"--command={docker_run_cmd}")
 
   logger.info(f"Running script inside Docker container on {name}")

@@ -11,7 +11,7 @@ from keras_remote import infra
 
 logger = infra.logger
 
-def run(accelerator='v3-8', zone=None, project=None):
+def run(accelerator='v3-8', zone=None, project=None, vm_name=None):
   def decorator(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
@@ -48,13 +48,16 @@ def run(accelerator='v3-8', zone=None, project=None):
         )
 
         # 2. Ensure TPU VM exists
-        user = getpass.getuser()
-        vm_name = f"remote-{user}-{accelerator}"
-        infra.ensure_tpu_vm(vm_name, accelerator, zone=zone, project=project)
+        if vm_name:
+          actual_vm_name = vm_name
+        else:
+          user = getpass.getuser()
+          actual_vm_name = f"remote-{user}-{accelerator}"
+        infra.ensure_tpu_vm(actual_vm_name, accelerator, zone=zone, project=project)
 
         # 3. Upload artifacts
         # TODO(jeffcarp): Add everything to the same zip file.
-        logger.info(f"Uploading files to {vm_name}...")
+        logger.info(f"Uploading files to {actual_vm_name}...")
         infra.scp_to_vm(vm_name, context_zip, remote_context_zip_path, zone=zone, project=project)
         infra.scp_to_vm(vm_name, payload_pkl, '/tmp/payload.pkl', zone=zone, project=project)
         infra.scp_to_vm(vm_name, remote_runner_py, '/tmp/remote_runner.py', zone=zone, project=project)
