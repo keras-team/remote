@@ -133,22 +133,17 @@ def ssh_execute(
     project = get_default_project()
 
   docker_image = "python:3.13-slim"
-
-  # Determine device flags
   num_devices = get_device_count(accelerator_type)
   device_flags = " ".join([f"--device /dev/accel{i}:/dev/accel{i}" for i in range(num_devices)])
-
-  # Commands to run inside the container
   container_cmds = [
-      "python3 -m pip install --upgrade pip", # Keep pip upgraded
+      "python3 -m pip install --upgrade pip",
   ]
   if use_requirements:
       container_cmds.append("python3 -m pip install -r /tmp/requirements.txt")
 
   container_cmds.extend([
-      # Install JAX/TPU only if jax import fails
-      "python3 -c 'import jax; import jax.experimental.libtpu' || python3 -m pip install jax[tpu] -f https://storage.googleapis.com/jax-releases/libtpu_releases.html",
-      f"python3 -u {python_main_file} {context_zip_path}"
+      "python3 -m pip install jax[tpu] -f https://storage.googleapis.com/jax-releases/libtpu_releases.html",
+      f"python3 -u {python_main_file} {context_zip_path}",
   ])
   
   # Join commands and quote safely for bash -c
@@ -162,7 +157,8 @@ def ssh_execute(
       f"-e KERAS_BACKEND=jax "  # Set environment variable
       # Expose TPU devices to the container
       f"{device_flags} "
-      f"--privileged " # Often needed for TPU access
+      # Often needed for TPU access
+      f"--privileged "
       f"{docker_image} "
       f"bash -c {safe_container_command}"
   )
