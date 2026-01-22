@@ -1,0 +1,39 @@
+[project]
+name = "keras-remote"
+version = "0.0.1"
+authors = [
+    {name = "Keras team", email = "keras-users@googlegroups.com"},
+]
+description = "Run Keras models remotely on TPU seamlessly."
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "cloudpickle",
+    "numpy",
+    "keras",
+]
+[project.optional-dependencies]
+demo = [
+    "jax",
+    "keras",
+    "numpy",
+]
+
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+
+[project.urls]
+Homepage = "https://github.com/keras-team/keras-remote"
+Issues = "https://github.com/keras-team/keras-remote/issues"
+
+[build-system]
+requires = [
+    "build",
+    "hatchling >= 1.26",
+    "twine",
+]
+build-backend = "hatchling.build"
