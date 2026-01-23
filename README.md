@@ -8,17 +8,13 @@ Run Keras models remotely on TPU as seamlessly as running the same code locally.
 2.  **Authentication**: Run `gcloud auth login` and `gcloud auth application-default login`.
 3.  **Permissions**: Ensure your GCP user has permissions to create and manage TPU VMs.
 
-## Installation
-
-```bash
-pip install -r requirements.txt
-```
-
 ## Running the Demo
 
 The `demo_train.py` script demonstrates how to run a Keras model on a remote TPU.
 
 ```bash
+pip install -r .[demo]
+
 # Optional: Set your GCP project and zone
 export KERAS_REMOTE_PROJECT="your-project-id"
 export KERAS_REMOTE_ZONE="us-central1-f"  # or other zones like europe-west4-a
