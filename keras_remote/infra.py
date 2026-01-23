@@ -49,12 +49,32 @@ def run_cmd(cmd, stream=False):
   return stdout
 
 
-def ensure_tpu_vm(name, accelerator_type, zone=None, project=None):
+def resolve_tpu_version(accelerator_type):
+    """Resolves the correct TPU software version based on the accelerator type."""
+    if "v6e" in accelerator_type:
+        return "v2-alpha-tpuv6e"
+    if "v5litepod" in accelerator_type:
+        return "v2-alpha-tpuv5-lite"
+    if "v5p" in accelerator_type:
+        return "v2-alpha-tpuv5"
+    if "v4" in accelerator_type:
+        return "tpu-vm-v4-base"
+    if any(x in accelerator_type for x in ["v2", "v3"]):
+        return "tpu-vm-base"
+    
+    logger.warning(f"Unknown accelerator type: {accelerator_type}. Defaulting to 'tpu-vm-base'.")
+    return "tpu-vm-base"
+
+
+def ensure_tpu_vm(name, accelerator_type, version=None, zone=None, project=None):
   """Ensures a TPU VM exists, creating it if necessary."""
   if zone is None:
     zone = get_default_zone()
   if project is None:
     project = get_default_project()
+  if version is None:
+      version = resolve_tpu_version(accelerator_type)
+      logger.info(f"Auto-configured TPU version: {version} for accelerator: {accelerator_type}")
 
   try:
     list_cmd = ["gcloud", "compute", "tpus", "tpu-vm", "list", f"--zone={zone}", "--format=json"]
@@ -76,7 +96,7 @@ def ensure_tpu_vm(name, accelerator_type, zone=None, project=None):
       "gcloud", "compute", "tpus", "tpu-vm", "create", name,
       f"--zone={zone}",
       f"--accelerator-type={accelerator_type}",
-      "--version=tpu-vm-base"
+      f"--version={version}"
   ]
   if project:
       create_cmd.append(f"--project={project}")
