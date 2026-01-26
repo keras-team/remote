@@ -9,6 +9,15 @@ import shlex
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger("keras_remote")
 
+_ACCELERATOR_IMAGE_MAP = {
+    "v6e": "v2-alpha-tpuv6e",
+    "v5litepod": "v2-alpha-tpuv5-lite",
+    "v5p": "v2-alpha-tpuv5",
+    "v4": "tpu-vm-v4-base",
+    "v2": "tpu-vm-base",
+    "v3": "tpu-vm-base",
+}
+
 
 def get_default_zone():
   return os.environ.get("KERAS_REMOTE_ZONE", "us-central1-a")
@@ -49,32 +58,25 @@ def run_cmd(cmd, stream=False):
   return stdout
 
 
-def resolve_tpu_version(accelerator_type):
-    """Resolves the correct TPU software version based on the accelerator type."""
-    if "v6e" in accelerator_type:
-        return "v2-alpha-tpuv6e"
-    if "v5litepod" in accelerator_type:
-        return "v2-alpha-tpuv5-lite"
-    if "v5p" in accelerator_type:
-        return "v2-alpha-tpuv5"
-    if "v4" in accelerator_type:
-        return "tpu-vm-v4-base"
-    if any(x in accelerator_type for x in ["v2", "v3"]):
-        return "tpu-vm-base"
+def resolve_tpu_image(accelerator_type):
+    """Resolves the correct TPU software image based on the accelerator type."""
+    for key, image in _ACCELERATOR_IMAGE_MAP.items():
+        if key in accelerator_type:
+            return image
     
     logger.warning(f"Unknown accelerator type: {accelerator_type}. Defaulting to 'tpu-vm-base'.")
     return "tpu-vm-base"
 
 
-def ensure_tpu_vm(name, accelerator_type, version=None, zone=None, project=None):
+def ensure_tpu_vm(name, accelerator_type, software_image=None, zone=None, project=None):
   """Ensures a TPU VM exists, creating it if necessary."""
   if zone is None:
     zone = get_default_zone()
   if project is None:
     project = get_default_project()
-  if version is None:
-      version = resolve_tpu_version(accelerator_type)
-      logger.info(f"Auto-configured TPU version: {version} for accelerator: {accelerator_type}")
+  if software_image is None:
+      software_image = resolve_tpu_image(accelerator_type)
+      logger.info(f"Auto-configured TPU software image: {software_image} for accelerator: {accelerator_type}")
 
   try:
     list_cmd = ["gcloud", "compute", "tpus", "tpu-vm", "list", f"--zone={zone}", "--format=json"]
@@ -96,7 +98,7 @@ def ensure_tpu_vm(name, accelerator_type, version=None, zone=None, project=None)
       "gcloud", "compute", "tpus", "tpu-vm", "create", name,
       f"--zone={zone}",
       f"--accelerator-type={accelerator_type}",
-      f"--version={version}"
+      f"--version={software_image}"
   ]
   if project:
       create_cmd.append(f"--project={project}")
