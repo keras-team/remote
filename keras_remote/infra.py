@@ -9,6 +9,15 @@ import shlex
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger("keras_remote")
 
+_ACCELERATOR_IMAGE_MAP = {
+    "v6e": "v2-alpha-tpuv6e",
+    "v5litepod": "v2-alpha-tpuv5-lite",
+    "v5p": "v2-alpha-tpuv5",
+    "v4": "tpu-vm-v4-base",
+    "v2": "tpu-vm-base",
+    "v3": "tpu-vm-base",
+}
+
 
 def get_default_zone():
   return os.environ.get("KERAS_REMOTE_ZONE", "us-central1-a")
@@ -49,12 +58,25 @@ def run_cmd(cmd, stream=False):
   return stdout
 
 
-def ensure_tpu_vm(name, accelerator_type, zone=None, project=None):
+def resolve_tpu_image(accelerator_type):
+    """Resolves the correct TPU software image based on the accelerator type."""
+    for key, image in _ACCELERATOR_IMAGE_MAP.items():
+        if key in accelerator_type:
+            return image
+    
+    logger.warning(f"Unknown accelerator type: {accelerator_type}. Defaulting to 'tpu-vm-base'.")
+    return "tpu-vm-base"
+
+
+def ensure_tpu_vm(name, accelerator_type, container_image=None, zone=None, project=None):
   """Ensures a TPU VM exists, creating it if necessary."""
   if zone is None:
     zone = get_default_zone()
   if project is None:
     project = get_default_project()
+  if container_image is None:
+      container_image = resolve_tpu_image(accelerator_type)
+      logger.info(f"Auto-configured TPU container image: {container_image} for accelerator: {accelerator_type}")
 
   try:
     list_cmd = ["gcloud", "compute", "tpus", "tpu-vm", "list", f"--zone={zone}", "--format=json"]
@@ -76,7 +98,7 @@ def ensure_tpu_vm(name, accelerator_type, zone=None, project=None):
       "gcloud", "compute", "tpus", "tpu-vm", "create", name,
       f"--zone={zone}",
       f"--accelerator-type={accelerator_type}",
-      "--version=tpu-vm-base"
+      f"--version={container_image}"
   ]
   if project:
       create_cmd.append(f"--project={project}")
