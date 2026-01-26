@@ -68,15 +68,15 @@ def resolve_tpu_image(accelerator_type):
     return "tpu-vm-base"
 
 
-def ensure_tpu_vm(name, accelerator_type, software_image=None, zone=None, project=None):
+def ensure_tpu_vm(name, accelerator_type, container_image=None, zone=None, project=None):
   """Ensures a TPU VM exists, creating it if necessary."""
   if zone is None:
     zone = get_default_zone()
   if project is None:
     project = get_default_project()
-  if software_image is None:
-      software_image = resolve_tpu_image(accelerator_type)
-      logger.info(f"Auto-configured TPU software image: {software_image} for accelerator: {accelerator_type}")
+  if container_image is None:
+      container_image = resolve_tpu_image(accelerator_type)
+      logger.info(f"Auto-configured TPU container image: {container_image} for accelerator: {accelerator_type}")
 
   try:
     list_cmd = ["gcloud", "compute", "tpus", "tpu-vm", "list", f"--zone={zone}", "--format=json"]
@@ -98,7 +98,7 @@ def ensure_tpu_vm(name, accelerator_type, software_image=None, zone=None, projec
       "gcloud", "compute", "tpus", "tpu-vm", "create", name,
       f"--zone={zone}",
       f"--accelerator-type={accelerator_type}",
-      f"--version={software_image}"
+      f"--version={container_image}"
   ]
   if project:
       create_cmd.append(f"--project={project}")
