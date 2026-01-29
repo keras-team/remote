@@ -21,6 +21,7 @@ demo = [
     "jax",
     "keras",
     "numpy",
+    "keras-hub",
 ]
 
 license = "Apache-2.0"

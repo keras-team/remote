@@ -15,12 +15,13 @@ def zip_working_dir(base_dir, output_path):
         zipf.write(file_path, archive_name)
 
 
-def save_payload(func, args, kwargs, output_path):
+def save_payload(func, args, kwargs, env_vars, output_path):
   """Uses cloudpickle to serialize the function, args, kwargs, and dummy env_vars."""
   payload = {
     'func': func,
     'args': args,
     'kwargs': kwargs,
+    'env_vars': env_vars,
   }
   with open(output_path, 'wb') as f:
     cloudpickle.dump(payload, f)
