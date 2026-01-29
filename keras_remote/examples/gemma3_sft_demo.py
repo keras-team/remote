@@ -13,13 +13,8 @@ def train_gemma():
         "responses": ["New Delhi", "Pretoria"],
     }
     print("Data prepared.")
-    # Initialize model
-    # load_weights=False allows running the demo 
-    # without downloading the actual model weights 
-    # (random initialization)
     gemma_lm = keras_hub.models.Gemma3CausalLM.from_preset(
-      "gemma3_1b",
-      load_weights=False)
+      "gemma3_1b")
     print("Model initialized.")
     # Fine-tune
     gemma_lm.fit(x=features, batch_size=1)
