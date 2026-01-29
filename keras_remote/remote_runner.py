@@ -39,7 +39,9 @@ def main():
   func = payload['func']
   args = payload['args']
   kwargs = payload['kwargs']
-  # env_vars = payload['env_vars'] # Not used yet
+  env_vars = payload.get('env_vars', {})
+  if env_vars:
+    os.environ.update(env_vars)
 
   # 4. Execute the function
   print(f"Executing function {func.__name__}", flush=True)

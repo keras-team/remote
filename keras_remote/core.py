@@ -11,7 +11,18 @@ from keras_remote import infra
 
 logger = infra.logger
 
-def run(accelerator='v3-8', container_image=None, zone=None, project=None, vm_name=None):
+def run(accelerator='v3-8', container_image=None, zone=None, project=None, vm_name=None, capture_env_vars=None):
+  """Decorator to run a function on a remote TPU VM.
+  
+  Args:
+    accelerator: TPU accelerator type (e.g. 'v3-8', 'v5litepod-8').
+    container_image: TPU software image to use. Auto-detected if None.
+    zone: GCP zone.
+    project: GCP project.
+    vm_name: Name of the TPU VM. Auto-generated if None.
+    capture_env_vars: List of environment variable names or patterns (ending in *)
+      to propagate to the remote environment. Defaults to None.
+  """
   def decorator(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
@@ -36,9 +47,19 @@ def run(accelerator='v3-8', container_image=None, zone=None, project=None, vm_na
         logger.info(f"Packaging directory: {caller_path}...")
         packager.zip_working_dir(caller_path, context_zip)
         logger.info(f"Context zip created at {context_zip}")
+        
+        env_vars = {}
+        if capture_env_vars:
+            for pattern in capture_env_vars:
+                if pattern.endswith('*'):
+                    prefix = pattern[:-1]
+                    env_vars.update({k: v for k, v in os.environ.items() if k.startswith(prefix)})
+                elif pattern in os.environ:
+                    env_vars[pattern] = os.environ[pattern]
 
+        logger.info(f"Capturing {len(env_vars)} environment variables...")
         logger.info("Serializing payload...")
-        packager.save_payload(func, args, kwargs, payload_pkl)
+        packager.save_payload(func, args, kwargs, env_vars, payload_pkl)
         logger.info(f"Payload pickle created at {payload_pkl}")
 
         # Copy remote_runner.py to tmpdir
