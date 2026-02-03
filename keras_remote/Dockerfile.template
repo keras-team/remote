@@ -1,0 +1,27 @@
+FROM $base_image
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip
+RUN python3 -m pip install --upgrade pip
+
+# Install JAX with appropriate backend
+$jax_install
+
+# Install Keras and cloudpickle
+RUN python3 -m pip install keras cloudpickle google-cloud-storage
+
+# Install user requirements
+$requirements_section
+# Set up workspace and copy remote runner script
+WORKDIR /app
+COPY remote_runner.py /app/remote_runner.py
+
+# Set Keras backend
+ENV KERAS_BACKEND=jax
+
+# Default command (will be overridden by Vertex AI)
+CMD ["python3"]

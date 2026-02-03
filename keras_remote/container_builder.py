@@ -1,0 +1,341 @@
+"""Container image building for keras_remote."""
+
+import hashlib
+import os
+import shutil
+import string
+import tarfile
+import tempfile
+import time
+
+from google.cloud.devtools import cloudbuild_v1
+from google.cloud.exceptions import NotFound
+
+from keras_remote import accelerators, infra
+
+logger = infra.logger
+
+
+def _zone_to_ar_location(zone):
+    """Derive Artifact Registry multi-region location from a GCP zone.
+
+    Args:
+        zone: GCP zone (e.g., 'us-central1-a', 'europe-west4-a')
+
+    Returns:
+        Multi-region string (e.g., 'us', 'europe', 'asia')
+    """
+    zone = zone or os.environ.get("KERAS_REMOTE_ZONE", "us-central1-a")
+    # zone -> region: us-central1-a -> us-central1
+    region = zone.rsplit("-", 1)[0] if zone and "-" in zone else "us-central1"
+    # region -> multi-region: us-central1 -> us
+    return region.split("-")[0]
+
+
+def get_or_build_container(base_image, requirements_path, accelerator_type, project, zone=None):
+    """Get existing container or build if requirements changed.
+
+    Uses content-based hashing to detect requirement changes.
+
+    Args:
+        base_image: Base Docker image (e.g., 'python:3.12-slim')
+        requirements_path: Path to requirements.txt (or None)
+        accelerator_type: TPU/GPU type (e.g., 'v3-8')
+        project: GCP project ID
+        zone: GCP zone for region derivation (defaults to KERAS_REMOTE_ZONE)
+
+    Returns:
+        Container image URI in Artifact Registry
+    """
+    ar_location = _zone_to_ar_location(zone)
+
+    # Generate deterministic hash from requirements + base image
+    requirements_hash = _hash_requirements(requirements_path, accelerator_type, base_image)
+
+    # Sanitize accelerator type for image name
+    sanitized_accel = accelerator_type.replace(":", "-").replace("/", "-")
+    image_tag = f"{sanitized_accel}-{requirements_hash[:12]}"
+
+    # Use Artifact Registry
+    registry = f"{ar_location}-docker.pkg.dev/{project}/keras-remote"
+    image_uri = f"{registry}/base:{image_tag}"
+
+    # Check if image exists
+    if _image_exists(image_uri, project):
+        logger.info(f"Using cached container: {image_uri}")
+        ar_url = (
+            "https://console.cloud.google.com/artifacts"
+            f"/docker/{project}/{ar_location}"
+            f"/keras-remote/base?project={project}"
+        )
+        logger.info(f"View image: {ar_url}")
+        return image_uri
+
+    # Build new image
+    logger.info(
+        f"Building new container (requirements changed): "
+        f"{image_uri}"
+    )
+    return _build_and_push(
+        base_image, requirements_path, accelerator_type,
+        project, image_uri, ar_location,
+    )
+
+
+def _hash_requirements(requirements_path, accelerator_type, base_image):
+    """Create deterministic hash from requirements + accelerator + remote_runner + base image.
+
+    Args:
+        requirements_path: Path to requirements.txt (or None)
+        accelerator_type: TPU/GPU type
+        base_image: Base Docker image (e.g., 'python:3.12-slim')
+
+    Returns:
+        SHA256 hex digest
+    """
+    content = f"base_image={base_image}\naccelerator={accelerator_type}\n"
+
+    if requirements_path and os.path.exists(requirements_path):
+        with open(requirements_path, "r") as f:
+            content += f.read()
+
+    # Include remote_runner.py in the hash so container rebuilds when it changes
+    remote_runner_path = os.path.join(os.path.dirname(__file__), "remote_runner.py")
+    if os.path.exists(remote_runner_path):
+        with open(remote_runner_path, "r") as f:
+            content += f"\n---remote_runner.py---\n{f.read()}"
+
+    # Include Dockerfile template in the hash so container rebuilds when it changes
+    template_path = os.path.join(os.path.dirname(__file__), "Dockerfile.template")
+    if os.path.exists(template_path):
+        with open(template_path, "r") as f:
+            content += f"\n---Dockerfile.template---\n{f.read()}"
+
+    return hashlib.sha256(content.encode()).hexdigest()
+
+
+def _find_gcloud():
+    """Find the gcloud binary in common locations."""
+    # Check if gcloud is in PATH
+    gcloud_path = shutil.which("gcloud")
+    if gcloud_path:
+        return gcloud_path
+
+    # Check common installation locations
+    common_paths = [
+        os.path.expanduser("~/google-cloud-sdk/bin/gcloud"),
+        "/usr/local/google-cloud-sdk/bin/gcloud",
+        "/opt/google-cloud-sdk/bin/gcloud",
+        "/snap/bin/gcloud",
+    ]
+
+    for path in common_paths:
+        if os.path.exists(path):
+            return path
+
+    # Fall back to just 'gcloud' and hope it's in PATH
+    return "gcloud"
+
+
+def _image_exists(image_uri, project):
+    """Check if image exists in Artifact Registry.
+
+    Args:
+        image_uri: Full image URI
+        project: GCP project ID
+
+    Returns:
+        True if image exists, False otherwise
+    """
+    import subprocess
+
+    try:
+        gcloud = _find_gcloud()
+
+        # Use gcloud to directly describe the specific image:tag
+        # Just check for successful return code (exit 0 = image exists)
+        cmd = [
+            gcloud, "artifacts", "docker", "images", "describe",
+            image_uri,
+            "--format", "value(image_summary.digest)"
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        return result.returncode == 0
+
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _build_and_push(base_image, requirements_path, accelerator_type,
+                    project, image_uri, ar_location="us"):
+    """Build and push Docker image using Cloud Build.
+
+    Args:
+        base_image: Base Docker image
+        requirements_path: Path to requirements.txt (or None)
+        accelerator_type: TPU/GPU type
+        project: GCP project ID
+        image_uri: Target image URI
+        ar_location: Artifact Registry multi-region (e.g., 'us')
+
+    Returns:
+        Image URI
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Generate Dockerfile
+        dockerfile_content = _generate_dockerfile(
+            base_image=base_image,
+            requirements_path=requirements_path,
+            accelerator_type=accelerator_type
+        )
+
+        dockerfile_path = os.path.join(tmpdir, "Dockerfile")
+        with open(dockerfile_path, "w") as f:
+            f.write(dockerfile_content)
+
+        # Copy requirements.txt if it exists
+        if requirements_path and os.path.exists(requirements_path):
+            shutil.copy(requirements_path, os.path.join(tmpdir, "requirements.txt"))
+
+        # Copy remote_runner.py
+        remote_runner_src = os.path.join(os.path.dirname(__file__), "remote_runner.py")
+        remote_runner_dst = os.path.join(tmpdir, "remote_runner.py")
+        shutil.copy(remote_runner_src, remote_runner_dst)
+
+        # Create tarball for Cloud Build
+        tarball_path = os.path.join(tmpdir, "source.tar.gz")
+        with tarfile.open(tarball_path, "w:gz") as tar:
+            tar.add(dockerfile_path, arcname="Dockerfile")
+            tar.add(remote_runner_dst, arcname="remote_runner.py")
+            if requirements_path and os.path.exists(requirements_path):
+                tar.add(os.path.join(tmpdir, "requirements.txt"), arcname="requirements.txt")
+
+        # Upload source to GCS
+        bucket_name = f"{project}-keras-remote-builds"
+        source_gcs = _upload_build_source(
+            tarball_path, bucket_name, project, ar_location
+        )
+
+        # Submit build to Cloud Build
+        build_client = cloudbuild_v1.CloudBuildClient()
+
+        build_config = cloudbuild_v1.Build(
+            steps=[
+                cloudbuild_v1.BuildStep(
+                    name="gcr.io/cloud-builders/docker",
+                    args=["build", "-t", image_uri, "."]
+                ),
+            ],
+            images=[image_uri],
+            source=cloudbuild_v1.Source(
+                storage_source=cloudbuild_v1.StorageSource(
+                    bucket=bucket_name,
+                    object_=source_gcs.split(f'gs://{bucket_name}/')[1]
+                )
+            )
+        )
+
+        logger.info("Submitting build to Cloud Build...")
+        operation = build_client.create_build(project_id=project, build=build_config)
+
+        # Get build ID from the operation metadata
+        build_id = operation.metadata.build.id if hasattr(operation, "metadata") else None
+        if build_id:
+            logger.info(f"Build ID: {build_id}")
+            logger.info(f"View build: https://console.cloud.google.com/cloud-build/builds/{build_id}?project={project}")
+
+        logger.info("Building container image (this may take 5-10 minutes)...")
+        result = operation.result(timeout=1200)  # 20 minute timeout
+
+        if result.status == cloudbuild_v1.Build.Status.SUCCESS:
+            logger.info(f"Container built successfully: {image_uri}")
+            ar_url = (
+                "https://console.cloud.google.com/artifacts"
+                f"/docker/{project}/{ar_location}"
+                f"/keras-remote/base?project={project}"
+            )
+            logger.info(f"View image: {ar_url}")
+            return image_uri
+        else:
+            raise RuntimeError(f"Build failed with status: {result.status}")
+
+
+def _generate_dockerfile(base_image, requirements_path, accelerator_type):
+    """Generate Dockerfile content based on configuration.
+
+    Args:
+        base_image: Base Docker image
+        requirements_path: Path to requirements.txt (or None)
+        accelerator_type: TPU/GPU type
+
+    Returns:
+        Dockerfile content as string
+    """
+    # Determine JAX installation command based on accelerator
+    category = accelerators.get_category(accelerator_type)
+    if category == "cpu":
+        jax_install = "RUN python3 -m pip install jax"
+    elif category == "tpu":
+        jax_install = (
+            "RUN python3 -m pip install 'jax[tpu]>=0.4.6' "
+            "-f https://storage.googleapis.com/jax-releases/libtpu_releases.html"
+        )
+    else:
+        jax_install = "RUN python3 -m pip install 'jax[cuda12]'"
+
+    requirements_section = ""
+    if requirements_path and os.path.exists(requirements_path):
+        requirements_section = (
+            "COPY requirements.txt /tmp/requirements.txt\n"
+            "RUN python3 -m pip install -r /tmp/requirements.txt\n"
+        )
+
+    template_path = os.path.join(os.path.dirname(__file__), "Dockerfile.template")
+    with open(template_path, "r") as f:
+        template = string.Template(f.read())
+
+    return template.substitute(
+        base_image=base_image,
+        jax_install=jax_install,
+        requirements_section=requirements_section,
+    )
+
+
+def _upload_build_source(tarball_path, bucket_name, project,
+                         ar_location="us"):
+    """Upload build source tarball to Cloud Storage.
+
+    Args:
+        tarball_path: Local path to tarball
+        bucket_name: GCS bucket name
+        project: GCP project ID
+        ar_location: Multi-region for bucket creation
+
+    Returns:
+        GCS URI of uploaded tarball
+    """
+    from google.cloud import storage
+
+    client = storage.Client(project=project)
+
+    # Ensure bucket exists
+    try:
+        bucket = client.get_bucket(bucket_name)
+    except NotFound:
+        bucket = client.create_bucket(
+            bucket_name, location=ar_location
+        )
+        logger.info(f"Created build bucket: gs://{bucket_name}")
+        logger.info(f"View bucket: https://console.cloud.google.com/storage/browser/{bucket_name}?project={project}")
+
+    # Upload tarball
+    blob_name = f"source-{int(time.time())}.tar.gz"
+    blob = bucket.blob(blob_name)
+    blob.upload_from_filename(tarball_path)
+
+    gcs_uri = f"gs://{bucket_name}/{blob_name}"
+    logger.info(f"Uploaded build source to {gcs_uri}")
+    logger.info(f"View source: https://console.cloud.google.com/storage/browser/{bucket_name}?project={project}")
+
+    return gcs_uri
