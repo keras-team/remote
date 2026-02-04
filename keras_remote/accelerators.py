@@ -200,11 +200,6 @@ _MULTI_GPU_RE = re.compile(r"^(.+?)x(\d+)$")  # "a100x4", "a100-80gbx8"
 _TPU_CHIPS_RE = re.compile(r"^(v\d+\w*)-(\d+)$")  # "v3-8", "v5litepod-4"
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
-
 def parse_accelerator(accel_str: str) -> ParsedAccelerator:
     """Parse an accelerator string into a canonical type and count.
 

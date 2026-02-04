@@ -4,10 +4,12 @@ import hashlib
 import os
 import shutil
 import string
+import subprocess
 import tarfile
 import tempfile
 import time
 
+from google.cloud import storage
 from google.cloud.devtools import cloudbuild_v1
 from google.cloud.exceptions import NotFound
 
@@ -114,29 +116,6 @@ def _hash_requirements(requirements_path, accelerator_type, base_image):
     return hashlib.sha256(content.encode()).hexdigest()
 
 
-def _find_gcloud():
-    """Find the gcloud binary in common locations."""
-    # Check if gcloud is in PATH
-    gcloud_path = shutil.which("gcloud")
-    if gcloud_path:
-        return gcloud_path
-
-    # Check common installation locations
-    common_paths = [
-        os.path.expanduser("~/google-cloud-sdk/bin/gcloud"),
-        "/usr/local/google-cloud-sdk/bin/gcloud",
-        "/opt/google-cloud-sdk/bin/gcloud",
-        "/snap/bin/gcloud",
-    ]
-
-    for path in common_paths:
-        if os.path.exists(path):
-            return path
-
-    # Fall back to just 'gcloud' and hope it's in PATH
-    return "gcloud"
-
-
 def _image_exists(image_uri, project):
     """Check if image exists in Artifact Registry.
 
@@ -147,15 +126,11 @@ def _image_exists(image_uri, project):
     Returns:
         True if image exists, False otherwise
     """
-    import subprocess
-
     try:
-        gcloud = _find_gcloud()
-
         # Use gcloud to directly describe the specific image:tag
         # Just check for successful return code (exit 0 = image exists)
         cmd = [
-            gcloud, "artifacts", "docker", "images", "describe",
+            "gcloud", "artifacts", "docker", "images", "describe",
             image_uri,
             "--format", "value(image_summary.digest)"
         ]
@@ -315,8 +290,6 @@ def _upload_build_source(tarball_path, bucket_name, project,
     Returns:
         GCS URI of uploaded tarball
     """
-    from google.cloud import storage
-
     client = storage.Client(project=project)
 
     # Ensure bucket exists

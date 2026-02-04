@@ -35,8 +35,13 @@ Supported accelerators:
     - nvidia-h100-80gb, h100: NVIDIA H100
 """
 
-import keras_remote
+import os
+import subprocess
 
+import keras
+import numpy as np
+
+import keras_remote
 
 # Example 1: CPU-only execution (works with default cluster)
 @keras_remote.run(accelerator="cpu", backend="gke")
@@ -51,8 +56,6 @@ def simple_computation(x, y):
 @keras_remote.run(accelerator="cpu", backend="gke")
 def train_simple_model_cpu():
     """Train a simple Keras model on remote CPU."""
-    import keras
-    import numpy as np
 
     # Create a simple model
     model = keras.Sequential(
@@ -81,9 +84,6 @@ def train_simple_model_cpu():
 @keras_remote.run(accelerator="nvidia-tesla-t4", backend="gke")
 def train_model_gpu():
     """Train a Keras model on remote GPU. Requires T4 GPU node pool."""
-    import keras
-    import numpy as np
-
     model = keras.Sequential(
         [
             keras.layers.Dense(128, activation="relu", input_shape=(20,)),
@@ -137,9 +137,6 @@ if __name__ == "__main__":
     # 1. Set KERAS_REMOTE_PROJECT environment variable to your GCP project ID
     # 2. Configure kubectl: gcloud container clusters get-credentials <cluster> --zone <zone>
     # 3. Ensure your GKE cluster has GPU nodes with the required accelerator type
-
-    import os
-
     if not os.environ.get("KERAS_REMOTE_PROJECT"):
         print("ERROR: KERAS_REMOTE_PROJECT environment variable not set")
         print("Please set it to your GCP project ID:")
@@ -147,8 +144,6 @@ if __name__ == "__main__":
         exit(1)
 
     # Verify kubectl is configured
-    import subprocess
-
     try:
         result = subprocess.run(
             ["kubectl", "cluster-info"], capture_output=True, text=True, timeout=10

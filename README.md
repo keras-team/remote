@@ -139,8 +139,7 @@ def train():
 
 **Advantages:**
 
-- Use existing GKE infrastructure
-- Support for GPU accelerators (T4, L4, A100, V100, H100)
+- More customizability and higher control over the infrastructure
 - Lower overhead than Vertex AI
 
 **Setup:** Run `./setup.sh` and select GKE.
@@ -388,11 +387,6 @@ This removes:
 - Running Vertex AI jobs
 - GKE clusters (if created by setup)
 - TPU VMs
-
-## Documentation
-
-- [Vertex AI Implementation Guide](VERTEX_AI_IMPLEMENTATION.md) — Technical architecture details
-- [Prebuilt Images](examples/Dockerfile.prebuilt) — Custom container templates
 
 ## Contributing
 

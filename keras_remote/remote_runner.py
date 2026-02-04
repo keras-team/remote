@@ -8,12 +8,14 @@ Supports two execution modes:
 """
 
 import os
+import shutil
 import sys
 import tempfile
 import traceback
 import zipfile
 
 import cloudpickle
+from google.cloud import storage
 
 # Base temp directory for remote execution artifacts
 TEMP_DIR = tempfile.gettempdir()
@@ -67,8 +69,6 @@ def run_gcs_mode():
     workspace_dir = os.path.join(TEMP_DIR, "workspace")
 
     try:
-        # Import Cloud Storage
-        from google.cloud import storage
         storage_client = storage.Client()
 
         # Download artifacts from Cloud Storage
@@ -78,7 +78,6 @@ def run_gcs_mode():
 
         # Extract context
         if os.path.exists(workspace_dir):
-            import shutil
             shutil.rmtree(workspace_dir)
         os.makedirs(workspace_dir)
 
@@ -160,7 +159,6 @@ def run_tpu_vm_mode():
 
     # Clear old workspace
     if os.path.exists(workspace_dir):
-        import shutil
         shutil.rmtree(workspace_dir)
     os.makedirs(workspace_dir)
 

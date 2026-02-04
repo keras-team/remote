@@ -8,6 +8,10 @@ you can use prebuilt images with the container_image parameter. See:
 - examples/example_prebuilt_image.py for usage example
 - examples/Dockerfile.prebuilt for building your own prebuilt image
 """
+import os
+
+import keras
+import numpy as np
 
 import keras_remote
 
@@ -33,9 +37,6 @@ def simple_computation(x, y):
 @keras_remote.run(accelerator="nvidia-tesla-t4", backend="vertex-ai")
 def train_simple_model():
     """Train a simple Keras model on remote TPU."""
-    import keras
-    import numpy as np
-
     # Create a simple model
     model = keras.Sequential(
         [
@@ -55,7 +56,7 @@ def train_simple_model():
     print("Training model on TPU...")
     history = model.fit(x_train, y_train, epochs=5, batch_size=32, verbose=1)
 
-    print(f"Final loss: {history.history["loss"][-1]}")
+    print(f"Final loss: {history.history['loss'][-1]}")
     return history.history["loss"][-1]
 
 
@@ -97,9 +98,6 @@ if __name__ == "__main__":
     #    - Cloud Build API
     #    - Artifact Registry API
     #    - Cloud Storage API
-
-    import os
-
     if not os.environ.get("KERAS_REMOTE_PROJECT"):
         print("ERROR: KERAS_REMOTE_PROJECT environment variable not set")
         print("Please set it to your GCP project ID:")

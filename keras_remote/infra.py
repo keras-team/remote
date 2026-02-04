@@ -1,9 +1,9 @@
+import json
+import logging
+import os
+import shlex
 import subprocess
 import sys
-import json
-import os
-import logging
-import shlex
 
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')

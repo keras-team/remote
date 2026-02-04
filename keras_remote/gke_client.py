@@ -1,5 +1,6 @@
 """GKE job submission for keras_remote."""
 
+from contextlib import suppress
 import time
 
 from kubernetes import client, config
@@ -338,26 +339,22 @@ def _create_job_spec(
 
 def _print_pod_logs(core_v1, job_name, namespace):
     """Print pod logs for debugging failed jobs."""
-    try:
+    with suppress(ApiException):
         pods = core_v1.list_namespaced_pod(
             namespace, label_selector=f"job-name={job_name}"
         )
-        if pods.items:
-            for pod in pods.items:
-                try:
-                    logs = core_v1.read_namespaced_pod_log(
-                        pod.metadata.name, namespace, tail_lines=100
-                    )
-                    print(f"[REMOTE] Pod {pod.metadata.name} logs:\n{logs}")
-                except ApiException:
-                    pass
-    except ApiException:
-        pass
+        
+        for pod in pods.items:
+            with suppress(ApiException):
+                logs = core_v1.read_namespaced_pod_log(
+                    pod.metadata.name, namespace, tail_lines=100
+                )
+                print(f"[REMOTE] Pod {pod.metadata.name} logs:\n{logs}")
 
 
 def _check_pod_scheduling(core_v1, job_name, namespace):
     """Check for pod scheduling issues and raise helpful errors."""
-    try:
+    with suppress(ApiException):
         pods = core_v1.list_namespaced_pod(
             namespace, label_selector=f"job-name={job_name}"
         )
@@ -379,5 +376,3 @@ def _check_pod_scheduling(core_v1, job_name, namespace):
                                 f"No nodes match the GPU selector. Check that your node pool "
                                 f"has the correct GPU type label."
                             )
-    except ApiException:
-        pass
