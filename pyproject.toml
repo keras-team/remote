@@ -23,12 +23,22 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+cli = [
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    "pulumi>=3.0.0",
+    "pulumi-gcp>=7.0.0",
+    "pulumi-command>=1.0.0",
+]
 demo = [
     "jax",
     "keras",
     "numpy",
     "keras-hub",
 ]
+
+[project.scripts]
+keras-remote = "keras_remote.cli.main:cli"
 
 [project.urls]
 Homepage = "https://github.com/keras-team/keras-remote"
