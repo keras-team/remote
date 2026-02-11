@@ -1,6 +1,7 @@
 """keras-remote status command — show current infrastructure state."""
 
 import click
+from pulumi.automation import CommandError
 from rich.table import Table
 
 from keras_remote.cli.constants import DEFAULT_ZONE
@@ -35,7 +36,7 @@ def status(project, zone):
     try:
         program = create_program(config)
         stack = get_stack(program, config)
-    except Exception as e:
+    except CommandError as e:
         warning(f"No Pulumi stack found for project '{project}': {e}")
         console.print("Run 'keras-remote up' to provision infrastructure.")
         return
@@ -43,7 +44,7 @@ def status(project, zone):
     console.print("\nRefreshing state...\n")
     try:
         refresh(stack)
-    except Exception as e:
+    except CommandError as e:
         warning(f"Failed to refresh stack state: {e}")
 
     outputs = get_outputs(stack)

@@ -3,6 +3,7 @@
 import subprocess
 
 import click
+import pulumi.automation as auto
 
 from keras_remote.cli.constants import DEFAULT_ZONE
 from keras_remote.cli.infra.program import create_program
@@ -68,7 +69,7 @@ def down(project, zone, yes, pulumi_only):
         result = destroy(stack)
         console.print()
         success(f"Pulumi destroy complete. {result.summary.resource_changes}")
-    except Exception as e:
+    except auto.errors.CommandError as e:
         warning(f"Pulumi destroy encountered an issue: {e}")
         console.print("Continuing with supplementary cleanup...\n")
 
@@ -97,16 +98,14 @@ def down(project, zone, yes, pulumi_only):
     console.print()
 
 
-def _run_gcloud(args, suppress_errors=True):
-    """Run a gcloud command and return (success, stdout)."""
+def _run_gcloud(args):
+    """Run a gcloud command and return (success, stdout, stderr)."""
     result = subprocess.run(
         ["gcloud"] + args,
         capture_output=True,
         text=True,
     )
-    if suppress_errors:
-        return result.returncode == 0, result.stdout.strip()
-    return result.returncode == 0, result.stdout.strip()
+    return result.returncode == 0, result.stdout.strip(), result.stderr.strip()
 
 
 def _cleanup_buckets(project, console):
@@ -114,11 +113,11 @@ def _cleanup_buckets(project, console):
     console.print("Deleting Cloud Storage buckets...")
     for suffix in ("jobs", "builds"):
         bucket = f"gs://{project}-keras-remote-{suffix}"
-        ok, _ = _run_gcloud(["storage", "rm", "-r", bucket])
+        ok, _, err = _run_gcloud(["storage", "rm", "-r", bucket])
         if ok:
             success(f"  Deleted {bucket}")
         else:
-            warning(f"  {bucket} not found or already deleted")
+            warning(f"  {bucket} not found or already deleted: {err}")
 
 
 def _cleanup_artifact_registry(project, zone, console):
@@ -127,24 +126,27 @@ def _cleanup_artifact_registry(project, zone, console):
     ar_location = region.split("-")[0]
 
     console.print("Deleting Artifact Registry repository...")
-    ok, _ = _run_gcloud([
+    ok, _, err = _run_gcloud([
         "artifacts", "repositories", "delete", "keras-remote",
         f"--location={ar_location}", f"--project={project}", "--quiet",
     ])
     if ok:
         success("  Deleted keras-remote repository")
     else:
-        warning("  Repository not found or already deleted")
+        warning(f"  Repository not found or already deleted: {err}")
 
 
 def _cleanup_tpu_vms(project, console):
     """Delete TPU VMs in the project."""
     console.print("Checking for TPU VMs...")
-    ok, output = _run_gcloud([
+    ok, output, err = _run_gcloud([
         "compute", "tpus", "list", f"--project={project}",
         "--format=value(name,zone)",
     ])
-    if not ok or not output:
+    if not ok:
+        warning(f"  Failed to list TPU VMs: {err}")
+        return
+    if not output:
         success("  No TPU VMs found")
         return
 
@@ -152,24 +154,27 @@ def _cleanup_tpu_vms(project, console):
         parts = line.split()
         if len(parts) >= 2:
             vm, vm_zone = parts[0], parts[1]
-            ok, _ = _run_gcloud([
+            ok, _, err = _run_gcloud([
                 "compute", "tpus", "delete", vm,
                 f"--zone={vm_zone}", f"--project={project}", "--quiet",
             ])
             if ok:
                 success(f"  Deleted TPU VM: {vm}")
             else:
-                warning(f"  Failed to delete TPU VM: {vm}")
+                warning(f"  Failed to delete TPU VM: {vm}: {err}")
 
 
 def _cleanup_gke_clusters(project, console):
     """Delete GKE clusters matching keras-remote-* pattern."""
     console.print("Checking for GKE clusters (keras-remote-*)...")
-    ok, output = _run_gcloud([
+    ok, output, err = _run_gcloud([
         "container", "clusters", "list", f"--project={project}",
         "--filter=name~^keras-remote-", "--format=value(name,location)",
     ])
-    if not ok or not output:
+    if not ok:
+        warning(f"  Failed to list GKE clusters: {err}")
+        return
+    if not output:
         success("  No matching GKE clusters found")
         return
 
@@ -177,24 +182,27 @@ def _cleanup_gke_clusters(project, console):
         parts = line.split()
         if len(parts) >= 2:
             cluster, location = parts[0], parts[1]
-            ok, _ = _run_gcloud([
+            ok, _, err = _run_gcloud([
                 "container", "clusters", "delete", cluster,
                 f"--location={location}", f"--project={project}", "--quiet",
             ])
             if ok:
                 success(f"  Deleted GKE cluster: {cluster}")
             else:
-                warning(f"  Failed to delete GKE cluster: {cluster}")
+                warning(f"  Failed to delete GKE cluster: {cluster}: {err}")
 
 
 def _cleanup_compute_vms(project, console):
     """Delete Compute Engine VMs matching remote-* pattern."""
     console.print("Checking for Compute Engine VMs (remote-*)...")
-    ok, output = _run_gcloud([
+    ok, output, err = _run_gcloud([
         "compute", "instances", "list", f"--project={project}",
         "--filter=name~^remote-.*", "--format=value(name,zone)",
     ])
-    if not ok or not output:
+    if not ok:
+        warning(f"  Failed to list Compute Engine VMs: {err}")
+        return
+    if not output:
         success("  No matching Compute Engine VMs found")
         return
 
@@ -202,11 +210,11 @@ def _cleanup_compute_vms(project, console):
         parts = line.split()
         if len(parts) >= 2:
             vm, vm_zone = parts[0], parts[1]
-            ok, _ = _run_gcloud([
+            ok, _, err = _run_gcloud([
                 "compute", "instances", "delete", vm,
                 f"--zone={vm_zone}", f"--project={project}", "--quiet",
             ])
             if ok:
                 success(f"  Deleted VM: {vm}")
             else:
-                warning(f"  Failed to delete VM: {vm}")
+                warning(f"  Failed to delete VM: {vm}: {err}")
