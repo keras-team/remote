@@ -17,34 +17,7 @@ echo ""
 #  Phase 1: Gather all user input upfront
 # ==========================================
 
-# Backend selection
-echo "Which backend(s) do you want to set up?"
-echo "  1) Vertex AI only"
-echo "  2) GKE only"
-echo "  3) Both Vertex AI and GKE"
-echo ""
-echo -n "Enter your choice (1/2/3): "
-read -r BACKEND_CHOICE
-
-SETUP_VERTEX=false
-SETUP_GKE=false
-
-case "$BACKEND_CHOICE" in
-    1)
-        SETUP_VERTEX=true
-        ;;
-    2)
-        SETUP_GKE=true
-        ;;
-    3)
-        SETUP_VERTEX=true
-        SETUP_GKE=true
-        ;;
-    *)
-        echo -e "\n${RED}Invalid choice. Exiting.${NC}"
-        exit 1
-        ;;
-esac
+SETUP_GKE=true
 
 # Get or set project ID
 if [ -z "$KERAS_REMOTE_PROJECT" ]; then
@@ -205,9 +178,6 @@ echo "  Configuration Summary"
 echo "=========================================="
 echo ""
 echo -e "  Project:     ${GREEN}$PROJECT_ID${NC}"
-if [ "$SETUP_VERTEX" = true ]; then
-    echo -e "  Backend:     ${GREEN}Vertex AI${NC}"
-fi
 if [ "$SETUP_GKE" = true ]; then
     echo -e "  Backend:     ${GREEN}GKE${NC}"
     case "$NODE_TYPE_CHOICE" in
@@ -282,11 +252,6 @@ APIS=(
     "artifactregistry.googleapis.com"  # Artifact Registry API
     "storage.googleapis.com"           # Cloud Storage API
 )
-
-# Add Vertex AI API if selected
-if [ "$SETUP_VERTEX" = true ]; then
-    APIS+=("aiplatform.googleapis.com")        # Vertex AI API
-fi
 
 # Add GKE API if selected
 if [ "$SETUP_GKE" = true ]; then
@@ -441,9 +406,6 @@ echo ""
 echo -e "${GREEN}✓ Project:${NC} $PROJECT_ID"
 echo -e "${GREEN}✓ Region:${NC} ${KERAS_REMOTE_ZONE:-us-central1-a (default)}"
 echo -e "${GREEN}✓ Artifact Registry:${NC} $AR_LOCATION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME"
-if [ "$SETUP_VERTEX" = true ]; then
-    echo -e "${GREEN}✓ Backend:${NC} Vertex AI"
-fi
 if [ "$SETUP_GKE" = true ]; then
     echo -e "${GREEN}✓ Backend:${NC} GKE"
     echo -e "${GREEN}✓ GKE Cluster:${NC} $CLUSTER_NAME"
@@ -452,9 +414,6 @@ echo ""
 echo "Important notes:"
 echo "  1. Ensure your project has billing enabled"
 echo "  2. Check your quotas for:"
-if [ "$SETUP_VERTEX" = true ]; then
-    echo "     - Vertex AI Custom Training"
-fi
 echo "     - TPU/GPU availability in your region"
 echo "     - Cloud Build concurrent builds"
 if [ "$SETUP_GKE" = true ]; then
@@ -474,9 +433,6 @@ echo "To check TPU/GPU availability:"
 echo "  gcloud compute accelerator-types list --filter=\"zone:$ZONE\""
 echo ""
 echo -e "${GREEN}Setup complete!${NC} You can now run:"
-if [ "$SETUP_VERTEX" = true ]; then
-    echo "  python example_vertex_ai.py"
-fi
 if [ "$SETUP_GKE" = true ]; then
     echo "  python example_gke.py"
 fi

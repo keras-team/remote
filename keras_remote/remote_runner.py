@@ -3,7 +3,7 @@
 
 This script runs on the remote TPU/GPU and executes the user's function.
 Supports two execution modes:
-- GCS mode: Used by Vertex AI and GKE backends (artifacts via Cloud Storage)
+- GCS mode: Used by GKE backend (artifacts via Cloud Storage)
 - TPU VM mode: Direct TPU VM execution (artifacts via local files)
 """
 
@@ -25,7 +25,7 @@ def main():
     """Main entry point for remote execution.
 
     Supports two modes:
-    1. GCS mode (Vertex AI/GKE): python remote_runner.py gs://bucket/context.zip gs://bucket/payload.pkl gs://bucket/result.pkl
+    1. GCS mode (GKE): python remote_runner.py gs://bucket/context.zip gs://bucket/payload.pkl gs://bucket/result.pkl
     2. TPU VM mode: python remote_runner.py /tmp/context.zip
     """
 
@@ -37,7 +37,7 @@ def main():
 
     # Determine execution mode based on arguments
     if context_arg.startswith("gs://"):
-        # GCS mode (used by Vertex AI and GKE backends)
+        # GCS mode (used by GKE backend)
         run_gcs_mode()
     else:
         # TPU VM mode with local files
@@ -45,7 +45,7 @@ def main():
 
 
 def run_gcs_mode():
-    """Execute with Cloud Storage artifacts (used by Vertex AI and GKE backends).
+    """Execute with Cloud Storage artifacts (used by GKE backend).
 
     Args from sys.argv:
         sys.argv[1]: GCS path to context.zip

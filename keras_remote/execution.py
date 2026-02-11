@@ -1,4 +1,4 @@
-"""Unified remote execution module for Vertex AI and GKE backends.
+"""Unified remote execution module for GKE backend.
 
 This module consolidates the common execution logic shared between different
 backend implementations, reducing code duplication and improving maintainability.
@@ -18,7 +18,6 @@ from keras_remote import gke_client
 from keras_remote import infra
 from keras_remote import packager
 from keras_remote import storage
-from keras_remote import vertex_ai_client
 
 logger = infra.logger
 
@@ -110,31 +109,6 @@ class BackendClient(Protocol):
     def cleanup_job(self, job: Any, ctx: JobContext) -> None:
         """Optional cleanup after job completion."""
         ...
-
-
-class VertexAIBackend:
-    """Backend adapter for Vertex AI."""
-
-    def submit_job(self, ctx: JobContext) -> Any:
-        """Submit job to Vertex AI."""
-        return vertex_ai_client.submit_training_job(
-            display_name=ctx.display_name,
-            container_uri=ctx.image_uri,
-            accelerator=ctx.accelerator,
-            machine_type=None,  # Auto-detect
-            zone=ctx.zone,
-            project=ctx.project,
-            job_id=ctx.job_id,
-            bucket_name=ctx.bucket_name,
-        )
-
-    def wait_for_job(self, job: Any, ctx: JobContext) -> None:
-        """Wait for Vertex AI job completion."""
-        vertex_ai_client.wait_for_job(job)
-
-    def cleanup_job(self, job: Any, ctx: JobContext) -> None:
-        """No explicit cleanup needed for Vertex AI."""
-        pass
 
 
 class GKEBackend:

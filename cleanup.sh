@@ -39,7 +39,6 @@ echo ""
 echo "This includes:"
 echo "  - Cloud Storage buckets (jobs and builds)"
 echo "  - Artifact Registry repositories and images"
-echo "  - Running Vertex AI jobs"
 echo "  - GKE clusters (matching 'keras-remote-*' pattern)"
 echo "  - TPU VMs (if any)"
 echo ""
@@ -70,32 +69,8 @@ else
 fi
 echo ""
 
-# Cancel and list Vertex AI jobs
-echo "2. Checking for running Vertex AI jobs..."
-RUNNING_JOBS=$(gcloud ai custom-jobs list \
-    --region="$REGION" \
-    --project="$PROJECT_ID" \
-    --filter="state:JOB_STATE_RUNNING OR state:JOB_STATE_PENDING" \
-    --format="value(name)" 2>/dev/null || echo "")
-
-if [ -n "$RUNNING_JOBS" ]; then
-    echo "   Found running jobs. Cancelling..."
-    echo "$RUNNING_JOBS" | while read -r job; do
-        JOB_ID=$(basename "$job")
-        echo -n "   Cancelling job: $JOB_ID... "
-        if gcloud ai custom-jobs cancel "$JOB_ID" --region="$REGION" --project="$PROJECT_ID" --quiet 2>/dev/null; then
-            echo -e "${GREEN}✓${NC}"
-        else
-            echo -e "${RED}✗${NC}"
-        fi
-    done
-else
-    echo -e "   ${GREEN}✓ No running jobs found${NC}"
-fi
-echo ""
-
 # Delete Artifact Registry repository
-echo "3. Deleting Artifact Registry repository..."
+echo "2. Deleting Artifact Registry repository..."
 if gcloud artifacts repositories describe keras-remote \
     --location="$AR_LOCATION" \
     --project="$PROJECT_ID" &> /dev/null; then
@@ -114,7 +89,7 @@ fi
 echo ""
 
 # Check for TPU VMs
-echo "4. Checking for TPU VMs..."
+echo "3. Checking for TPU VMs..."
 TPU_VMS=$(gcloud compute tpus list --project="$PROJECT_ID" --format="value(name,zone)" 2>/dev/null || echo "")
 
 if [ -n "$TPU_VMS" ]; then
@@ -135,7 +110,7 @@ fi
 echo ""
 
 # Delete GKE clusters matching keras-remote-* pattern
-echo "5. Checking for GKE clusters (matching 'keras-remote-*' pattern)..."
+echo "4. Checking for GKE clusters (matching 'keras-remote-*' pattern)..."
 GKE_CLUSTERS=$(gcloud container clusters list \
     --project="$PROJECT_ID" \
     --filter="name~^keras-remote-" \
@@ -162,7 +137,7 @@ fi
 echo ""
 
 # Check for Compute Engine VMs (in case any were created)
-echo "6. Checking for Compute Engine VMs (matching 'remote-*' pattern)..."
+echo "5. Checking for Compute Engine VMs (matching 'remote-*' pattern)..."
 COMPUTE_VMS=$(gcloud compute instances list \
     --project="$PROJECT_ID" \
     --filter="name~^remote-.*" \
@@ -191,15 +166,12 @@ echo -e "${GREEN}Cleanup complete!${NC}"
 echo "=========================================="
 echo ""
 echo "Remaining billable resources to check manually:"
-echo "  1. Any other custom Vertex AI jobs:"
-echo "     https://console.cloud.google.com/vertex-ai/training/custom-jobs?project=$PROJECT_ID"
-echo ""
-echo "  2. GKE clusters (if any remain):"
+echo "  1. GKE clusters (if any remain):"
 echo "     https://console.cloud.google.com/kubernetes/list?project=$PROJECT_ID"
 echo ""
-echo "  3. Cloud Build history (informational only, no cost when not building):"
+echo "  2. Cloud Build history (informational only, no cost when not building):"
 echo "     https://console.cloud.google.com/cloud-build/builds?project=$PROJECT_ID"
 echo ""
-echo "  4. Overall billing:"
+echo "  3. Overall billing:"
 echo "     https://console.cloud.google.com/billing?project=$PROJECT_ID"
 echo ""

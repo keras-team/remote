@@ -202,10 +202,10 @@ def _parse_accelerator(accelerator):
         }
 
     # GPU
-    if parsed.count not in t.vertex_machines:
+    if parsed.count not in t.supported_gpu_counts:
         raise ValueError(
             f"GPU count {parsed.count} not supported for '{t.short_name}'. "
-            f"Supported: {', '.join(str(c) for c in t.vertex_machines)}."
+            f"Supported: {', '.join(str(c) for c in t.supported_gpu_counts)}."
         )
     return {
         "node_selector": {"cloud.google.com/gke-accelerator": t.gke_label},

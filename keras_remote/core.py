@@ -11,20 +11,19 @@ from keras_remote import infra
 from keras_remote.execution import (
     JobContext,
     execute_remote,
-    VertexAIBackend,
     GKEBackend,
 )
 
 logger = infra.logger
 
-def run(accelerator="v3-8", 
-        container_image=None, 
-        zone=None, 
-        project=None, 
-        vm_name=None, 
-        capture_env_vars=None, 
-        backend="vertex-ai", 
-        cluster=None, 
+def run(accelerator="v3-8",
+        container_image=None,
+        zone=None,
+        project=None,
+        vm_name=None,
+        capture_env_vars=None,
+        backend="gke",
+        cluster=None,
         namespace="default",
         ):
   """Execute function on remote TPU/GPU.
@@ -37,7 +36,7 @@ def run(accelerator="v3-8",
     vm_name: Custom VM name (only for 'tpu-vm' backend)
     capture_env_vars: List of environment variable names or patterns (ending in *)
       to propagate to the remote environment. Defaults to None.
-    backend: 'vertex-ai' (managed, recommended), 'gke' (Kubernetes), or 'tpu-vm' (direct VM)
+    backend: 'gke' (Kubernetes, recommended) or 'tpu-vm' (direct VM)
     cluster: GKE cluster name (only for 'gke' backend, default: from KERAS_REMOTE_GKE_CLUSTER)
     namespace: Kubernetes namespace (only for 'gke' backend, default: 'default')
   """
@@ -54,14 +53,12 @@ def run(accelerator="v3-8",
               elif pattern in os.environ:
                   env_vars[pattern] = os.environ[pattern]
 
-      if backend == "vertex-ai":
-        return _execute_on_vertex_ai(func, args, kwargs, accelerator, container_image, zone, project, env_vars)
-      elif backend == "gke":
+      if backend == "gke":
         return _execute_on_gke(func, args, kwargs, accelerator, container_image, zone, project, cluster, namespace, env_vars)
       elif backend == "tpu-vm":
         return _execute_on_tpu_vm(func, args, kwargs, accelerator, container_image, zone, project, vm_name, env_vars)
       else:
-        raise ValueError(f"Unknown backend: {backend}. Use 'vertex-ai', 'gke', or 'tpu-vm'.")
+        raise ValueError(f"Unknown backend: {backend}. Use 'gke' or 'tpu-vm'.")
     return wrapper
   return decorator
 
@@ -142,14 +139,6 @@ def _execute_on_tpu_vm(func, args, kwargs, accelerator, container_image, zone, p
     result = infra.ssh_execute(actual_vm_name, "/tmp/remote_runner.py", context_zip_path=remote_context_zip_path, use_requirements=use_requirements, zone=zone, project=project, accelerator_type=accelerator)
     logger.info("Remote execution finished.")
     return result
-
-
-def _execute_on_vertex_ai(func, args, kwargs, accelerator, container_image, zone, project, env_vars):
-    """Execute function using Vertex AI Custom Training."""
-    ctx = JobContext.from_params(
-        func, args, kwargs, accelerator, container_image, zone, project, env_vars
-    )
-    return execute_remote(ctx, VertexAIBackend())
 
 
 def _execute_on_gke(func, args, kwargs, accelerator, container_image, zone, project, cluster, namespace, env_vars):

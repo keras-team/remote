@@ -38,7 +38,7 @@ final_loss = train_model()
 - **Simple decorator API** — Add `@keras_remote.run()` to any function to execute it remotely
 - **Automatic infrastructure** — No manual VM provisioning or teardown required
 - **Result serialization** — Functions return actual values, not just logs
-- **Multiple backends** — Choose between Vertex AI (managed), GKE, or direct TPU VM
+- **Multiple backends** — Choose between GKE or direct TPU VM
 - **Container caching** — Subsequent runs start in 2-4 minutes after initial build
 - **Built-in monitoring** — View job status and logs in Google Cloud Console
 - **Automatic cleanup** — Resources are released when jobs complete
@@ -73,7 +73,7 @@ Run the automated setup script:
 The script will:
 
 - Prompt for your GCP project ID
-- Enable required APIs (Vertex AI, Cloud Build, Artifact Registry, Cloud Storage)
+- Enable required APIs (Cloud Build, Artifact Registry, Cloud Storage, GKE)
 - Create the Artifact Registry repository
 - Configure Docker authentication
 - Verify the setup
@@ -103,29 +103,10 @@ print(result)
 
 ## Backends
 
-Keras Remote supports three execution backends:
+Keras Remote supports two execution backends:
 
-1. Vertex AI
-2. Google Kubernetes Engine (GKE)
-3. TPU VM
-
-### Vertex AI
-
-Fully managed infrastructure with automatic provisioning and cleanup.
-
-```python
-@keras_remote.run(accelerator="v3-8", backend="vertex-ai")
-def train():
-    ...
-```
-
-**Advantages:**
-
-- Automatic resource cleanup
-- Built-in monitoring and logging
-- No infrastructure management
-
-**Setup:** Run `./setup.sh` and select Vertex AI
+1. Google Kubernetes Engine (GKE)
+2. TPU VM
 
 ### GKE
 
@@ -140,7 +121,8 @@ def train():
 **Advantages:**
 
 - More customizability and higher control over the infrastructure
-- Lower overhead than Vertex AI
+- Support for GPU accelerators (T4, L4, A100, V100, H100)
+- Lower overhead for iterative development
 
 **Setup:** Run `./setup.sh` and select GKE.
 
@@ -245,7 +227,7 @@ See [examples/Dockerfile.prebuilt](examples/Dockerfile.prebuilt) for a template.
 ```python
 @keras_remote.run(
     accelerator="v3-8",        # Required: TPU/GPU type
-    backend="vertex-ai",       # "vertex-ai", "gke", or "tpu-vm"
+    backend="gke",             # "gke" or "tpu-vm"
     container_image=None,      # Custom container URI
     zone=None,                 # Override default zone
     project=None,              # Override default project
@@ -257,7 +239,7 @@ See [examples/Dockerfile.prebuilt](examples/Dockerfile.prebuilt) for a template.
 
 ## Supported Accelerators
 
-### TPUs (Vertex AI and TPU VM backends)
+### TPUs (TPU VM backend)
 
 | Type           | Configurations                              |
 | -------------- | ------------------------------------------- |
@@ -267,7 +249,7 @@ See [examples/Dockerfile.prebuilt](examples/Dockerfile.prebuilt) for a template.
 | TPU v5p        | `v5p-8`, `v5p-16`                           |
 | TPU v6e        | `v6e-8`, `v6e-16`                           |
 
-### GPUs (Vertex AI and GKE backends)
+### GPUs (GKE backend)
 
 | Type        | Aliases                     |
 | ----------- | --------------------------- |
@@ -283,19 +265,12 @@ For multi-GPU configurations on GKE, append the count: `a100x4`, `l4x2`, etc.
 
 ### Google Cloud Console
 
-- **Vertex AI Jobs:** [console.cloud.google.com/vertex-ai/training/custom-jobs](https://console.cloud.google.com/vertex-ai/training/custom-jobs)
 - **Cloud Build:** [console.cloud.google.com/cloud-build/builds](https://console.cloud.google.com/cloud-build/builds)
 - **GKE Workloads:** [console.cloud.google.com/kubernetes/workload](https://console.cloud.google.com/kubernetes/workload)
 
 ### Command Line
 
 ```bash
-# List Vertex AI jobs
-gcloud ai custom-jobs list --region=us-central1 --project=$KERAS_REMOTE_PROJECT
-
-# View job logs
-gcloud ai custom-jobs stream-logs JOB_ID --region=us-central1
-
 # List GKE jobs
 kubectl get jobs -n default
 ```
@@ -315,9 +290,9 @@ export KERAS_REMOTE_PROJECT="your-project-id"
 Enable required APIs and create the Artifact Registry repository:
 
 ```bash
-gcloud services enable aiplatform.googleapis.com cloudbuild.googleapis.com \
+gcloud services enable cloudbuild.googleapis.com \
     artifactregistry.googleapis.com storage.googleapis.com \
-    --project=$KERAS_REMOTE_PROJECT
+    container.googleapis.com --project=$KERAS_REMOTE_PROJECT
 
 gcloud artifacts repositories create keras-remote \
     --repository-format=docker \
@@ -330,10 +305,6 @@ gcloud artifacts repositories create keras-remote \
 Grant required IAM roles:
 
 ```bash
-gcloud projects add-iam-policy-binding $KERAS_REMOTE_PROJECT \
-    --member="user:your-email@example.com" \
-    --role="roles/aiplatform.user"
-
 gcloud projects add-iam-policy-binding $KERAS_REMOTE_PROJECT \
     --member="user:your-email@example.com" \
     --role="roles/storage.admin"
@@ -365,7 +336,7 @@ echo $KERAS_REMOTE_PROJECT
 
 # Check APIs
 gcloud services list --enabled --project=$KERAS_REMOTE_PROJECT \
-    | grep -E "(aiplatform|cloudbuild|artifactregistry|storage)"
+    | grep -E "(cloudbuild|artifactregistry|storage|container)"
 
 # Check Artifact Registry
 gcloud artifacts repositories describe keras-remote \
@@ -384,7 +355,6 @@ This removes:
 
 - Cloud Storage buckets
 - Artifact Registry repositories
-- Running Vertex AI jobs
 - GKE clusters (if created by setup)
 - TPU VMs
 

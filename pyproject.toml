@@ -17,7 +17,6 @@ dependencies = [
     "cloudpickle",
     "numpy",
     "keras",
-    "google-cloud-aiplatform>=1.50.0",
     "google-cloud-storage>=2.16.0",
     "google-cloud-build>=3.24.0",
     "kubernetes>=28.1.0",

@@ -23,5 +23,5 @@ COPY remote_runner.py /app/remote_runner.py
 # Set Keras backend
 ENV KERAS_BACKEND=jax
 
-# Default command (will be overridden by Vertex AI)
+# Default command
 CMD ["python3"]

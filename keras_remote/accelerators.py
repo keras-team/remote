@@ -1,7 +1,7 @@
 """Canonical accelerator type registry and parsing utilities.
 
 Single source of truth for accelerator metadata used by all backends
-(GKE, Vertex AI, TPU VM) and the container builder.
+(GKE, TPU VM) and the container builder.
 """
 
 import re
@@ -18,17 +18,11 @@ class AcceleratorType:
 
     # GPU — GKE node selector label (e.g., "nvidia-l4")
     gke_label: str = ""
-    # GPU — Vertex AI accelerator enum (e.g., "NVIDIA_L4")
-    vertex_type: str = ""
-    # GPU — count → Vertex AI machine type (e.g., {1: "g2-standard-4", 2: ...})
-    vertex_machines: dict = field(default_factory=dict)
+    # GPU — supported GPU counts (e.g., (1, 2, 4))
+    supported_gpu_counts: tuple = ()
 
     # TPU — default chip count when bare name is used (e.g., "v3" → 8 chips)
     default_chips: int = 0
-    # TPU — Vertex AI accelerator enum (e.g., "TPU_V3"), empty if implicit
-    vertex_tpu_type: str = ""
-    # TPU — Vertex machine type template (e.g., "cloud-tpu" or "ct5lp-hightpu-{chips}t")
-    vertex_tpu_template: str = ""
     # TPU — GKE node selector label (e.g., "tpu-v5-lite-podslice")
     gke_tpu_accelerator: str = ""
     # TPU — chip count → GKE topology (e.g., {8: "2x2", 32: "4x4"})
@@ -55,100 +49,69 @@ _ACCELERATOR_TYPES = [
         category="gpu",
         aliases=("nvidia-l4",),
         gke_label="nvidia-l4",
-        vertex_type="NVIDIA_L4",
-        vertex_machines={1: "g2-standard-4", 2: "g2-standard-24", 4: "g2-standard-48"},
+        supported_gpu_counts=(1, 2, 4),
     ),
     AcceleratorType(
         short_name="t4",
         category="gpu",
         aliases=("nvidia-tesla-t4",),
         gke_label="nvidia-tesla-t4",
-        vertex_type="NVIDIA_TESLA_T4",
-        vertex_machines={1: "n1-standard-4", 2: "n1-standard-8", 4: "n1-standard-16"},
+        supported_gpu_counts=(1, 2, 4),
     ),
     AcceleratorType(
         short_name="v100",
         category="gpu",
         aliases=("nvidia-tesla-v100",),
         gke_label="nvidia-tesla-v100",
-        vertex_type="NVIDIA_TESLA_V100",
-        vertex_machines={
-            1: "n1-standard-8",
-            2: "n1-standard-16",
-            4: "n1-standard-32",
-            8: "n1-standard-64",
-        },
+        supported_gpu_counts=(1, 2, 4, 8),
     ),
     AcceleratorType(
         short_name="a100",
         category="gpu",
         aliases=("nvidia-tesla-a100",),
         gke_label="nvidia-tesla-a100",
-        vertex_type="NVIDIA_TESLA_A100",
-        vertex_machines={
-            1: "a2-highgpu-1g",
-            2: "a2-highgpu-2g",
-            4: "a2-highgpu-4g",
-            8: "a2-highgpu-8g",
-        },
+        supported_gpu_counts=(1, 2, 4, 8),
     ),
     AcceleratorType(
         short_name="a100-80gb",
         category="gpu",
         aliases=("nvidia-a100-80gb",),
         gke_label="nvidia-a100-80gb",
-        vertex_type="NVIDIA_A100_80GB",
-        vertex_machines={
-            1: "a2-ultragpu-1g",
-            2: "a2-ultragpu-2g",
-            4: "a2-ultragpu-4g",
-            8: "a2-ultragpu-8g",
-        },
+        supported_gpu_counts=(1, 2, 4, 8),
     ),
     AcceleratorType(
         short_name="h100",
         category="gpu",
         aliases=("nvidia-h100-80gb",),
         gke_label="nvidia-h100-80gb",
-        vertex_type="NVIDIA_H100_80GB",
-        vertex_machines={
-            1: "a3-highgpu-1g",
-            2: "a3-highgpu-2g",
-            4: "a3-highgpu-4g",
-            8: "a3-highgpu-8g",
-        },
+        supported_gpu_counts=(1, 2, 4, 8),
     ),
     AcceleratorType(
         short_name="p100",
         category="gpu",
         aliases=("nvidia-tesla-p100",),
         gke_label="nvidia-tesla-p100",
-        vertex_type="NVIDIA_TESLA_P100",
-        vertex_machines={1: "n1-standard-4"},
+        supported_gpu_counts=(1,),
     ),
     AcceleratorType(
         short_name="p4",
         category="gpu",
         aliases=("nvidia-tesla-p4",),
         gke_label="nvidia-tesla-p4",
-        vertex_type="NVIDIA_TESLA_P4",
-        vertex_machines={1: "n1-standard-4"},
+        supported_gpu_counts=(1,),
     ),
     AcceleratorType(
         short_name="k80",
         category="gpu",
         aliases=("nvidia-tesla-k80",),
         gke_label="nvidia-tesla-k80",
-        vertex_type="NVIDIA_TESLA_K80",
-        vertex_machines={1: "n1-standard-4"},
+        supported_gpu_counts=(1,),
     ),
     # --- TPU types ---
     AcceleratorType(
         short_name="v2",
         category="tpu",
         default_chips=8,
-        vertex_tpu_type="TPU_V2",
-        vertex_tpu_template="cloud-tpu",
         gke_tpu_accelerator="tpu-v2-podslice",
         gke_tpu_topologies={8: "2x2", 32: "4x4"},
     ),
@@ -156,8 +119,6 @@ _ACCELERATOR_TYPES = [
         short_name="v3",
         category="tpu",
         default_chips=8,
-        vertex_tpu_type="TPU_V3",
-        vertex_tpu_template="cloud-tpu",
         gke_tpu_accelerator="tpu-v3-podslice",
         gke_tpu_topologies={8: "2x2", 32: "4x4"},
     ),
@@ -165,7 +126,6 @@ _ACCELERATOR_TYPES = [
         short_name="v5litepod",
         category="tpu",
         default_chips=4,
-        vertex_tpu_template="ct5lp-hightpu-{chips}t",
         gke_tpu_accelerator="tpu-v5-lite-podslice",
         gke_tpu_topologies={1: "1x1", 4: "2x2", 8: "2x4"},
     ),
@@ -173,8 +133,6 @@ _ACCELERATOR_TYPES = [
         short_name="v5p",
         category="tpu",
         default_chips=8,
-        vertex_tpu_type="TPU_V5_LITEPOD",
-        vertex_tpu_template="cloud-tpu",
         gke_tpu_accelerator="tpu-v5p-slice",
         gke_tpu_topologies={8: "2x2", 16: "2x4"},
     ),
@@ -182,8 +140,6 @@ _ACCELERATOR_TYPES = [
         short_name="v6e",
         category="tpu",
         default_chips=8,
-        vertex_tpu_type="TPU_V6E",
-        vertex_tpu_template="cloud-tpu",
         gke_tpu_accelerator="tpu-v6e-slice",
         gke_tpu_topologies={8: "2x2", 16: "2x4"},
     ),
