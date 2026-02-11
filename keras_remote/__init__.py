@@ -3,6 +3,11 @@
 
 import os  # isort: skip
 
+# Suppress noisy gRPC fork/logging messages before any gRPC imports
+os.environ.setdefault("GRPC_VERBOSITY", "NONE")
+os.environ.setdefault("GLOG_minloglevel", "3")
+os.environ.setdefault("GRPC_ENABLE_FORK_SUPPORT", "0")
+
 # Add everything in /api/ to the module search path.
 __path__.append(os.path.join(os.path.dirname(__file__), "api"))  # noqa: F405
 
