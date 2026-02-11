@@ -7,6 +7,8 @@ authors = [
 description = "Run Keras models remotely on TPU seamlessly."
 readme = "README.md"
 requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
@@ -15,7 +17,11 @@ dependencies = [
     "cloudpickle",
     "numpy",
     "keras",
+    "google-cloud-storage>=2.16.0",
+    "google-cloud-build>=3.24.0",
+    "kubernetes>=28.1.0",
 ]
+
 [project.optional-dependencies]
 demo = [
     "jax",
@@ -23,9 +29,6 @@ demo = [
     "numpy",
     "keras-hub",
 ]
-
-license = "Apache-2.0"
-license-files = ["LICENSE"]
 
 [project.urls]
 Homepage = "https://github.com/keras-team/keras-remote"
