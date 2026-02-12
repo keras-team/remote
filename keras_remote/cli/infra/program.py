@@ -10,6 +10,27 @@ import pulumi_gcp as gcp
 
 from keras_remote.cli.constants import REQUIRED_APIS
 
+# OAuth scopes required by all node pools (including accelerator pools).
+_BASE_OAUTH_SCOPES = [
+    # Read/write access to GCS for storing checkpoints, datasets, and logs.
+    "https://www.googleapis.com/auth/devstorage.full_control",
+    # Write application logs to Cloud Logging.
+    "https://www.googleapis.com/auth/logging.write",
+    # Export metrics to Cloud Monitoring.
+    "https://www.googleapis.com/auth/monitoring",
+]
+
+# Additional scopes for the default (system) node pool, which runs GKE
+# control-plane components that need deeper platform integration.
+_DEFAULT_POOL_OAUTH_SCOPES = _BASE_OAUTH_SCOPES + [
+    # Report service status to Google Service Control.
+    "https://www.googleapis.com/auth/servicecontrol",
+    # Read managed-service configuration from Service Management.
+    "https://www.googleapis.com/auth/service.management.readonly",
+    # Send distributed traces to Cloud Trace.
+    "https://www.googleapis.com/auth/trace.append",
+]
+
 
 def create_program(config):
     """Create a Pulumi inline program function closed over the config.
@@ -63,14 +84,7 @@ def create_program(config):
             node_config=gcp.container.ClusterNodeConfigArgs(
                 machine_type="e2-standard-4",
                 disk_size_gb=50,
-                oauth_scopes=[
-                    "https://www.googleapis.com/auth/devstorage.full_control",
-                    "https://www.googleapis.com/auth/logging.write",
-                    "https://www.googleapis.com/auth/monitoring",
-                    "https://www.googleapis.com/auth/servicecontrol",
-                    "https://www.googleapis.com/auth/service.management.readonly",
-                    "https://www.googleapis.com/auth/trace.append",
-                ],
+                oauth_scopes=_DEFAULT_POOL_OAUTH_SCOPES,
             ),
             # Match setup.sh: --no-enable-autoupgrade
             release_channel=gcp.container.ClusterReleaseChannelArgs(
@@ -110,11 +124,7 @@ def _create_gpu_node_pool(cluster, accelerator, zone, project_id):
         node_count=1,
         node_config=gcp.container.NodePoolNodeConfigArgs(
             machine_type=accelerator["machine_type"],
-            oauth_scopes=[
-                "https://www.googleapis.com/auth/devstorage.full_control",
-                "https://www.googleapis.com/auth/logging.write",
-                "https://www.googleapis.com/auth/monitoring",
-            ],
+            oauth_scopes=_BASE_OAUTH_SCOPES,
             guest_accelerators=[
                 gcp.container.NodePoolNodeConfigGuestAcceleratorArgs(
                     type=accelerator["gpu_type"],
@@ -142,11 +152,7 @@ def _create_tpu_node_pool(cluster, accelerator, zone, project_id):
             node_count=accelerator["num_nodes"],
             node_config=gcp.container.NodePoolNodeConfigArgs(
                 machine_type=accelerator["machine_type"],
-                oauth_scopes=[
-                    "https://www.googleapis.com/auth/devstorage.full_control",
-                    "https://www.googleapis.com/auth/logging.write",
-                    "https://www.googleapis.com/auth/monitoring",
-                ],
+                oauth_scopes=_BASE_OAUTH_SCOPES,
             ),
             placement_policy=gcp.container.NodePoolPlacementPolicyArgs(
                 type="COMPACT",

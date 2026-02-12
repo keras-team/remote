@@ -105,6 +105,7 @@ def _run_gcloud(args):
         ["gcloud"] + args,
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
     return result.returncode == 0, result.stdout.strip(), result.stderr.strip()
 
@@ -146,7 +147,10 @@ def _cleanup_tpu_vms(project, zone, console):
         "--format=json(name.scope(),zone.scope())",
     ])
     if not ok:
-        warning(f"  Failed to list TPU VMs: {err}")
+        if "not enabled" in err:
+            success("  Skipped (TPU API not enabled)")
+        else:
+            warning(f"  Failed to list TPU VMs: {err}")
         return
 
     tpus = json.loads(output) if output else []
@@ -175,7 +179,10 @@ def _cleanup_gke_clusters(project, console):
         "--filter=name~^keras-remote-", "--format=json(name,location)",
     ])
     if not ok:
-        warning(f"  Failed to list GKE clusters: {err}")
+        if "not enabled" in err:
+            success("  Skipped (GKE API not enabled)")
+        else:
+            warning(f"  Failed to list GKE clusters: {err}")
         return
 
     clusters = json.loads(output) if output else []
@@ -204,7 +211,10 @@ def _cleanup_compute_vms(project, console):
         "--filter=name~^remote-.*", "--format=json(name,zone.scope())",
     ])
     if not ok:
-        warning(f"  Failed to list Compute Engine VMs: {err}")
+        if "not enabled" in err:
+            success("  Skipped (Compute API not enabled)")
+        else:
+            warning(f"  Failed to list Compute Engine VMs: {err}")
         return
 
     vms = json.loads(output) if output else []
