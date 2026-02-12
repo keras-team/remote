@@ -7,10 +7,10 @@ from rich.table import Table
 from keras_remote.cli.config import InfraConfig
 from keras_remote.cli.constants import DEFAULT_ZONE
 from keras_remote.cli.infra.program import create_program
-from keras_remote.cli.infra.stack_manager import get_stack, refresh, get_outputs
+from keras_remote.cli.infra.stack_manager import get_stack
 from keras_remote.cli.output import console, banner, warning
 from keras_remote.cli.prerequisites import check_all
-from keras_remote.cli.prompts import resolve_config
+from keras_remote.cli.prompts import resolve_project
 
 
 @click.command()
@@ -25,7 +25,7 @@ def status(project, zone):
 
     check_all()
 
-    project = project or resolve_config("project")
+    project = project or resolve_project()
     zone = zone or DEFAULT_ZONE
 
     config = InfraConfig(project=project, zone=zone)
@@ -40,11 +40,11 @@ def status(project, zone):
 
     console.print("\nRefreshing state...\n")
     try:
-        refresh(stack)
+        stack.refresh(on_output=print)
     except CommandError as e:
         warning(f"Failed to refresh stack state: {e}")
 
-    outputs = get_outputs(stack)
+    outputs = stack.outputs()
 
     if not outputs:
         warning("No infrastructure found. Run 'keras-remote up' first.")
