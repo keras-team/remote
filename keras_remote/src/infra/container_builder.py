@@ -19,6 +19,9 @@ from keras_remote.src.infra import infra
 logger = infra.logger
 
 REMOTE_RUNNER_FILE_NAME = "remote_runner.py"
+# Paths relative to this file's location (keras_remote/src/infra/)
+_PACKAGE_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+_RUNNER_DIR = os.path.join(os.path.dirname(__file__), os.pardir, "runner")
 
 
 def get_or_build_container(base_image, requirements_path, accelerator_type, project, zone=None):
@@ -89,13 +92,13 @@ def _hash_requirements(requirements_path, accelerator_type, base_image):
             content += f.read()
 
     # Include remote_runner.py in the hash so container rebuilds when it changes
-    remote_runner_path = os.path.join(os.path.dirname(__file__), REMOTE_RUNNER_FILE_NAME)
+    remote_runner_path = os.path.join(_RUNNER_DIR, REMOTE_RUNNER_FILE_NAME)
     if os.path.exists(remote_runner_path):
         with open(remote_runner_path, "r") as f:
             content += f"\n---{REMOTE_RUNNER_FILE_NAME}---\n{f.read()}"
 
     # Include Dockerfile template in the hash so container rebuilds when it changes
-    template_path = os.path.join(os.path.dirname(__file__), "Dockerfile.template")
+    template_path = os.path.join(_PACKAGE_ROOT, "Dockerfile.template")
     if os.path.exists(template_path):
         with open(template_path, "r") as f:
             content += f"\n---Dockerfile.template---\n{f.read()}"
@@ -170,7 +173,7 @@ def _build_and_push(base_image, requirements_path, accelerator_type,
             shutil.copy(requirements_path, os.path.join(tmpdir, "requirements.txt"))
 
         # Copy remote_runner.py
-        remote_runner_src = os.path.join(os.path.dirname(__file__), REMOTE_RUNNER_FILE_NAME)
+        remote_runner_src = os.path.join(_RUNNER_DIR, REMOTE_RUNNER_FILE_NAME)
         remote_runner_dst = os.path.join(tmpdir, REMOTE_RUNNER_FILE_NAME)
         shutil.copy(remote_runner_src, remote_runner_dst)
 
@@ -262,7 +265,7 @@ def _generate_dockerfile(base_image, requirements_path, accelerator_type):
             "RUN python3 -m pip install -r /tmp/requirements.txt\n"
         )
 
-    template_path = os.path.join(os.path.dirname(__file__), "Dockerfile.template")
+    template_path = os.path.join(_PACKAGE_ROOT, "Dockerfile.template")
     with open(template_path, "r") as f:
         template = string.Template(f.read())
 

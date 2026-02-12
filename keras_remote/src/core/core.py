@@ -96,9 +96,9 @@ def _execute_on_tpu_vm(func, args, kwargs, accelerator, container_image, zone, p
     logger.info(f"Payload pickle created at {payload_pkl}")
 
     # Copy remote_runner.py to tmpdir
-    this_dir = os.path.dirname(os.path.abspath(__file__))
+    runner_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "runner")
     shutil.copy(
-        os.path.join(this_dir, "remote_runner.py"), remote_runner_py
+        os.path.join(runner_dir, "remote_runner.py"), remote_runner_py
     )
 
     # 2. Ensure TPU VM exists
