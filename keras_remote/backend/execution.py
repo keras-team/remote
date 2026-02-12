@@ -13,11 +13,11 @@ from typing import Any, Callable, Optional, Protocol
 
 import cloudpickle
 
-from keras_remote.src.infra import container_builder
-from keras_remote.src.backend import gke_client
-from keras_remote.src.infra import infra
-from keras_remote.src.utils import packager
-from keras_remote.src.utils import storage
+from keras_remote.infra import container_builder
+from keras_remote.backend import gke_client
+from keras_remote.infra import infra
+from keras_remote.utils import packager
+from keras_remote.utils import storage
 
 logger = infra.logger
 

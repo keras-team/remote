@@ -6,8 +6,10 @@ import time
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 
-from keras_remote.src.core.accelerators import parse_accelerator, GpuConfig, TpuConfig
-from keras_remote.src.infra import infra
+from keras_remote.core.accelerators import GpuConfig
+from keras_remote.core.accelerators import TpuConfig
+from keras_remote.core import accelerators
+from keras_remote.infra import infra
 
 logger = infra.logger
 

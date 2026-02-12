@@ -6,7 +6,7 @@ import tempfile
 from google.cloud import storage
 from google.cloud.exceptions import NotFound
 
-from keras_remote.src.infra import infra
+from keras_remote.infra import infra
 
 logger = infra.logger
 

@@ -13,8 +13,8 @@ from google.cloud import storage
 from google.cloud.devtools import cloudbuild_v1
 from google.cloud.exceptions import NotFound
 
-from keras_remote.src.core import accelerators
-from keras_remote.src.infra import infra
+from keras_remote.core import accelerators
+from keras_remote.infra import infra
 
 logger = infra.logger
 
