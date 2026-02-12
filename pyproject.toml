@@ -20,6 +20,7 @@ dependencies = [
     "google-cloud-storage>=2.16.0",
     "google-cloud-build>=3.24.0",
     "kubernetes>=28.1.0",
+    "namex",
 ]
 
 [project.optional-dependencies]
