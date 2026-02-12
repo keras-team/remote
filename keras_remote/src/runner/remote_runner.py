@@ -147,15 +147,25 @@ def run_tpu_vm_mode():
 
     Args from sys.argv:
         sys.argv[1]: Local path to context.zip
+        sys.argv[2]: Local path to payload.pkl (optional, defaults to same dir as context)
     """
     context_zip_path = sys.argv[1]
 
+    if len(sys.argv) > 2:
+        payload_pkl = sys.argv[2]
+    else:
+        # Default to payload.pkl in same directory as context.zip
+        payload_pkl = os.path.join(os.path.dirname(context_zip_path), "payload.pkl")
+        if not os.path.exists(payload_pkl):
+            # Fallback to TEMP_DIR for backward compatibility
+            payload_pkl = os.path.join(TEMP_DIR, "payload.pkl")
+
     print(f"[REMOTE] Starting TPU VM execution mode")
     print(f"[REMOTE] Context: {context_zip_path}")
+    print(f"[REMOTE] Payload: {payload_pkl}")
 
     # Workspace setup
     workspace_dir = os.path.join(TEMP_DIR, "workspace")
-    payload_pkl = os.path.join(TEMP_DIR, "payload.pkl")
 
     # Clear old workspace
     if os.path.exists(workspace_dir):
