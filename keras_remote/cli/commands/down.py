@@ -6,10 +6,8 @@ import pulumi.automation as auto
 from google.api_core import exceptions as api_exceptions
 from google.cloud import tpu_v2
 
-from keras_remote.cli.constants import (
-    DEFAULT_CLUSTER_NAME,
-    DEFAULT_ZONE,
-)
+from keras_remote.cli.config import InfraConfig
+from keras_remote.cli.constants import DEFAULT_ZONE
 from keras_remote.cli.infra.program import create_program
 from keras_remote.cli.infra.stack_manager import get_stack, destroy
 from keras_remote.cli.output import console, banner, success, warning
@@ -58,14 +56,9 @@ def down(project, zone, yes, pulumi_only):
 
     # Pulumi destroy
     try:
-        # Build a minimal config to load the stack — accelerator is not
+        # Minimal config to load the stack — accelerator is not
         # needed for destroy since the stack already has its state.
-        config = {
-            "project": project,
-            "zone": zone,
-            "cluster_name": DEFAULT_CLUSTER_NAME,
-            "accelerator": None,
-        }
+        config = InfraConfig(project=project, zone=zone)
         program = create_program(config)
         stack = get_stack(program, config)
         console.print("[bold]Destroying Pulumi-managed resources...[/bold]\n")

@@ -4,6 +4,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from keras_remote.accelerators import GpuConfig, TpuConfig
+
 console = Console()
 
 
@@ -33,19 +35,19 @@ def config_summary(config):
     table.add_column("Setting", style="bold")
     table.add_column("Value", style="green")
 
-    table.add_row("Project", config["project"])
-    table.add_row("Zone", config["zone"])
-    table.add_row("Cluster Name", config["cluster_name"])
+    table.add_row("Project", config.project)
+    table.add_row("Zone", config.zone)
+    table.add_row("Cluster Name", config.cluster_name)
 
-    accel = config.get("accelerator")
+    accel = config.accelerator
     if accel is None:
         table.add_row("Accelerator", "CPU only")
-    elif accel["category"] == "gpu":
-        table.add_row("Accelerator", f"GPU ({accel['gpu_type']})")
-    elif accel["category"] == "tpu":
+    elif isinstance(accel, GpuConfig):
+        table.add_row("Accelerator", f"GPU ({accel.gke_label})")
+    elif isinstance(accel, TpuConfig):
         table.add_row(
             "Accelerator",
-            f"TPU ({accel['pool_name']}, topology: {accel['topology']})",
+            f"TPU ({accel.name}, topology: {accel.topology})",
         )
 
     console.print()

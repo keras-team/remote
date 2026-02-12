@@ -12,7 +12,7 @@ def get_stack(program_fn, config):
 
     Args:
         program_fn: Pulumi inline program callable.
-        config: Dict with at least 'project' and 'zone' keys.
+        config: InfraConfig instance.
 
     Returns:
         A pulumi.automation.Stack instance.
@@ -21,7 +21,7 @@ def get_stack(program_fn, config):
     os.makedirs(state_dir, exist_ok=True)
 
     # Use project ID as stack name so each GCP project gets its own stack
-    stack_name = config["project"]
+    stack_name = config.project
 
     project_settings = auto.ProjectSettings(
         name=PROJECT_NAME,
@@ -40,8 +40,8 @@ def get_stack(program_fn, config):
     )
 
     # Set GCP provider configuration on the stack
-    stack.set_config("gcp:project", auto.ConfigValue(value=config["project"]))
-    stack.set_config("gcp:zone", auto.ConfigValue(value=config["zone"]))
+    stack.set_config("gcp:project", auto.ConfigValue(value=config.project))
+    stack.set_config("gcp:zone", auto.ConfigValue(value=config.zone))
 
     return stack
 

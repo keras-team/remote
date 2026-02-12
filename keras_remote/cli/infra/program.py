@@ -7,6 +7,7 @@ Artifact Registry, GKE cluster, and optional accelerator node pools.
 import pulumi
 import pulumi_gcp as gcp
 
+from keras_remote.accelerators import GpuConfig, TpuConfig
 from keras_remote.constants import zone_to_ar_location, zone_to_region
 from keras_remote.cli.constants import REQUIRED_APIS
 
@@ -36,18 +37,18 @@ def create_program(config):
     """Create a Pulumi inline program function closed over the config.
 
     Args:
-        config: Dict with keys: project, zone, cluster_name, accelerator.
+        config: InfraConfig instance.
 
     Returns:
         A callable suitable for pulumi.automation.create_or_select_stack().
     """
 
     def pulumi_program():
-        project_id = config["project"]
-        zone = config["zone"]
+        project_id = config.project
+        zone = config.zone
         ar_location = zone_to_ar_location(zone)
-        cluster_name = config["cluster_name"]
-        accelerator = config.get("accelerator")
+        cluster_name = config.cluster_name
+        accelerator = config.accelerator
 
         # 1. Enable GCP APIs
         enabled_apis = []
@@ -115,9 +116,9 @@ def create_program(config):
         )
 
         # 5. Accelerator node pool (conditional)
-        if accelerator and accelerator.get("category") == "gpu":
+        if isinstance(accelerator, GpuConfig):
             _create_gpu_node_pool(cluster, accelerator, zone, project_id)
-        elif accelerator and accelerator.get("category") == "tpu":
+        elif isinstance(accelerator, TpuConfig):
             _create_tpu_node_pool(cluster, accelerator, zone, project_id)
 
         # 6. Stack exports
@@ -133,7 +134,7 @@ def create_program(config):
     return pulumi_program
 
 
-def _create_gpu_node_pool(cluster, accelerator, zone, project_id):
+def _create_gpu_node_pool(cluster, gpu: GpuConfig, zone, project_id):
     """Create a GPU-accelerated GKE node pool."""
     gcp.container.NodePool(
         "gpu-pool",
@@ -143,11 +144,11 @@ def _create_gpu_node_pool(cluster, accelerator, zone, project_id):
         project=project_id,
         node_count=1,
         node_config=gcp.container.NodePoolNodeConfigArgs(
-            machine_type=accelerator["machine_type"],
+            machine_type=gpu.machine_type,
             oauth_scopes=_BASE_OAUTH_SCOPES,
             guest_accelerators=[
                 gcp.container.NodePoolNodeConfigGuestAcceleratorArgs(
-                    type=accelerator["gpu_type"],
+                    type=gpu.gke_label,
                     count=1,
                 ),
             ],
@@ -155,21 +156,22 @@ def _create_gpu_node_pool(cluster, accelerator, zone, project_id):
     )
 
 
-def _create_tpu_node_pool(cluster, accelerator, zone, project_id):
+def _create_tpu_node_pool(cluster, tpu: TpuConfig, zone, project_id):
     """Create a TPU GKE node pool."""
+    pool_name = f"tpu-{tpu.name}-pool"
     gcp.container.NodePool(
-        accelerator["pool_name"],
-        name=accelerator["pool_name"],
+        pool_name,
+        name=pool_name,
         cluster=cluster.name,
         location=zone,
         project=project_id,
-        node_count=accelerator["num_nodes"],
+        node_count=tpu.num_nodes,
         node_config=gcp.container.NodePoolNodeConfigArgs(
-            machine_type=accelerator["machine_type"],
+            machine_type=tpu.machine_type,
             oauth_scopes=_BASE_OAUTH_SCOPES,
         ),
         placement_policy=gcp.container.NodePoolPlacementPolicyArgs(
             type="COMPACT",
-            tpu_topology=accelerator["topology"],
+            tpu_topology=tpu.topology,
         ),
     )
