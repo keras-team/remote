@@ -9,9 +9,6 @@ STATE_DIR = os.environ.get(
     "KERAS_REMOTE_STATE_DIR",
     os.path.expanduser("~/.keras-remote/pulumi"),
 )
-PROJECT_NAME = "keras-remote"
-STACK_NAME_PREFIX = "keras-remote"
-
 REQUIRED_APIS = [
     "compute.googleapis.com",
     "cloudbuild.googleapis.com",

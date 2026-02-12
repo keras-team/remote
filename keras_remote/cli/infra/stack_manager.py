@@ -4,7 +4,7 @@ import os
 
 import pulumi.automation as auto
 
-from keras_remote.cli.constants import PROJECT_NAME, STATE_DIR
+from keras_remote.cli.constants import RESOURCE_NAME_PREFIX, STATE_DIR
 
 
 def get_stack(program_fn, config):
@@ -17,21 +17,20 @@ def get_stack(program_fn, config):
     Returns:
         A pulumi.automation.Stack instance.
     """
-    state_dir = os.environ.get("KERAS_REMOTE_STATE_DIR", STATE_DIR)
-    os.makedirs(state_dir, exist_ok=True)
+    os.makedirs(STATE_DIR, exist_ok=True)
 
     # Use project ID as stack name so each GCP project gets its own stack
     stack_name = config.project
 
     project_settings = auto.ProjectSettings(
-        name=PROJECT_NAME,
+        name=RESOURCE_NAME_PREFIX,
         runtime="python",
-        backend=auto.ProjectBackend(url=f"file://{state_dir}"),
+        backend=auto.ProjectBackend(url=f"file://{STATE_DIR}"),
     )
 
     stack = auto.create_or_select_stack(
         stack_name=stack_name,
-        project_name=PROJECT_NAME,
+        project_name=RESOURCE_NAME_PREFIX,
         program=program_fn,
         opts=auto.LocalWorkspaceOptions(
             project_settings=project_settings,
@@ -44,60 +43,3 @@ def get_stack(program_fn, config):
     stack.set_config("gcp:zone", auto.ConfigValue(value=config.zone))
 
     return stack
-
-
-def deploy(stack, on_output=None):
-    """Run pulumi up.
-
-    Args:
-        stack: A pulumi.automation.Stack instance.
-        on_output: Callback for streaming output. Defaults to print.
-
-    Returns:
-        The UpResult from pulumi.
-    """
-    if on_output is None:
-        on_output = print
-    return stack.up(on_output=on_output)
-
-
-def destroy(stack, on_output=None):
-    """Run pulumi destroy.
-
-    Args:
-        stack: A pulumi.automation.Stack instance.
-        on_output: Callback for streaming output. Defaults to print.
-
-    Returns:
-        The DestroyResult from pulumi.
-    """
-    if on_output is None:
-        on_output = print
-    return stack.destroy(on_output=on_output)
-
-
-def refresh(stack, on_output=None):
-    """Run pulumi refresh.
-
-    Args:
-        stack: A pulumi.automation.Stack instance.
-        on_output: Callback for streaming output. Defaults to print.
-
-    Returns:
-        The RefreshResult from pulumi.
-    """
-    if on_output is None:
-        on_output = print
-    return stack.refresh(on_output=on_output)
-
-
-def get_outputs(stack):
-    """Get stack outputs.
-
-    Args:
-        stack: A pulumi.automation.Stack instance.
-
-    Returns:
-        Dict of output name -> OutputValue.
-    """
-    return stack.outputs()

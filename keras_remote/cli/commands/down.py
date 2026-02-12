@@ -9,10 +9,10 @@ from google.cloud import tpu_v2
 from keras_remote.cli.config import InfraConfig
 from keras_remote.cli.constants import DEFAULT_ZONE
 from keras_remote.cli.infra.program import create_program
-from keras_remote.cli.infra.stack_manager import get_stack, destroy
+from keras_remote.cli.infra.stack_manager import get_stack
 from keras_remote.cli.output import console, banner, success, warning
 from keras_remote.cli.prerequisites import check_all
-from keras_remote.cli.prompts import resolve_config
+from keras_remote.cli.prompts import resolve_project
 
 
 @click.command()
@@ -30,7 +30,7 @@ def down(project, zone, yes, pulumi_only):
 
     check_all()
 
-    project = project or resolve_config("project", allow_create=False)
+    project = project or resolve_project(allow_create=False)
     zone = zone or DEFAULT_ZONE
 
     # Warning
@@ -62,7 +62,7 @@ def down(project, zone, yes, pulumi_only):
         program = create_program(config)
         stack = get_stack(program, config)
         console.print("[bold]Destroying Pulumi-managed resources...[/bold]\n")
-        result = destroy(stack)
+        result = stack.destroy(on_output=print)
         console.print()
         success(f"Pulumi destroy complete. {result.summary.resource_changes}")
     except auto.errors.CommandError as e:

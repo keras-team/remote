@@ -10,14 +10,7 @@ from keras_remote.accelerators import GPUS, TPUS, parse_accelerator
 from keras_remote.cli.output import success, warning
 
 
-def resolve_config(key, allow_create=True):
-    """Resolve a config value from env var or interactive prompt."""
-    if key == "project":
-        return _resolve_project(allow_create=allow_create)
-    raise ValueError(f"Unknown config key: {key}")
-
-
-def _resolve_project(allow_create=True):
+def resolve_project(allow_create=True):
     """Resolve GCP project ID from env or prompt.
 
     Validates that the project exists. If *allow_create* is True and it

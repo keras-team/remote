@@ -13,10 +13,10 @@ from keras_remote.cli.infra.post_deploy import (
     install_gpu_drivers,
 )
 from keras_remote.cli.infra.program import create_program
-from keras_remote.cli.infra.stack_manager import get_stack, deploy
+from keras_remote.cli.infra.stack_manager import get_stack
 from keras_remote.cli.output import console, banner, success, config_summary
 from keras_remote.cli.prerequisites import check_all
-from keras_remote.cli.prompts import resolve_config, prompt_accelerator
+from keras_remote.cli.prompts import resolve_project, prompt_accelerator
 
 
 @click.command()
@@ -39,13 +39,18 @@ def up(project, zone, accelerator, cluster_name, yes):
     check_all()
 
     # Resolve configuration
-    project = project or resolve_config("project")
+    project = project or resolve_project()
     zone = zone or DEFAULT_ZONE
     cluster_name = cluster_name or DEFAULT_CLUSTER_NAME
 
     # Resolve accelerator (interactive if not provided)
-    if accelerator:
-        accel_config = _parse_accelerator_flag(accelerator)
+    if accelerator and accelerator.strip().lower() == "cpu":
+        accel_config = None
+    elif accelerator:
+        try:
+            accel_config = accelerators.parse_accelerator(accelerator)
+        except ValueError as e:
+            raise click.BadParameter(str(e), param_hint="--accelerator")
     else:
         accel_config = prompt_accelerator()
 
@@ -67,7 +72,7 @@ def up(project, zone, accelerator, cluster_name, yes):
     program = create_program(config)
     stack = get_stack(program, config)
     console.print("[bold]Provisioning infrastructure...[/bold]\n")
-    result = deploy(stack)
+    result = stack.up(on_output=print)
     console.print()
     success(f"Pulumi update complete. {result.summary.resource_changes}")
 
@@ -103,13 +108,3 @@ def up(project, zone, accelerator, cluster_name, yes):
         f"?project={project}"
     )
     console.print()
-
-
-def _parse_accelerator_flag(value):
-    """Parse a --accelerator flag into a typed config."""
-    if value.strip().lower() == "cpu":
-        return None
-    try:
-        return accelerators.parse_accelerator(value)
-    except ValueError as e:
-        raise click.BadParameter(str(e), param_hint="--accelerator")
