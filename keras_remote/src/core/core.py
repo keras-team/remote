@@ -8,6 +8,7 @@ import tempfile
 
 from keras_remote.src.utils import packager
 from keras_remote.src.infra import infra
+from keras_remote.cli.constants import RESOURCE_NAME_PREFIX
 from keras_remote.src.backend.execution import (
     JobContext,
     execute_remote,
@@ -105,7 +106,7 @@ def _execute_on_tpu_vm(func, args, kwargs, accelerator, container_image, zone, p
       actual_vm_name = vm_name
     else:
       user = getpass.getuser()
-      actual_vm_name = f"remote-{user}-{accelerator}"
+      actual_vm_name = f"{RESOURCE_NAME_PREFIX}-{user}-{accelerator}"
     infra.ensure_tpu_vm(actual_vm_name, accelerator, container_image=container_image, zone=zone, project=project)
 
     # 3. Upload artifacts

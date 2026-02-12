@@ -13,6 +13,7 @@ from typing import Any, Callable, Optional, Protocol
 
 import cloudpickle
 
+from keras_remote.constants import get_default_zone, zone_to_region
 from keras_remote.src.infra import container_builder
 from keras_remote.src.backend import gke_client
 from keras_remote.src.infra import infra
@@ -54,11 +55,7 @@ class JobContext:
 
     def __post_init__(self):
         self.bucket_name = f"{self.project}-keras-remote-jobs"
-        self.region = (
-            self.zone.rsplit("-", 1)[0]
-            if self.zone and "-" in self.zone
-            else "us-central1"
-        )
+        self.region = zone_to_region(self.zone)
         self.display_name = f"keras-remote-{self.func.__name__}-{self.job_id}"
 
     @classmethod
@@ -75,7 +72,7 @@ class JobContext:
     ) -> "JobContext":
         """Factory method with default resolution for zone/project."""
         if not zone:
-            zone = os.environ.get("KERAS_REMOTE_ZONE", "us-central1-a")
+            zone = get_default_zone()
         if not project:
             project = os.environ.get("KERAS_REMOTE_PROJECT")
             if not project:
@@ -212,7 +209,6 @@ def _upload_artifacts(ctx: JobContext) -> None:
         job_id=ctx.job_id,
         payload_path=ctx.payload_path,
         context_path=ctx.context_path,
-        location=ctx.region,
         project=ctx.project,
     )
 

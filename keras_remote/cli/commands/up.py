@@ -2,6 +2,7 @@
 
 import click
 
+from keras_remote.constants import zone_to_ar_location
 from keras_remote.cli.constants import DEFAULT_ZONE, DEFAULT_CLUSTER_NAME
 from keras_remote.cli.infra.accelerator_configs import GPU_CONFIGS, TPU_CONFIGS
 from keras_remote.cli.infra.post_deploy import (
@@ -20,7 +21,8 @@ from keras_remote.cli.prompts import resolve_config, prompt_accelerator
 @click.option("--project", envvar="KERAS_REMOTE_PROJECT", default=None,
               help="GCP project ID [env: KERAS_REMOTE_PROJECT]")
 @click.option("--zone", envvar="KERAS_REMOTE_ZONE", default=None,
-              help="GCP zone [env: KERAS_REMOTE_ZONE, default: us-central1-a]")
+              help=("GCP zone [env: KERAS_REMOTE_ZONE,"
+                    f" default: {DEFAULT_ZONE}]"))
 @click.option("--accelerator", default=None,
               help="Accelerator spec: cpu, t4, l4, a100, a100-80gb, h100, "
                    "v5litepod, v5p, v6e, v3")
@@ -68,7 +70,7 @@ def up(project, zone, accelerator, cluster_name, yes):
     success(f"Pulumi update complete. {result.summary.resource_changes}")
 
     # Post-deploy steps
-    ar_location = _zone_to_ar_location(zone)
+    ar_location = zone_to_ar_location(zone)
     console.print("\n[bold]Running post-deploy configuration...[/bold]\n")
 
     console.print("Configuring Docker authentication...")
@@ -99,12 +101,6 @@ def up(project, zone, accelerator, cluster_name, yes):
         f"?project={project}"
     )
     console.print()
-
-
-def _zone_to_ar_location(zone):
-    """Derive Artifact Registry multi-region location from a GCP zone."""
-    region = zone.rsplit("-", 1)[0] if zone and "-" in zone else "us-central1"
-    return region.split("-")[0]
 
 
 def _parse_accelerator_flag(accelerator):

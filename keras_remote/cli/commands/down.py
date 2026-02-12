@@ -1,12 +1,15 @@
 """keras-remote down command — tear down infrastructure."""
 
-import json
-import subprocess
-
 import click
 import pulumi.automation as auto
 
-from keras_remote.cli.constants import DEFAULT_ZONE
+from google.api_core import exceptions as api_exceptions
+from google.cloud import tpu_v2
+
+from keras_remote.cli.constants import (
+    DEFAULT_CLUSTER_NAME,
+    DEFAULT_ZONE,
+)
 from keras_remote.cli.infra.program import create_program
 from keras_remote.cli.infra.stack_manager import get_stack, destroy
 from keras_remote.cli.output import console, banner, success, warning
@@ -18,7 +21,8 @@ from keras_remote.cli.prompts import resolve_config
 @click.option("--project", envvar="KERAS_REMOTE_PROJECT", default=None,
               help="GCP project ID [env: KERAS_REMOTE_PROJECT]")
 @click.option("--zone", envvar="KERAS_REMOTE_ZONE", default=None,
-              help="GCP zone [env: KERAS_REMOTE_ZONE, default: us-central1-a]")
+              help=("GCP zone [env: KERAS_REMOTE_ZONE,"
+                    f" default: {DEFAULT_ZONE}]"))
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
 @click.option("--pulumi-only", is_flag=True,
               help="Only destroy Pulumi-managed resources (skip supplementary cleanup)")
@@ -41,12 +45,10 @@ def down(project, zone, yes, pulumi_only):
     console.print("This includes:")
     console.print("  - GKE cluster and node pools")
     console.print("  - Artifact Registry repository and images")
+    console.print("  - Cloud Storage buckets (jobs and builds)")
     console.print("  - Enabled API services (left enabled)")
     if not pulumi_only:
-        console.print("  - Cloud Storage buckets (jobs and builds)")
         console.print("  - TPU VMs (if any)")
-        console.print("  - GKE clusters matching 'keras-remote-*'")
-        console.print("  - Compute Engine VMs matching 'remote-*'")
     console.print()
 
     if not yes:
@@ -61,7 +63,7 @@ def down(project, zone, yes, pulumi_only):
         config = {
             "project": project,
             "zone": zone,
-            "cluster_name": "keras-remote-cluster",
+            "cluster_name": DEFAULT_CLUSTER_NAME,
             "accelerator": None,
         }
         program = create_program(config)
@@ -77,11 +79,7 @@ def down(project, zone, yes, pulumi_only):
     # Supplementary cleanup
     if not pulumi_only:
         console.print("\n[bold]Running supplementary cleanup...[/bold]\n")
-        _cleanup_buckets(project, console)
-        _cleanup_artifact_registry(project, zone, console)
         _cleanup_tpu_vms(project, zone, console)
-        _cleanup_gke_clusters(project, console)
-        _cleanup_compute_vms(project, console)
 
     # Summary
     console.print()
@@ -99,137 +97,36 @@ def down(project, zone, yes, pulumi_only):
     console.print()
 
 
-def _run_gcloud(args):
-    """Run a gcloud command and return (success, stdout, stderr)."""
-    result = subprocess.run(
-        ["gcloud"] + args,
-        capture_output=True,
-        text=True,
-        stdin=subprocess.DEVNULL,
-    )
-    return result.returncode == 0, result.stdout.strip(), result.stderr.strip()
-
-
-def _cleanup_buckets(project, console):
-    """Delete keras-remote Cloud Storage buckets."""
-    console.print("Deleting Cloud Storage buckets...")
-    for suffix in ("jobs", "builds"):
-        bucket = f"gs://{project}-keras-remote-{suffix}"
-        ok, _, err = _run_gcloud(["storage", "rm", "-r", bucket])
-        if ok:
-            success(f"  Deleted {bucket}")
-        else:
-            warning(f"  {bucket} not found or already deleted: {err}")
-
-
-def _cleanup_artifact_registry(project, zone, console):
-    """Delete keras-remote Artifact Registry repository."""
-    region = zone.rsplit("-", 1)[0] if zone and "-" in zone else "us-central1"
-    ar_location = region.split("-")[0]
-
-    console.print("Deleting Artifact Registry repository...")
-    ok, _, err = _run_gcloud([
-        "artifacts", "repositories", "delete", "keras-remote",
-        f"--location={ar_location}", f"--project={project}", "--quiet",
-    ])
-    if ok:
-        success("  Deleted keras-remote repository")
-    else:
-        warning(f"  Repository not found or already deleted: {err}")
+def _is_api_disabled(exc):
+    """Check if an exception indicates the API is not enabled."""
+    msg = str(exc).lower()
+    return "not enabled" in msg or "disabled" in msg or "not been used" in msg
 
 
 def _cleanup_tpu_vms(project, zone, console):
     """Delete TPU VMs in the project."""
     console.print("Checking for TPU VMs...")
-    ok, output, err = _run_gcloud([
-        "compute", "tpus", "tpu-vm", "list",
-        f"--project={project}", f"--zone={zone}",
-        "--format=json(name.scope(),zone.scope())",
-    ])
-    if not ok:
-        if "not enabled" in err:
+    client = tpu_v2.TpuClient()
+    parent = f"projects/{project}/locations/{zone}"
+
+    try:
+        nodes = list(client.list_nodes(parent=parent))
+    except api_exceptions.GoogleAPICallError as e:
+        if _is_api_disabled(e):
             success("  Skipped (TPU API not enabled)")
         else:
-            warning(f"  Failed to list TPU VMs: {err}")
+            warning(f"  Failed to list TPU VMs: {e}")
         return
 
-    tpus = json.loads(output) if output else []
-    if not tpus:
+    if not nodes:
         success("  No TPU VMs found")
         return
 
-    for tpu in tpus:
-        vm = tpu["name"]
-        vm_zone = tpu["zone"]
-        ok, _, err = _run_gcloud([
-            "compute", "tpus", "tpu-vm", "delete", vm,
-            f"--zone={vm_zone}", f"--project={project}", "--quiet",
-        ])
-        if ok:
-            success(f"  Deleted TPU VM: {vm}")
-        else:
-            warning(f"  Failed to delete TPU VM: {vm}: {err}")
-
-
-def _cleanup_gke_clusters(project, console):
-    """Delete GKE clusters matching keras-remote-* pattern."""
-    console.print("Checking for GKE clusters (keras-remote-*)...")
-    ok, output, err = _run_gcloud([
-        "container", "clusters", "list", f"--project={project}",
-        "--filter=name~^keras-remote-", "--format=json(name,location)",
-    ])
-    if not ok:
-        if "not enabled" in err:
-            success("  Skipped (GKE API not enabled)")
-        else:
-            warning(f"  Failed to list GKE clusters: {err}")
-        return
-
-    clusters = json.loads(output) if output else []
-    if not clusters:
-        success("  No matching GKE clusters found")
-        return
-
-    for entry in clusters:
-        cluster = entry["name"]
-        location = entry["location"]
-        ok, _, err = _run_gcloud([
-            "container", "clusters", "delete", cluster,
-            f"--location={location}", f"--project={project}", "--quiet",
-        ])
-        if ok:
-            success(f"  Deleted GKE cluster: {cluster}")
-        else:
-            warning(f"  Failed to delete GKE cluster: {cluster}: {err}")
-
-
-def _cleanup_compute_vms(project, console):
-    """Delete Compute Engine VMs matching remote-* pattern."""
-    console.print("Checking for Compute Engine VMs (remote-*)...")
-    ok, output, err = _run_gcloud([
-        "compute", "instances", "list", f"--project={project}",
-        "--filter=name~^remote-.*", "--format=json(name,zone.scope())",
-    ])
-    if not ok:
-        if "not enabled" in err:
-            success("  Skipped (Compute API not enabled)")
-        else:
-            warning(f"  Failed to list Compute Engine VMs: {err}")
-        return
-
-    vms = json.loads(output) if output else []
-    if not vms:
-        success("  No matching Compute Engine VMs found")
-        return
-
-    for entry in vms:
-        vm = entry["name"]
-        vm_zone = entry["zone"]
-        ok, _, err = _run_gcloud([
-            "compute", "instances", "delete", vm,
-            f"--zone={vm_zone}", f"--project={project}", "--quiet",
-        ])
-        if ok:
-            success(f"  Deleted VM: {vm}")
-        else:
-            warning(f"  Failed to delete VM: {vm}: {err}")
+    for node in nodes:
+        short_name = node.name.split("/")[-1]
+        try:
+            operation = client.delete_node(name=node.name)
+            operation.result()
+            success(f"  Deleted TPU VM: {short_name}")
+        except Exception as e:
+            warning(f"  Failed to delete TPU VM: {short_name}: {e}")

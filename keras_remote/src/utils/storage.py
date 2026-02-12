@@ -4,8 +4,6 @@ import os
 import tempfile
 
 from google.cloud import storage
-from google.cloud.exceptions import NotFound
-
 from keras_remote.src.infra import infra
 
 logger = infra.logger
@@ -16,7 +14,7 @@ def _get_project():
     return os.environ.get("KERAS_REMOTE_PROJECT") or os.environ.get("GOOGLE_CLOUD_PROJECT")
 
 
-def upload_artifacts(bucket_name, job_id, payload_path, context_path, location="us-central1", project=None):
+def upload_artifacts(bucket_name, job_id, payload_path, context_path, project=None):
     """Upload execution artifacts to Cloud Storage.
 
     Args:
@@ -24,13 +22,9 @@ def upload_artifacts(bucket_name, job_id, payload_path, context_path, location="
         job_id: Unique job identifier
         payload_path: Local path to payload.pkl
         context_path: Local path to context.zip
-        location: GCS bucket location (default: 'us-central1')
         project: GCP project ID (optional, uses env vars if not provided)
     """
     project = project or _get_project()
-
-    # Ensure bucket exists
-    _ensure_bucket(bucket_name, location=location, project=project)
 
     client = storage.Client(project=project)
     bucket = client.bucket(bucket_name)
@@ -96,22 +90,3 @@ def cleanup_artifacts(bucket_name, job_id, project=None):
         logger.info(f"Cleaned up {deleted_count} artifacts from gs://{bucket_name}/{job_id}/")
 
 
-def _ensure_bucket(bucket_name, location="us-central1", project=None):
-    """Create bucket if it doesn't exist.
-
-    Args:
-        bucket_name: Name of the GCS bucket
-        location: GCS bucket location (default: 'us-central1')
-        project: GCP project ID (optional, uses env vars if not provided)
-    """
-    project = project or _get_project()
-    client = storage.Client(project=project)
-
-    try:
-        client.get_bucket(bucket_name)
-    except NotFound:
-        # Bucket doesn't exist, create it
-        bucket = client.create_bucket(bucket_name, location=location)
-        project = client.project
-        logger.info(f"Created bucket: gs://{bucket_name} in location: {location}")
-        logger.info(f"View bucket: https://console.cloud.google.com/storage/browser/{bucket_name}?project={project}")

@@ -5,9 +5,9 @@ Artifact Registry, GKE cluster, and optional accelerator node pools.
 """
 
 import pulumi
-import pulumi_command as command
 import pulumi_gcp as gcp
 
+from keras_remote.constants import zone_to_ar_location, zone_to_region
 from keras_remote.cli.constants import REQUIRED_APIS
 
 # OAuth scopes required by all node pools (including accelerator pools).
@@ -45,8 +45,7 @@ def create_program(config):
     def pulumi_program():
         project_id = config["project"]
         zone = config["zone"]
-        region = zone.rsplit("-", 1)[0] if "-" in zone else "us-central1"
-        ar_location = region.split("-")[0]  # e.g., "us"
+        ar_location = zone_to_ar_location(zone)
         cluster_name = config["cluster_name"]
         accelerator = config.get("accelerator")
 
@@ -63,7 +62,7 @@ def create_program(config):
             enabled_apis.append(svc)
 
         # 2. Artifact Registry docker repository
-        ar_repo = gcp.artifactregistry.Repository(
+        gcp.artifactregistry.Repository(
             "keras-remote-repo",
             repository_id="keras-remote",
             location=ar_location,
@@ -73,7 +72,28 @@ def create_program(config):
             opts=pulumi.ResourceOptions(depends_on=enabled_apis),
         )
 
-        # 3. GKE Cluster
+        # 3. Cloud Storage buckets
+        region = zone_to_region(zone)
+
+        gcp.storage.Bucket(
+            "keras-remote-jobs-bucket",
+            name=f"{project_id}-keras-remote-jobs",
+            location=region,
+            project=project_id,
+            force_destroy=True,
+            opts=pulumi.ResourceOptions(depends_on=enabled_apis),
+        )
+
+        gcp.storage.Bucket(
+            "keras-remote-builds-bucket",
+            name=f"{project_id}-keras-remote-builds",
+            location=ar_location,
+            project=project_id,
+            force_destroy=True,
+            opts=pulumi.ResourceOptions(depends_on=enabled_apis),
+        )
+
+        # 4. GKE Cluster
         cluster = gcp.container.Cluster(
             "keras-remote-cluster",
             name=cluster_name,
@@ -94,13 +114,13 @@ def create_program(config):
             opts=pulumi.ResourceOptions(depends_on=enabled_apis),
         )
 
-        # 4. Accelerator node pool (conditional)
+        # 5. Accelerator node pool (conditional)
         if accelerator and accelerator.get("category") == "gpu":
             _create_gpu_node_pool(cluster, accelerator, zone, project_id)
         elif accelerator and accelerator.get("category") == "tpu":
             _create_tpu_node_pool(cluster, accelerator, zone, project_id)
 
-        # 5. Stack exports
+        # 6. Stack exports
         pulumi.export("project", project_id)
         pulumi.export("zone", zone)
         pulumi.export("cluster_name", cluster.name)
@@ -136,54 +156,20 @@ def _create_gpu_node_pool(cluster, accelerator, zone, project_id):
 
 
 def _create_tpu_node_pool(cluster, accelerator, zone, project_id):
-    """Create a TPU GKE node pool.
-
-    Uses pulumi_command as a fallback if the Pulumi GCP provider does
-    not support tpu_topology natively via placement_policy.
-    """
-    try:
-        # Attempt native Pulumi GCP provider with placement_policy
-        gcp.container.NodePool(
-            accelerator["pool_name"],
-            name=accelerator["pool_name"],
-            cluster=cluster.name,
-            location=zone,
-            project=project_id,
-            node_count=accelerator["num_nodes"],
-            node_config=gcp.container.NodePoolNodeConfigArgs(
-                machine_type=accelerator["machine_type"],
-                oauth_scopes=_BASE_OAUTH_SCOPES,
-            ),
-            placement_policy=gcp.container.NodePoolPlacementPolicyArgs(
-                type="COMPACT",
-                tpu_topology=accelerator["topology"],
-            ),
-        )
-    except (TypeError, AttributeError):
-        # Fallback: use pulumi-command to shell out to gcloud
-        pool_name = accelerator["pool_name"]
-        machine_type = accelerator["machine_type"]
-        topology = accelerator["topology"]
-        num_nodes = accelerator["num_nodes"]
-
-        command.local.Command(
-            f"tpu-node-pool-{pool_name}",
-            create=cluster.name.apply(
-                lambda name: (
-                    f"gcloud container node-pools create {pool_name} "
-                    f"--cluster={name} --zone={zone} --project={project_id} "
-                    f"--machine-type={machine_type} "
-                    f"--tpu-topology={topology} "
-                    f"--num-nodes={num_nodes} "
-                    f"--scopes=gke-default,storage-full"
-                )
-            ),
-            delete=cluster.name.apply(
-                lambda name: (
-                    f"gcloud container node-pools delete {pool_name} "
-                    f"--cluster={name} --zone={zone} --project={project_id} "
-                    f"--quiet"
-                )
-            ),
-            opts=pulumi.ResourceOptions(depends_on=[cluster]),
-        )
+    """Create a TPU GKE node pool."""
+    gcp.container.NodePool(
+        accelerator["pool_name"],
+        name=accelerator["pool_name"],
+        cluster=cluster.name,
+        location=zone,
+        project=project_id,
+        node_count=accelerator["num_nodes"],
+        node_config=gcp.container.NodePoolNodeConfigArgs(
+            machine_type=accelerator["machine_type"],
+            oauth_scopes=_BASE_OAUTH_SCOPES,
+        ),
+        placement_policy=gcp.container.NodePoolPlacementPolicyArgs(
+            type="COMPACT",
+            tpu_topology=accelerator["topology"],
+        ),
+    )
