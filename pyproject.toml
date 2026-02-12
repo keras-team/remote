@@ -17,19 +17,20 @@ dependencies = [
     "cloudpickle",
     "numpy",
     "keras",
-    "google-cloud-storage>=2.16.0",
-    "google-cloud-build>=3.24.0",
-    "kubernetes>=28.1.0",
+    "google-cloud-artifact-registry>=1.11",
+    "google-cloud-storage>=3.9",
+    "google-cloud-build>=3.24",
+    "kubernetes>=35.0",
 ]
 
 [project.optional-dependencies]
 cli = [
-    "click>=8.1.0",
-    "rich>=13.0.0",
-    "pulumi>=3.0.0",
-    "pulumi-gcp>=7.0.0",
-    "pulumi-command>=1.0.0",
-    "google-cloud-tpu>=1.0.0",
+    "click>=8.1",
+    "rich>=14.0",
+    "pulumi>=3.0",
+    "pulumi-gcp>=9.0",
+    "pulumi-command>=1.0",
+    "google-cloud-tpu>=1.0",
 ]
 demo = [
     "jax",
@@ -48,7 +49,7 @@ Issues = "https://github.com/keras-team/keras-remote/issues"
 [build-system]
 requires = [
     "build",
-    "hatchling >= 1.26",
+    "hatchling>=1.26",
     "twine",
 ]
 build-backend = "hatchling.build"
