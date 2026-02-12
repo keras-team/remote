@@ -2,9 +2,11 @@
 
 import click
 
+from keras_remote import accelerators
+from keras_remote.accelerators import GpuConfig
 from keras_remote.constants import zone_to_ar_location
+from keras_remote.cli.config import InfraConfig
 from keras_remote.cli.constants import DEFAULT_ZONE, DEFAULT_CLUSTER_NAME
-from keras_remote.cli.infra.accelerator_configs import GPU_CONFIGS, TPU_CONFIGS
 from keras_remote.cli.infra.post_deploy import (
     configure_docker_auth,
     configure_kubectl,
@@ -47,12 +49,12 @@ def up(project, zone, accelerator, cluster_name, yes):
     else:
         accel_config = prompt_accelerator()
 
-    config = {
-        "project": project,
-        "zone": zone,
-        "cluster_name": cluster_name,
-        "accelerator": accel_config,
-    }
+    config = InfraConfig(
+        project=project,
+        zone=zone,
+        cluster_name=cluster_name,
+        accelerator=accel_config,
+    )
 
     # Show summary and confirm
     config_summary(config)
@@ -81,7 +83,7 @@ def up(project, zone, accelerator, cluster_name, yes):
     configure_kubectl(cluster_name, zone, project)
     success("kubectl configured")
 
-    if accel_config and accel_config.get("category") == "gpu":
+    if isinstance(accel_config, GpuConfig):
         console.print("Installing NVIDIA GPU device drivers...")
         install_gpu_drivers()
         success("GPU driver installation initiated")
@@ -103,40 +105,11 @@ def up(project, zone, accelerator, cluster_name, yes):
     console.print()
 
 
-def _parse_accelerator_flag(accelerator):
-    """Parse a --accelerator flag value into an accel config dict."""
-    accelerator = accelerator.strip().lower()
-
-    if accelerator == "cpu":
+def _parse_accelerator_flag(value):
+    """Parse a --accelerator flag into a typed config."""
+    if value.strip().lower() == "cpu":
         return None
-
-    if accelerator in GPU_CONFIGS:
-        return {"category": "gpu", **GPU_CONFIGS[accelerator]}
-
-    # Check for TPU with topology: "v5litepod-2x2"
-    for tpu_name, topologies in TPU_CONFIGS.items():
-        if accelerator == tpu_name:
-            # Use first (default) topology
-            default_topo = next(iter(topologies))
-            return {
-                "category": "tpu",
-                "pool_name": f"tpu-{tpu_name}-pool",
-                "topology": default_topo,
-                **topologies[default_topo],
-            }
-        if accelerator.startswith(tpu_name + "-"):
-            topo = accelerator[len(tpu_name) + 1:]
-            if topo in topologies:
-                return {
-                    "category": "tpu",
-                    "pool_name": f"tpu-{tpu_name}-pool",
-                    "topology": topo,
-                    **topologies[topo],
-                }
-
-    raise click.BadParameter(
-        f"Unknown accelerator: '{accelerator}'. "
-        f"GPUs: {', '.join(GPU_CONFIGS.keys())}. "
-        f"TPUs: {', '.join(TPU_CONFIGS.keys())} (e.g., v5litepod-2x2).",
-        param_hint="--accelerator",
-    )
+    try:
+        return accelerators.parse_accelerator(value)
+    except ValueError as e:
+        raise click.BadParameter(str(e), param_hint="--accelerator")

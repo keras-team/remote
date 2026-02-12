@@ -6,7 +6,7 @@ import subprocess
 
 import click
 
-from keras_remote.cli.infra.accelerator_configs import GPU_CONFIGS, TPU_CONFIGS
+from keras_remote.accelerators import GPUS, TPUS, parse_accelerator
 from keras_remote.cli.output import success, warning
 
 
@@ -136,7 +136,7 @@ def prompt_accelerator():
     """Interactive accelerator selection menu.
 
     Returns:
-        Config dict with accelerator details, or None for CPU.
+        GpuConfig, TpuConfig, or None (for CPU).
     """
     accel_type = click.prompt(
         "\nWhat type of accelerator node pool?",
@@ -158,52 +158,49 @@ def _prompt_gpu():
     """Prompt for GPU type selection."""
     click.echo()
     click.echo("Available GPU types:")
-    gpu_names = list(GPU_CONFIGS.keys())
+    gpu_names = list(GPUS.keys())
     for i, name in enumerate(gpu_names, 1):
-        cfg = GPU_CONFIGS[name]
-        click.echo(f"  {i}) {name:<12} ({cfg['gpu_type']})")
+        spec = GPUS[name]
+        click.echo(f"  {i}) {name:<12} ({spec.gke_label})")
 
-    gpu = click.prompt(
+    choice = click.prompt(
         "\nSelect GPU type",
         type=click.Choice(gpu_names, case_sensitive=False),
     )
-    return {"category": "gpu", **GPU_CONFIGS[gpu]}
+    return parse_accelerator(choice)
 
 
 def _prompt_tpu():
     """Prompt for TPU type and topology selection."""
     click.echo()
-    tpu_names = list(TPU_CONFIGS.keys())
+    tpu_names = list(TPUS.keys())
     click.echo("Available TPU types:")
     for i, name in enumerate(tpu_names, 1):
-        topologies = ", ".join(TPU_CONFIGS[name].keys())
-        click.echo(f"  {i}) {name:<12} (topologies: {topologies})")
+        spec = TPUS[name]
+        topos = [ts.topology for ts in spec.topologies.values()]
+        click.echo(f"  {i}) {name:<12} (topologies: {', '.join(topos)})")
 
     tpu = click.prompt(
         "\nSelect TPU type",
         type=click.Choice(tpu_names, case_sensitive=False),
     )
 
-    topologies = list(TPU_CONFIGS[tpu].keys())
+    spec = TPUS[tpu]
+    topo_items = list(spec.topologies.items())
     click.echo()
     click.echo(f"Available topologies for {tpu}:")
-    for i, topo in enumerate(topologies, 1):
-        cfg = TPU_CONFIGS[tpu][topo]
+    for i, (chips, ts) in enumerate(topo_items, 1):
         click.echo(
-            f"  {i}) {topo:<6} "
-            f"(machine: {cfg['machine_type']}, nodes: {cfg['num_nodes']})"
+            f"  {i}) {ts.topology:<6} "
+            f"(machine: {ts.machine_type}, nodes: {ts.num_nodes})"
         )
 
-    default_topo = topologies[min(1, len(topologies) - 1)]
+    topo_strs = [ts.topology for _, ts in topo_items]
+    default_topo = topo_strs[min(1, len(topo_strs) - 1)]
     topology = click.prompt(
         f"\nSelect topology for {tpu}",
-        type=click.Choice(topologies),
+        type=click.Choice(topo_strs),
         default=default_topo,
     )
 
-    return {
-        "category": "tpu",
-        "pool_name": f"tpu-{tpu}-pool",
-        "topology": topology,
-        **TPU_CONFIGS[tpu][topology],
-    }
+    return parse_accelerator(f"{tpu}-{topology}")

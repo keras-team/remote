@@ -4,6 +4,7 @@ import click
 from pulumi.automation import CommandError
 from rich.table import Table
 
+from keras_remote.cli.config import InfraConfig
 from keras_remote.cli.constants import DEFAULT_ZONE
 from keras_remote.cli.infra.program import create_program
 from keras_remote.cli.infra.stack_manager import get_stack, refresh, get_outputs
@@ -27,12 +28,7 @@ def status(project, zone):
     project = project or resolve_config("project")
     zone = zone or DEFAULT_ZONE
 
-    config = {
-        "project": project,
-        "zone": zone,
-        "cluster_name": "keras-remote-cluster",
-        "accelerator": None,
-    }
+    config = InfraConfig(project=project, zone=zone)
 
     try:
         program = create_program(config)
