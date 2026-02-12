@@ -1,195 +1,207 @@
-"""Canonical accelerator type registry and parsing utilities.
+"""Accelerator registry and parsing for keras-remote.
 
-Single source of truth for accelerator metadata used by all backends
-(GKE, TPU VM) and the container builder.
+Single source of truth for all accelerator metadata — used by both the
+runtime (gke_client, container_builder) and the CLI (up, prompts, program).
 """
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import Union
 
 
-@dataclass
-class AcceleratorType:
-    """Metadata for a single accelerator type."""
+@dataclass(frozen=True)
+class GpuConfig:
+    """Fully resolved GPU accelerator configuration."""
 
-    short_name: str
-    category: str  # "gpu", "tpu", or "cpu"
-    aliases: tuple = ()
-
-    # GPU — GKE node selector label (e.g., "nvidia-l4")
-    gke_label: str = ""
-    # GPU — supported GPU counts (e.g., (1, 2, 4))
-    supported_gpu_counts: tuple = ()
-
-    # TPU — default chip count when bare name is used (e.g., "v3" → 8 chips)
-    default_chips: int = 0
-    # TPU — GKE node selector label (e.g., "tpu-v5-lite-podslice")
-    gke_tpu_accelerator: str = ""
-    # TPU — chip count → GKE topology (e.g., {8: "2x2", 32: "4x4"})
-    gke_tpu_topologies: dict = field(default_factory=dict)
+    name: str  # "l4"
+    count: int  # number of GPUs (1, 2, 4, …)
+    gke_label: str  # "nvidia-l4" — K8s node selector value
+    machine_type: str  # "g2-standard-4" — GKE node pool machine type
 
 
-@dataclass
-class ParsedAccelerator:
-    """Result of parsing an accelerator string."""
+@dataclass(frozen=True)
+class TpuConfig:
+    """Fully resolved TPU accelerator configuration."""
 
-    accelerator_type: AcceleratorType
-    count: int  # GPU count or TPU chip count (0 for CPU)
-
-
-# ---------------------------------------------------------------------------
-# Registry
-# ---------------------------------------------------------------------------
-
-CPU_TYPE = AcceleratorType(short_name="cpu", category="cpu")
-
-_ACCELERATOR_TYPES = [
-    AcceleratorType(
-        short_name="l4",
-        category="gpu",
-        aliases=("nvidia-l4",),
-        gke_label="nvidia-l4",
-        supported_gpu_counts=(1, 2, 4),
-    ),
-    AcceleratorType(
-        short_name="t4",
-        category="gpu",
-        aliases=("nvidia-tesla-t4",),
-        gke_label="nvidia-tesla-t4",
-        supported_gpu_counts=(1, 2, 4),
-    ),
-    AcceleratorType(
-        short_name="v100",
-        category="gpu",
-        aliases=("nvidia-tesla-v100",),
-        gke_label="nvidia-tesla-v100",
-        supported_gpu_counts=(1, 2, 4, 8),
-    ),
-    AcceleratorType(
-        short_name="a100",
-        category="gpu",
-        aliases=("nvidia-tesla-a100",),
-        gke_label="nvidia-tesla-a100",
-        supported_gpu_counts=(1, 2, 4, 8),
-    ),
-    AcceleratorType(
-        short_name="a100-80gb",
-        category="gpu",
-        aliases=("nvidia-a100-80gb",),
-        gke_label="nvidia-a100-80gb",
-        supported_gpu_counts=(1, 2, 4, 8),
-    ),
-    AcceleratorType(
-        short_name="h100",
-        category="gpu",
-        aliases=("nvidia-h100-80gb",),
-        gke_label="nvidia-h100-80gb",
-        supported_gpu_counts=(1, 2, 4, 8),
-    ),
-    AcceleratorType(
-        short_name="p100",
-        category="gpu",
-        aliases=("nvidia-tesla-p100",),
-        gke_label="nvidia-tesla-p100",
-        supported_gpu_counts=(1,),
-    ),
-    AcceleratorType(
-        short_name="p4",
-        category="gpu",
-        aliases=("nvidia-tesla-p4",),
-        gke_label="nvidia-tesla-p4",
-        supported_gpu_counts=(1,),
-    ),
-    AcceleratorType(
-        short_name="k80",
-        category="gpu",
-        aliases=("nvidia-tesla-k80",),
-        gke_label="nvidia-tesla-k80",
-        supported_gpu_counts=(1,),
-    ),
-    # --- TPU types ---
-    AcceleratorType(
-        short_name="v2",
-        category="tpu",
-        default_chips=8,
-        gke_tpu_accelerator="tpu-v2-podslice",
-        gke_tpu_topologies={8: "2x2", 32: "4x4"},
-    ),
-    AcceleratorType(
-        short_name="v3",
-        category="tpu",
-        default_chips=8,
-        gke_tpu_accelerator="tpu-v3-podslice",
-        gke_tpu_topologies={8: "2x2", 32: "4x4"},
-    ),
-    AcceleratorType(
-        short_name="v5litepod",
-        category="tpu",
-        default_chips=4,
-        gke_tpu_accelerator="tpu-v5-lite-podslice",
-        gke_tpu_topologies={1: "1x1", 4: "2x2", 8: "2x4"},
-    ),
-    AcceleratorType(
-        short_name="v5p",
-        category="tpu",
-        default_chips=8,
-        gke_tpu_accelerator="tpu-v5p-slice",
-        gke_tpu_topologies={8: "2x2", 16: "2x4"},
-    ),
-    AcceleratorType(
-        short_name="v6e",
-        category="tpu",
-        default_chips=8,
-        gke_tpu_accelerator="tpu-v6e-slice",
-        gke_tpu_topologies={8: "2x2", 16: "2x4"},
-    ),
-]
-
-# Flat lookup: maps every recognized name (lowercased) to its AcceleratorType.
-_LOOKUP: dict[str, AcceleratorType] = {}
-for _accel in _ACCELERATOR_TYPES:
-    _LOOKUP[_accel.short_name] = _accel
-    for _alias in _accel.aliases:
-        _LOOKUP[_alias.lower()] = _accel
-
-_MULTI_GPU_RE = re.compile(r"^(.+?)x(\d+)$")  # "a100x4", "a100-80gbx8"
-_TPU_CHIPS_RE = re.compile(r"^(v\d+\w*)-(\d+)$")  # "v3-8", "v5litepod-4"
+    name: str  # "v5litepod"
+    chips: int  # number of TPU chips (4, 8, …)
+    topology: str  # "2x2" — TPU topology string
+    gke_accelerator: str  # "tpu-v5-lite-podslice"
+    machine_type: str  # "ct5lp-hightpu-4t"
+    num_nodes: int  # GKE node pool node count
 
 
-def parse_accelerator(accel_str: str) -> ParsedAccelerator:
-    """Parse an accelerator string into a canonical type and count.
+Accelerator = Union[GpuConfig, TpuConfig, None]
 
-    Handles: "cpu", "l4", "nvidia-l4", "a100x4", "a100-80gbx8", "v3-8", "v5litepod-4"
+
+@dataclass(frozen=True)
+class GpuSpec:
+    """Registry entry for a GPU type."""
+
+    gke_label: str
+    machine_type: str
+    counts: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class TpuTopologySpec:
+    """Single topology option for a TPU type."""
+
+    topology: str
+    machine_type: str
+    num_nodes: int
+
+
+@dataclass(frozen=True)
+class TpuSpec:
+    """Registry entry for a TPU type."""
+
+    gke_accelerator: str
+    default_chips: int
+    topologies: dict[int, TpuTopologySpec]  # chips → topology spec
+
+
+GPUS: dict[str, GpuSpec] = {
+    "l4": GpuSpec("nvidia-l4", "g2-standard-4", (1, 2, 4)),
+    "t4": GpuSpec("nvidia-tesla-t4", "n1-standard-4", (1, 2, 4)),
+    "v100": GpuSpec("nvidia-tesla-v100", "n1-standard-8", (1, 2, 4, 8)),
+    "a100": GpuSpec("nvidia-tesla-a100", "a2-highgpu-1g", (1, 2, 4, 8)),
+    "a100-80gb": GpuSpec("nvidia-a100-80gb", "a2-ultragpu-1g", (1, 2, 4, 8)),
+    "h100": GpuSpec("nvidia-h100-80gb", "a3-highgpu-1g", (1, 2, 4, 8)),
+}
+
+_GPU_ALIASES: dict[str, str] = {
+    spec.gke_label: name for name, spec in GPUS.items()
+}
+
+TPUS: dict[str, TpuSpec] = {
+    "v2": TpuSpec("tpu-v2-podslice", 8, {
+        8: TpuTopologySpec("2x2", "ct2-hightpu-4t", 2),
+        32: TpuTopologySpec("4x4", "ct2-hightpu-4t", 8),
+    }),
+    "v3": TpuSpec("tpu-v3-podslice", 8, {
+        8: TpuTopologySpec("2x2", "ct3p-hightpu-4t", 2),
+        32: TpuTopologySpec("4x4", "ct3p-hightpu-4t", 8),
+    }),
+    "v5litepod": TpuSpec("tpu-v5-lite-podslice", 4, {
+        1: TpuTopologySpec("1x1", "ct5lp-hightpu-1t", 1),
+        4: TpuTopologySpec("2x2", "ct5lp-hightpu-4t", 1),
+        8: TpuTopologySpec("2x4", "ct5lp-hightpu-8t", 1),
+    }),
+    "v5p": TpuSpec("tpu-v5p-slice", 8, {
+        8: TpuTopologySpec("2x2", "ct5p-hightpu-4t", 2),
+        16: TpuTopologySpec("2x4", "ct5p-hightpu-4t", 4),
+    }),
+    "v6e": TpuSpec("tpu-v6e-slice", 8, {
+        8: TpuTopologySpec("2x2", "ct6e-standard-4t", 2),
+        16: TpuTopologySpec("2x4", "ct6e-standard-4t", 4),
+    }),
+}
+
+
+# ── Parser ────────────────────────────────────────────────────────
+
+_MULTI_GPU_RE = re.compile(r"^(.+?)x(\d+)$")  # "a100x4"
+_TPU_CHIPS_RE = re.compile(r"^(v\d+\w*)-(\d+)$")  # "v3-8"
+_TPU_TOPO_RE = re.compile(r"^(v\d+\w*)-(\d+x\d+)$")  # "v5litepod-2x2"
+
+
+def parse_accelerator(accel_str: str) -> Accelerator:
+    """Parse an accelerator string into a fully resolved config.
+
+    Returns GpuConfig, TpuConfig, or None (for "cpu").
+
+    Accepted formats:
+        GPU:  "l4", "nvidia-l4", "a100x4", "a100-80gbx8"
+        TPU:  "v3-8" (chip count), "v5litepod-2x2" (topology), "v5litepod" (default)
+        CPU:  "cpu"
     """
-    normalized = accel_str.strip().lower()
+    s = accel_str.strip().lower()
 
-    if normalized == "cpu":
-        return ParsedAccelerator(CPU_TYPE, 0)
+    if s == "cpu":
+        return None
 
-    # Direct lookup ("l4", "nvidia-l4", "a100", "v3", ...)
-    if normalized in _LOOKUP:
-        t = _LOOKUP[normalized]
-        return ParsedAccelerator(t, t.default_chips if t.category == "tpu" else 1)
+    # Direct GPU name: "l4", "a100-80gb"
+    if s in GPUS:
+        return _make_gpu(s, 1)
 
-    # Multi-GPU: "a100x4", "l4x2", "a100-80gbx8"
-    m = _MULTI_GPU_RE.match(normalized)
-    if m and m.group(1) in _LOOKUP:
-        return ParsedAccelerator(_LOOKUP[m.group(1)], int(m.group(2)))
+    # GPU alias: "nvidia-l4"
+    if s in _GPU_ALIASES:
+        return _make_gpu(_GPU_ALIASES[s], 1)
 
-    # TPU chips: "v3-8", "v5litepod-4", "v6e-16"
-    m = _TPU_CHIPS_RE.match(normalized)
-    if m and m.group(1) in _LOOKUP:
-        return ParsedAccelerator(_LOOKUP[m.group(1)], int(m.group(2)))
+    # Multi-GPU: "a100x4", "l4x2"
+    m = _MULTI_GPU_RE.match(s)
+    if m:
+        name = m.group(1)
+        if name in GPUS:
+            return _make_gpu(name, int(m.group(2)))
+        if name in _GPU_ALIASES:
+            return _make_gpu(_GPU_ALIASES[name], int(m.group(2)))
 
-    gpu_names = ", ".join(a.short_name for a in _ACCELERATOR_TYPES if a.category == "gpu")
-    tpu_names = ", ".join(a.short_name for a in _ACCELERATOR_TYPES if a.category == "tpu")
+    # Direct TPU name (bare): "v5litepod" → default chips
+    if s in TPUS:
+        return _make_tpu(s, TPUS[s].default_chips)
+
+    # TPU with topology string: "v5litepod-2x2"
+    m = _TPU_TOPO_RE.match(s)
+    if m and m.group(1) in TPUS:
+        name = m.group(1)
+        topo_str = m.group(2)
+        for chips, topo_spec in TPUS[name].topologies.items():
+            if topo_spec.topology == topo_str:
+                return _make_tpu(name, chips)
+
+    # TPU with chip count: "v3-8", "v5litepod-4"
+    m = _TPU_CHIPS_RE.match(s)
+    if m and m.group(1) in TPUS:
+        return _make_tpu(m.group(1), int(m.group(2)))
+
     raise ValueError(
-        f"Unsupported accelerator: '{accel_str}'. "
-        f"GPUs: {gpu_names} (use 'xN' for multi-GPU, e.g. 'a100x4'). "
-        f"TPUs: {tpu_names} (use '-N' for chip count, e.g. 'v3-8')."
+        f"Unknown accelerator: '{accel_str}'. "
+        f"GPUs: {', '.join(GPUS)} (use 'xN' for multi-GPU, e.g. 'a100x4'). "
+        f"TPUs: {', '.join(TPUS)} (use '-N' for chips, e.g. 'v3-8', "
+        f"or '-NxM' for topology, e.g. 'v5litepod-2x2')."
     )
 
 
 def get_category(accel_str: str) -> str:
-    """Return 'cpu', 'tpu', or 'gpu' for the given accelerator string."""
-    return parse_accelerator(accel_str).accelerator_type.category
+    """Return 'cpu', 'gpu', or 'tpu' for the given accelerator string."""
+    result = parse_accelerator(accel_str)
+    if result is None:
+        return "cpu"
+    if isinstance(result, GpuConfig):
+        return "gpu"
+    return "tpu"
+
+
+def _make_gpu(name: str, count: int) -> GpuConfig:
+    spec = GPUS[name]
+    if count not in spec.counts:
+        raise ValueError(
+            f"GPU count {count} not supported for '{name}'. "
+            f"Supported: {', '.join(str(c) for c in spec.counts)}."
+        )
+    return GpuConfig(
+        name=name,
+        count=count,
+        gke_label=spec.gke_label,
+        machine_type=spec.machine_type,
+    )
+
+
+def _make_tpu(name: str, chips: int) -> TpuConfig:
+    spec = TPUS[name]
+    if chips not in spec.topologies:
+        raise ValueError(
+            f"Chip count {chips} not supported for '{name}'. "
+            f"Supported: {', '.join(str(c) for c in spec.topologies)}."
+        )
+    topo_spec = spec.topologies[chips]
+    return TpuConfig(
+        name=name,
+        chips=chips,
+        topology=topo_spec.topology,
+        gke_accelerator=spec.gke_accelerator,
+        machine_type=topo_spec.machine_type,
+        num_nodes=topo_spec.num_nodes,
+    )
