@@ -6,7 +6,7 @@ import time
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 
-from keras_remote.src.core import accelerators
+from keras_remote.src.core.accelerators import parse_accelerator, GpuConfig, TpuConfig
 from keras_remote.src.infra import infra
 
 logger = infra.logger
@@ -170,10 +170,9 @@ def cleanup_job(job_name, namespace="default"):
 
 def _parse_accelerator(accelerator):
     """Convert accelerator string to GKE pod spec fields."""
-    parsed = accelerators.parse_accelerator(accelerator)
-    t = parsed.accelerator_type
+    parsed = parse_accelerator(accelerator)
 
-    if t.category == "cpu":
+    if parsed is None:
         return {
             "node_selector": {},
             "resource_limits": {},
@@ -182,34 +181,23 @@ def _parse_accelerator(accelerator):
             "jax_platform": "cpu",
         }
 
-    if t.category == "tpu":
-        topology = t.gke_tpu_topologies.get(parsed.count)
-        if topology is None:
-            raise ValueError(
-                f"Chip count {parsed.count} not supported for '{t.short_name}' on GKE. "
-                f"Supported: {', '.join(str(c) for c in t.gke_tpu_topologies)}."
-            )
+    if isinstance(parsed, TpuConfig):
         return {
             "node_selector": {
-                "cloud.google.com/gke-tpu-accelerator": t.gke_tpu_accelerator,
-                "cloud.google.com/gke-tpu-topology": topology,
+                "cloud.google.com/gke-tpu-accelerator": parsed.gke_accelerator,
+                "cloud.google.com/gke-tpu-topology": parsed.topology,
             },
-            "resource_limits": {"google.com/tpu": str(parsed.count)},
-            "resource_requests": {"google.com/tpu": str(parsed.count)},
+            "resource_limits": {"google.com/tpu": str(parsed.chips)},
+            "resource_requests": {"google.com/tpu": str(parsed.chips)},
             "tolerations": [
                 {"key": "google.com/tpu", "operator": "Exists", "effect": "NoSchedule"}
             ],
             "jax_platform": "tpu",
         }
 
-    # GPU
-    if parsed.count not in t.supported_gpu_counts:
-        raise ValueError(
-            f"GPU count {parsed.count} not supported for '{t.short_name}'. "
-            f"Supported: {', '.join(str(c) for c in t.supported_gpu_counts)}."
-        )
+    # GpuConfig
     return {
-        "node_selector": {"cloud.google.com/gke-accelerator": t.gke_label},
+        "node_selector": {"cloud.google.com/gke-accelerator": parsed.gke_label},
         "resource_limits": {"nvidia.com/gpu": str(parsed.count)},
         "resource_requests": {"nvidia.com/gpu": str(parsed.count)},
         "tolerations": [
