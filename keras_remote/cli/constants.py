@@ -2,8 +2,9 @@
 
 import os
 
-DEFAULT_ZONE = "us-central1-a"
-DEFAULT_CLUSTER_NAME = "keras-remote-cluster"
+from keras_remote.constants import DEFAULT_ZONE  # noqa: F401 — re-exported
+RESOURCE_NAME_PREFIX = "keras-remote"
+DEFAULT_CLUSTER_NAME = f"{RESOURCE_NAME_PREFIX}-cluster"
 STATE_DIR = os.environ.get(
     "KERAS_REMOTE_STATE_DIR",
     os.path.expanduser("~/.keras-remote/pulumi"),

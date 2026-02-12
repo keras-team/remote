@@ -5,6 +5,8 @@ import shlex
 import subprocess
 import sys
 
+from keras_remote.constants import get_default_zone
+
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger("keras_remote")
@@ -17,10 +19,6 @@ _ACCELERATOR_IMAGE_MAP = {
     "v2": "tpu-vm-base",
     "v3": "tpu-vm-base",
 }
-
-
-def get_default_zone():
-  return os.environ.get("KERAS_REMOTE_ZONE", "us-central1-a")
 
 
 def get_default_project():

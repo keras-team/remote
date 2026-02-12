@@ -68,6 +68,6 @@ def show():
     console.print()
     console.print("Set values via environment variables:")
     console.print("  export KERAS_REMOTE_PROJECT=my-project")
-    console.print("  export KERAS_REMOTE_ZONE=us-central1-a")
+    console.print(f"  export KERAS_REMOTE_ZONE={DEFAULT_ZONE}")
     console.print("  export KERAS_REMOTE_CLUSTER=keras-remote-cluster")
     console.print()

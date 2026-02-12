@@ -16,7 +16,8 @@ from keras_remote.cli.prompts import resolve_config
 @click.option("--project", envvar="KERAS_REMOTE_PROJECT", default=None,
               help="GCP project ID [env: KERAS_REMOTE_PROJECT]")
 @click.option("--zone", envvar="KERAS_REMOTE_ZONE", default=None,
-              help="GCP zone [env: KERAS_REMOTE_ZONE, default: us-central1-a]")
+              help=("GCP zone [env: KERAS_REMOTE_ZONE,"
+                    f" default: {DEFAULT_ZONE}]"))
 def status(project, zone):
     """Show current keras-remote infrastructure state."""
     banner("keras-remote Status")

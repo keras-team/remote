@@ -11,30 +11,13 @@ import time
 
 from google.cloud import storage
 from google.cloud.devtools import cloudbuild_v1
-from google.cloud.exceptions import NotFound
-
+from keras_remote.constants import zone_to_ar_location, get_default_zone
 from keras_remote.core import accelerators
 from keras_remote.infra import infra
 
 logger = infra.logger
 
 REMOTE_RUNNER_FILE_NAME = "remote_runner.py"
-
-
-def _zone_to_ar_location(zone):
-    """Derive Artifact Registry multi-region location from a GCP zone.
-
-    Args:
-        zone: GCP zone (e.g., 'us-central1-a', 'europe-west4-a')
-
-    Returns:
-        Multi-region string (e.g., 'us', 'europe', 'asia')
-    """
-    zone = zone or os.environ.get("KERAS_REMOTE_ZONE", "us-central1-a")
-    # zone -> region: us-central1-a -> us-central1
-    region = zone.rsplit("-", 1)[0] if zone and "-" in zone else "us-central1"
-    # region -> multi-region: us-central1 -> us
-    return region.split("-")[0]
 
 
 def get_or_build_container(base_image, requirements_path, accelerator_type, project, zone=None):
@@ -52,7 +35,7 @@ def get_or_build_container(base_image, requirements_path, accelerator_type, proj
     Returns:
         Container image URI in Artifact Registry
     """
-    ar_location = _zone_to_ar_location(zone)
+    ar_location = zone_to_ar_location(zone or get_default_zone())
 
     # Generate deterministic hash from requirements + base image
     requirements_hash = _hash_requirements(requirements_path, accelerator_type, base_image)
@@ -192,7 +175,7 @@ def _build_and_push(base_image, requirements_path, accelerator_type,
         # Upload source to GCS
         bucket_name = f"{project}-keras-remote-builds"
         source_gcs = _upload_build_source(
-            tarball_path, bucket_name, project, ar_location
+            tarball_path, bucket_name, project
         )
 
         # Submit build to Cloud Build
@@ -280,30 +263,19 @@ def _generate_dockerfile(base_image, requirements_path, accelerator_type):
     )
 
 
-def _upload_build_source(tarball_path, bucket_name, project,
-                         ar_location="us"):
+def _upload_build_source(tarball_path, bucket_name, project):
     """Upload build source tarball to Cloud Storage.
 
     Args:
         tarball_path: Local path to tarball
         bucket_name: GCS bucket name
         project: GCP project ID
-        ar_location: Multi-region for bucket creation
 
     Returns:
         GCS URI of uploaded tarball
     """
     client = storage.Client(project=project)
-
-    # Ensure bucket exists
-    try:
-        bucket = client.get_bucket(bucket_name)
-    except NotFound:
-        bucket = client.create_bucket(
-            bucket_name, location=ar_location
-        )
-        logger.info(f"Created build bucket: gs://{bucket_name}")
-        logger.info(f"View bucket: https://console.cloud.google.com/storage/browser/{bucket_name}?project={project}")
+    bucket = client.bucket(bucket_name)
 
     # Upload tarball
     blob_name = f"source-{int(time.time())}.tar.gz"
