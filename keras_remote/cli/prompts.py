@@ -10,27 +10,35 @@ from keras_remote.accelerators import GPUS, TPUS, parse_accelerator
 from keras_remote.cli.output import success, warning
 
 
-def resolve_config(key):
+def resolve_config(key, allow_create=True):
     """Resolve a config value from env var or interactive prompt."""
     if key == "project":
-        return _resolve_project()
+        return _resolve_project(allow_create=allow_create)
     raise ValueError(f"Unknown config key: {key}")
 
 
-def _resolve_project():
+def _resolve_project(allow_create=True):
     """Resolve GCP project ID from env or prompt.
 
-    Validates that the project exists. If it doesn't, offers to create it
-    and link a billing account.
+    Validates that the project exists. If *allow_create* is True and it
+    doesn't, offers to create it and link a billing account.
     """
     project = os.environ.get("KERAS_REMOTE_PROJECT")
     if not project:
-        project = click.prompt(
-            "Enter your GCP project ID (or a new ID to create one)", type=str
+        prompt_msg = (
+            "Enter your GCP project ID (or a new ID to create one)"
+            if allow_create
+            else "Enter your GCP project ID"
         )
+        project = click.prompt(prompt_msg, type=str)
 
     if _project_exists(project):
         return project
+
+    if not allow_create:
+        raise click.ClickException(
+            f"Project '{project}' was not found."
+        )
 
     if not click.confirm(
         f"\nProject '{project}' was not found. "

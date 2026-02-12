@@ -30,7 +30,7 @@ def down(project, zone, yes, pulumi_only):
 
     check_all()
 
-    project = project or resolve_config("project")
+    project = project or resolve_config("project", allow_create=False)
     zone = zone or DEFAULT_ZONE
 
     # Warning
