@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from keras_remote.accelerators import Accelerator
+from keras_remote.src.core.accelerators import Accelerator
 from keras_remote.cli.constants import DEFAULT_CLUSTER_NAME, DEFAULT_ZONE
 
 

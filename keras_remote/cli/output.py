@@ -4,7 +4,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from keras_remote.accelerators import GpuConfig, TpuConfig
+from keras_remote.src.core.accelerators import GpuConfig, TpuConfig
 
 console = Console()
 
