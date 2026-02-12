@@ -20,13 +20,6 @@ def get_stack(program_fn, config):
     state_dir = os.environ.get("KERAS_REMOTE_STATE_DIR", STATE_DIR)
     os.makedirs(state_dir, exist_ok=True)
 
-    # Set a default passphrase for the local file backend so users don't
-    # need to configure one. We don't store real secrets in the stack
-    # (only project IDs, zones, and resource names), so an empty
-    # passphrase is fine.
-    if "PULUMI_CONFIG_PASSPHRASE" not in os.environ:
-        os.environ["PULUMI_CONFIG_PASSPHRASE"] = ""
-
     # Use project ID as stack name so each GCP project gets its own stack
     stack_name = config["project"]
 

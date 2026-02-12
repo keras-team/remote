@@ -1,5 +1,6 @@
 """keras-remote down command — tear down infrastructure."""
 
+import json
 import subprocess
 
 import click
@@ -78,7 +79,7 @@ def down(project, zone, yes, pulumi_only):
         console.print("\n[bold]Running supplementary cleanup...[/bold]\n")
         _cleanup_buckets(project, console)
         _cleanup_artifact_registry(project, zone, console)
-        _cleanup_tpu_vms(project, console)
+        _cleanup_tpu_vms(project, zone, console)
         _cleanup_gke_clusters(project, console)
         _cleanup_compute_vms(project, console)
 
@@ -136,32 +137,34 @@ def _cleanup_artifact_registry(project, zone, console):
         warning(f"  Repository not found or already deleted: {err}")
 
 
-def _cleanup_tpu_vms(project, console):
+def _cleanup_tpu_vms(project, zone, console):
     """Delete TPU VMs in the project."""
     console.print("Checking for TPU VMs...")
     ok, output, err = _run_gcloud([
-        "compute", "tpus", "list", f"--project={project}",
-        "--format=value(name,zone)",
+        "compute", "tpus", "tpu-vm", "list",
+        f"--project={project}", f"--zone={zone}",
+        "--format=json(name.scope(),zone.scope())",
     ])
     if not ok:
         warning(f"  Failed to list TPU VMs: {err}")
         return
-    if not output:
+
+    tpus = json.loads(output) if output else []
+    if not tpus:
         success("  No TPU VMs found")
         return
 
-    for line in output.splitlines():
-        parts = line.split()
-        if len(parts) >= 2:
-            vm, vm_zone = parts[0], parts[1]
-            ok, _, err = _run_gcloud([
-                "compute", "tpus", "delete", vm,
-                f"--zone={vm_zone}", f"--project={project}", "--quiet",
-            ])
-            if ok:
-                success(f"  Deleted TPU VM: {vm}")
-            else:
-                warning(f"  Failed to delete TPU VM: {vm}: {err}")
+    for tpu in tpus:
+        vm = tpu["name"]
+        vm_zone = tpu["zone"]
+        ok, _, err = _run_gcloud([
+            "compute", "tpus", "tpu-vm", "delete", vm,
+            f"--zone={vm_zone}", f"--project={project}", "--quiet",
+        ])
+        if ok:
+            success(f"  Deleted TPU VM: {vm}")
+        else:
+            warning(f"  Failed to delete TPU VM: {vm}: {err}")
 
 
 def _cleanup_gke_clusters(project, console):
@@ -169,27 +172,28 @@ def _cleanup_gke_clusters(project, console):
     console.print("Checking for GKE clusters (keras-remote-*)...")
     ok, output, err = _run_gcloud([
         "container", "clusters", "list", f"--project={project}",
-        "--filter=name~^keras-remote-", "--format=value(name,location)",
+        "--filter=name~^keras-remote-", "--format=json(name,location)",
     ])
     if not ok:
         warning(f"  Failed to list GKE clusters: {err}")
         return
-    if not output:
+
+    clusters = json.loads(output) if output else []
+    if not clusters:
         success("  No matching GKE clusters found")
         return
 
-    for line in output.splitlines():
-        parts = line.split()
-        if len(parts) >= 2:
-            cluster, location = parts[0], parts[1]
-            ok, _, err = _run_gcloud([
-                "container", "clusters", "delete", cluster,
-                f"--location={location}", f"--project={project}", "--quiet",
-            ])
-            if ok:
-                success(f"  Deleted GKE cluster: {cluster}")
-            else:
-                warning(f"  Failed to delete GKE cluster: {cluster}: {err}")
+    for entry in clusters:
+        cluster = entry["name"]
+        location = entry["location"]
+        ok, _, err = _run_gcloud([
+            "container", "clusters", "delete", cluster,
+            f"--location={location}", f"--project={project}", "--quiet",
+        ])
+        if ok:
+            success(f"  Deleted GKE cluster: {cluster}")
+        else:
+            warning(f"  Failed to delete GKE cluster: {cluster}: {err}")
 
 
 def _cleanup_compute_vms(project, console):
@@ -197,24 +201,25 @@ def _cleanup_compute_vms(project, console):
     console.print("Checking for Compute Engine VMs (remote-*)...")
     ok, output, err = _run_gcloud([
         "compute", "instances", "list", f"--project={project}",
-        "--filter=name~^remote-.*", "--format=value(name,zone)",
+        "--filter=name~^remote-.*", "--format=json(name,zone.scope())",
     ])
     if not ok:
         warning(f"  Failed to list Compute Engine VMs: {err}")
         return
-    if not output:
+
+    vms = json.loads(output) if output else []
+    if not vms:
         success("  No matching Compute Engine VMs found")
         return
 
-    for line in output.splitlines():
-        parts = line.split()
-        if len(parts) >= 2:
-            vm, vm_zone = parts[0], parts[1]
-            ok, _, err = _run_gcloud([
-                "compute", "instances", "delete", vm,
-                f"--zone={vm_zone}", f"--project={project}", "--quiet",
-            ])
-            if ok:
-                success(f"  Deleted VM: {vm}")
-            else:
-                warning(f"  Failed to delete VM: {vm}: {err}")
+    for entry in vms:
+        vm = entry["name"]
+        vm_zone = entry["zone"]
+        ok, _, err = _run_gcloud([
+            "compute", "instances", "delete", vm,
+            f"--zone={vm_zone}", f"--project={project}", "--quiet",
+        ])
+        if ok:
+            success(f"  Deleted VM: {vm}")
+        else:
+            warning(f"  Failed to delete VM: {vm}: {err}")
