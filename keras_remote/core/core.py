@@ -6,18 +6,16 @@ import os
 import shutil
 import tempfile
 
-from keras_remote.src.utils import packager
-from keras_remote.src.infra import infra
-from keras_remote.src.backend.execution import (
+from keras_remote.utils import packager
+from keras_remote.infra import infra
+from keras_remote.backend.execution import (
     JobContext,
     execute_remote,
     GKEBackend,
 )
-from keras_remote.src.api_export import keras_remote_export
 
 logger = infra.logger
 
-@keras_remote_export("keras_remote.run")
 def run(accelerator="v3-8",
         container_image=None,
         zone=None,
