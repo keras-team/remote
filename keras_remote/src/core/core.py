@@ -13,9 +13,11 @@ from keras_remote.src.backend.execution import (
     execute_remote,
     GKEBackend,
 )
+from keras_remote.src.api_export import keras_remote_export
 
 logger = infra.logger
 
+@keras_remote_export("keras_remote.run")
 def run(accelerator="v3-8",
         container_image=None,
         zone=None,
