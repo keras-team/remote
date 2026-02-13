@@ -147,12 +147,12 @@ def prompt_accelerator():
 
     if accel_type == "cpu":
         return None
-
-    if accel_type == "gpu":
+    elif accel_type == "gpu":
         return _prompt_gpu()
-
-    if accel_type == "tpu":
+    elif accel_type == "tpu":
         return _prompt_tpu()
+    else:
+        raise click.ClickException(f"Unknown accelerator type: {accel_type}")
 
 
 def _prompt_gpu():
