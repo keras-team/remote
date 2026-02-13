@@ -24,6 +24,11 @@ def warning(msg):
     console.print(f"[yellow]{msg}[/yellow]")
 
 
+def error(msg):
+    """Display an error message."""
+    console.print(f"[red]{msg}[/red]")
+
+
 def config_summary(config):
     """Display a configuration summary table."""
     table = Table(title="Configuration Summary")
