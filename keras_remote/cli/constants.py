@@ -19,6 +19,6 @@ REQUIRED_APIS = [
 
 NVIDIA_DRIVER_DAEMONSET_URL = (
     "https://raw.githubusercontent.com/GoogleCloudPlatform/"
-    "container-engine-accelerators/master/"
+    "container-engine-accelerators/v1.0.20/"
     "nvidia-driver-installer/cos/daemonset-preloaded.yaml"
 )
