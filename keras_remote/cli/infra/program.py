@@ -9,7 +9,7 @@ import pulumi_gcp as gcp
 
 from keras_remote.core.accelerators import GpuConfig, TpuConfig
 from keras_remote.constants import zone_to_ar_location, zone_to_region
-from keras_remote.cli.constants import REQUIRED_APIS
+from keras_remote.cli.constants import REQUIRED_APIS, RESOURCE_NAME_PREFIX
 
 # OAuth scopes required by all node pools (including accelerator pools).
 _BASE_OAUTH_SCOPES = [
@@ -152,6 +152,7 @@ def _create_gpu_node_pool(cluster, gpu: GpuConfig, zone, project_id):
                     count=1,
                 ),
             ],
+            labels={RESOURCE_NAME_PREFIX: "true"},
         ),
     )
 
@@ -169,6 +170,7 @@ def _create_tpu_node_pool(cluster, tpu: TpuConfig, zone, project_id):
         node_config=gcp.container.NodePoolNodeConfigArgs(
             machine_type=tpu.machine_type,
             oauth_scopes=_BASE_OAUTH_SCOPES,
+            labels={RESOURCE_NAME_PREFIX: "true"},
         ),
         placement_policy=gcp.container.NodePoolPlacementPolicyArgs(
             type="COMPACT",

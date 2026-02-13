@@ -5,6 +5,7 @@ import shlex
 import subprocess
 import sys
 
+from keras_remote.cli.constants import RESOURCE_NAME_PREFIX
 from keras_remote.constants import get_default_zone
 
 
@@ -96,7 +97,8 @@ def ensure_tpu_vm(name, accelerator_type, container_image=None, zone=None, proje
       "gcloud", "compute", "tpus", "tpu-vm", "create", name,
       f"--zone={zone}",
       f"--accelerator-type={accelerator_type}",
-      f"--version={container_image}"
+      f"--version={container_image}",
+      f"--labels={RESOURCE_NAME_PREFIX}=true",
   ]
   if project:
       create_cmd.append(f"--project={project}")
