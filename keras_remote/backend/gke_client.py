@@ -6,7 +6,6 @@ import time
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 
-from keras_remote.core.accelerators import GpuConfig
 from keras_remote.core.accelerators import TpuConfig
 from keras_remote.core import accelerators
 from keras_remote.infra import infra
@@ -172,7 +171,7 @@ def cleanup_job(job_name, namespace="default"):
 
 def _parse_accelerator(accelerator):
     """Convert accelerator string to GKE pod spec fields."""
-    parsed = parse_accelerator(accelerator)
+    parsed = accelerators.parse_accelerator(accelerator)
 
     if parsed is None:
         return {
@@ -334,7 +333,7 @@ def _print_pod_logs(core_v1, job_name, namespace):
         pods = core_v1.list_namespaced_pod(
             namespace, label_selector=f"job-name={job_name}"
         )
-        
+
         for pod in pods.items:
             with suppress(ApiException):
                 logs = core_v1.read_namespaced_pod_log(

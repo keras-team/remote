@@ -6,7 +6,7 @@ import subprocess
 
 import click
 
-from keras_remote.accelerators import GPUS, TPUS, parse_accelerator
+from keras_remote.core.accelerators import GPUS, TPUS, parse_accelerator
 from keras_remote.cli.output import success, warning
 
 

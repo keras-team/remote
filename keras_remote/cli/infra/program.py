@@ -7,7 +7,7 @@ Artifact Registry, GKE cluster, and optional accelerator node pools.
 import pulumi
 import pulumi_gcp as gcp
 
-from keras_remote.accelerators import GpuConfig, TpuConfig
+from keras_remote.core.accelerators import GpuConfig, TpuConfig
 from keras_remote.constants import zone_to_ar_location, zone_to_region
 from keras_remote.cli.constants import REQUIRED_APIS
 

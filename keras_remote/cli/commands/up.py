@@ -2,8 +2,8 @@
 
 import click
 
-from keras_remote import accelerators
-from keras_remote.accelerators import GpuConfig
+from keras_remote.core import accelerators
+from keras_remote.core.accelerators import GpuConfig
 from keras_remote.constants import zone_to_ar_location
 from keras_remote.cli.config import InfraConfig
 from keras_remote.cli.constants import DEFAULT_ZONE, DEFAULT_CLUSTER_NAME
