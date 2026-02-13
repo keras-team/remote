@@ -15,7 +15,7 @@ from keras_remote.cli.infra.post_deploy import (
 from keras_remote.cli.infra.program import create_program
 from keras_remote.cli.infra.stack_manager import get_stack
 from keras_remote.cli.output import console, banner, success, config_summary
-from keras_remote.cli.prerequisites import check_all
+from keras_remote.cli.prerequisites_check import check_all
 from keras_remote.cli.prompts import resolve_project, prompt_accelerator
 
 
