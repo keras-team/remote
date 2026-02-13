@@ -26,6 +26,24 @@ def check_pulumi():
         )
 
 
+def check_kubectl():
+    """Verify kubectl is installed."""
+    if not shutil.which("kubectl"):
+        raise click.ClickException(
+            "kubectl not found. "
+            "Install from: https://kubernetes.io/docs/tasks/tools/"
+        )
+
+
+def check_docker():
+    """Verify Docker CLI is installed."""
+    if not shutil.which("docker"):
+        raise click.ClickException(
+            "Docker not found. "
+            "Install from: https://docs.docker.com/get-docker/"
+        )
+
+
 def check_gcloud_auth():
     """Check if gcloud Application Default Credentials are configured."""
     result = subprocess.run(
@@ -45,4 +63,6 @@ def check_all():
     """Run all prerequisite checks."""
     check_gcloud()
     check_pulumi()
+    check_kubectl()
+    check_docker()
     check_gcloud_auth()
