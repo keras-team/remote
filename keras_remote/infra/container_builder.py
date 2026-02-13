@@ -138,6 +138,8 @@ def _image_exists(image_uri, project):
     except google_exceptions.NotFound:
         return False
     except Exception:
+        logger.warning("Unexpected error checking image existence",
+                       exc_info=True)
         return False
 
 
