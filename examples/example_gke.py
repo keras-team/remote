@@ -1,8 +1,7 @@
 """
-Example: Using keras_remote with GKE backend
+Example: Using keras_remote with GKE
 
-This demonstrates the GKE-based execution backend for keras_remote.
-The GKE backend runs your functions on a pre-provisioned GKE cluster.
+This demonstrates running remote functions on a GKE cluster with keras_remote.
 
 Prerequisites:
 1. A GKE cluster (CPU or with GPU node pools)
@@ -44,7 +43,7 @@ import numpy as np
 import keras_remote
 
 # Example 1: CPU-only execution (works with default cluster)
-@keras_remote.run(accelerator="cpu", backend="gke")
+@keras_remote.run(accelerator="cpu")
 def simple_computation(x, y):
     """Simple addition that runs on remote CPU."""
     result = x + y
@@ -53,7 +52,7 @@ def simple_computation(x, y):
 
 
 # Example 2: Keras model training on CPU
-@keras_remote.run(accelerator="cpu", backend="gke")
+@keras_remote.run(accelerator="cpu")
 def train_simple_model_cpu():
     """Train a simple Keras model on remote CPU."""
 
@@ -81,7 +80,7 @@ def train_simple_model_cpu():
 
 
 # Example 3: GPU training (requires GPU node pool)
-@keras_remote.run(accelerator="nvidia-tesla-t4", backend="gke")
+@keras_remote.run(accelerator="nvidia-tesla-t4")
 def train_model_gpu():
     """Train a Keras model on remote GPU. Requires T4 GPU node pool."""
     model = keras.Sequential(
@@ -106,7 +105,7 @@ def train_model_gpu():
 def main():
     """Run examples."""
     print("=" * 60)
-    print("Keras Remote - GKE Backend Examples")
+    print("Keras Remote - GKE Examples")
     print("=" * 60)
 
     # Example 1: Simple computation (CPU)

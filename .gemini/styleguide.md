@@ -57,7 +57,7 @@ Every feature has a maintenance cost.
 
 - **No API should deal with internal implementation details.** Users shouldn't need to know about Kubernetes pods, node pools, or internal IP addresses unless absolutely necessary for advanced debugging.
 - **Introduce as few new concepts as possible.** The mental model should be "running a function on an accelerator", not "managing a distributed system".
-- **Objects that do interchangeable things should have identical APIs.** Switching from `backend="tpu-vm"` to `backend="gke"` should require minimal changes.
+- **Objects that do interchangeable things should have identical APIs.** Different backends should be interchangeable with minimal changes.
 - **Plain Python types are preferable.** Use strings for accelerators (`"v3-8"`) rather than custom Enums.
 
 ### Naming:

@@ -2,9 +2,7 @@
 """Remote execution entrypoint for keras_remote.
 
 This script runs on the remote TPU/GPU and executes the user's function.
-Supports two execution modes:
-- GCS mode: Used by GKE backend (artifacts via Cloud Storage)
-- TPU VM mode: Direct TPU VM execution (artifacts via local files)
+Artifacts are downloaded from and uploaded to Cloud Storage (GCS).
 """
 
 import os
@@ -24,38 +22,24 @@ TEMP_DIR = tempfile.gettempdir()
 def main():
     """Main entry point for remote execution.
 
-    Supports two modes:
-    1. GCS mode (GKE): python remote_runner.py gs://bucket/context.zip gs://bucket/payload.pkl gs://bucket/result.pkl
-    2. TPU VM mode: python remote_runner.py /tmp/context.zip
+    Usage: python remote_runner.py gs://bucket/context.zip gs://bucket/payload.pkl gs://bucket/result.pkl
     """
 
-    if len(sys.argv) < 2:
-        print("Usage: remote_runner.py <context_zip_path> [payload_gcs] [result_gcs]")
+    if len(sys.argv) < 4:
+        print("Usage: remote_runner.py <context_gcs> <payload_gcs> <result_gcs>")
         sys.exit(1)
 
-    context_arg = sys.argv[1]
-
-    # Determine execution mode based on arguments
-    if context_arg.startswith("gs://"):
-        # GCS mode (used by GKE backend)
-        run_gcs_mode()
-    else:
-        # TPU VM mode with local files
-        run_tpu_vm_mode()
+    run_gcs_mode()
 
 
 def run_gcs_mode():
-    """Execute with Cloud Storage artifacts (used by GKE backend).
+    """Execute with Cloud Storage artifacts.
 
     Args from sys.argv:
         sys.argv[1]: GCS path to context.zip
         sys.argv[2]: GCS path to payload.pkl
         sys.argv[3]: GCS path to result.pkl (output)
     """
-    if len(sys.argv) < 4:
-        print("Usage: remote_runner.py <context_gcs> <payload_gcs> <result_gcs>", flush=True)
-        sys.exit(1)
-
     context_gcs = sys.argv[1]
     payload_gcs = sys.argv[2]
     result_gcs = sys.argv[3]
@@ -140,60 +124,6 @@ def run_gcs_mode():
         print(f"[REMOTE] FATAL ERROR: {e}", flush=True)
         traceback.print_exc()
         sys.exit(1)
-
-
-def run_tpu_vm_mode():
-    """Execute in TPU VM mode with local files.
-
-    Args from sys.argv:
-        sys.argv[1]: Local path to context.zip
-    """
-    context_zip_path = sys.argv[1]
-
-    print(f"[REMOTE] Starting TPU VM execution mode")
-    print(f"[REMOTE] Context: {context_zip_path}")
-
-    # Workspace setup
-    workspace_dir = os.path.join(TEMP_DIR, "workspace")
-    payload_pkl = os.path.join(TEMP_DIR, "payload.pkl")
-
-    # Clear old workspace
-    if os.path.exists(workspace_dir):
-        shutil.rmtree(workspace_dir)
-    os.makedirs(workspace_dir)
-
-    # Extract context
-    print("[REMOTE] Extracting code context")
-    with zipfile.ZipFile(context_zip_path, "r") as zip_ref:
-        zip_ref.extractall(workspace_dir)
-
-    # Add workspace to Python path
-    sys.path.insert(0, workspace_dir)
-
-    # Load payload
-    print("[REMOTE] Loading function payload")
-    with open(payload_pkl, "rb") as f:
-        payload = cloudpickle.load(f)
-
-    func = payload["func"]
-    args = payload["args"]
-    kwargs = payload["kwargs"]
-    env_vars = payload.get("env_vars", {})
-    if env_vars:
-        print(f"[REMOTE] Setting {len(env_vars)} environment variables")
-        os.environ.update(env_vars)
-
-    # Execute function
-    print(f"[REMOTE] Executing {func.__name__}()")
-    try:
-        result = func(*args, **kwargs)
-        print(f"[REMOTE] Function execution completed. Result: {result}", flush=True)
-    except Exception as e:
-        print(f"[REMOTE] Error during function execution:", flush=True)
-        traceback.print_exc()
-        sys.exit(1)
-
-    print("[REMOTE] Execution complete")
 
 
 def _download_from_gcs(client, gcs_path, local_path):

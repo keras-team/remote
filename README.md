@@ -24,7 +24,6 @@ final_loss = train_model()
 - [Features](#features)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
-- [Backends](#backends)
 - [Usage Examples](#usage-examples)
 - [Configuration](#configuration)
 - [Supported Accelerators](#supported-accelerators)
@@ -38,7 +37,6 @@ final_loss = train_model()
 - **Simple decorator API** — Add `@keras_remote.run()` to any function to execute it remotely
 - **Automatic infrastructure** — No manual VM provisioning or teardown required
 - **Result serialization** — Functions return actual values, not just logs
-- **Multiple backends** — Choose between GKE or direct TPU VM
 - **Container caching** — Subsequent runs start in 2-4 minutes after initial build
 - **Built-in monitoring** — View job status and logs in Google Cloud Console
 - **Automatic cleanup** — Resources are released when jobs complete
@@ -137,49 +135,6 @@ result = hello_tpu()
 print(result)
 ```
 
-## Backends
-
-Keras Remote supports two execution backends:
-
-1. Google Kubernetes Engine (GKE)
-2. TPU VM
-
-### GKE
-
-Execute workloads on existing Google Kubernetes Engine clusters with GPU support.
-
-```python
-@keras_remote.run(accelerator="l4", backend="gke")
-def train():
-    ...
-```
-
-**Advantages:**
-
-- More customizability and higher control over the infrastructure
-- Support for GPU accelerators (T4, L4, A100, V100, H100)
-- Lower overhead for iterative development
-
-**Setup:** Run `keras-remote up` and select a GPU accelerator.
-
-### TPU VM
-
-Direct TPU VM provisioning for maximum control.
-
-```python
-@keras_remote.run(accelerator="v3-8", backend="tpu-vm")
-def train():
-    ...
-```
-
-**Advantages:**
-
-- Fastest warm start times
-- Lowest cost
-- Direct VM access
-
-**Note:** This backend requires manual resource cleanup and does not support result serialization.
-
 ## Usage Examples
 
 ### Basic Computation
@@ -256,26 +211,24 @@ See [examples/Dockerfile.prebuilt](examples/Dockerfile.prebuilt) for a template.
 | ---------------------- | -------- | --------------- | ---------------------------------- |
 | `KERAS_REMOTE_PROJECT` | Yes      | —               | Google Cloud project ID            |
 | `KERAS_REMOTE_ZONE`    | No       | `us-central1-a` | Default compute zone               |
-| `KERAS_REMOTE_CLUSTER` | No       | —               | GKE cluster name (for GKE backend) |
+| `KERAS_REMOTE_CLUSTER` | No       | —               | GKE cluster name                   |
 
 ### Decorator Parameters
 
 ```python
 @keras_remote.run(
     accelerator="v3-8",        # Required: TPU/GPU type
-    backend="gke",             # "gke" or "tpu-vm"
     container_image=None,      # Custom container URI
     zone=None,                 # Override default zone
     project=None,              # Override default project
-    vm_name=None,              # VM name (tpu-vm backend)
     cluster=None,              # GKE cluster name
-    namespace="default"        # Kubernetes namespace (gke backend)
+    namespace="default"        # Kubernetes namespace
 )
 ```
 
 ## Supported Accelerators
 
-### TPUs (TPU VM backend)
+### TPUs
 
 | Type           | Configurations                              |
 | -------------- | ------------------------------------------- |
@@ -285,7 +238,7 @@ See [examples/Dockerfile.prebuilt](examples/Dockerfile.prebuilt) for a template.
 | TPU v5p        | `v5p-8`, `v5p-16`                           |
 | TPU v6e        | `v6e-8`, `v6e-16`                           |
 
-### GPUs (GKE backend)
+### GPUs
 
 | Type        | Aliases                     |
 | ----------- | --------------------------- |
@@ -392,10 +345,7 @@ This removes:
 - GKE cluster and accelerator node pools (via Pulumi)
 - Artifact Registry repository and container images
 - Cloud Storage buckets (jobs and builds)
-- TPU VMs and orphaned Compute Engine VMs
-
-Use `--yes` to skip the confirmation prompt, or `--pulumi-only` to only
-destroy Pulumi-managed resources.
+Use `--yes` to skip the confirmation prompt.
 
 ## Contributing
 

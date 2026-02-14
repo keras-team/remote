@@ -3,11 +3,8 @@
 import click
 import pulumi.automation as auto
 
-from google.api_core import exceptions as api_exceptions
-from google.cloud import tpu_v2
-
 from keras_remote.cli.config import InfraConfig
-from keras_remote.cli.constants import DEFAULT_ZONE, RESOURCE_NAME_PREFIX
+from keras_remote.cli.constants import DEFAULT_ZONE
 from keras_remote.cli.infra.program import create_program
 from keras_remote.cli.infra.stack_manager import get_stack
 from keras_remote.cli.output import console, banner, success, warning
@@ -22,9 +19,7 @@ from keras_remote.cli.prompts import resolve_project
               help=("GCP zone [env: KERAS_REMOTE_ZONE,"
                     f" default: {DEFAULT_ZONE}]"))
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
-@click.option("--pulumi-only", is_flag=True,
-              help="Only destroy Pulumi-managed resources (skip supplementary cleanup)")
-def down(project, zone, yes, pulumi_only):
+def down(project, zone, yes):
     """Tear down keras-remote GCP infrastructure."""
     banner("keras-remote Cleanup")
 
@@ -45,8 +40,6 @@ def down(project, zone, yes, pulumi_only):
     console.print("  - Artifact Registry repository and images")
     console.print("  - Cloud Storage buckets (jobs and builds)")
     console.print("  - Enabled API services (left enabled)")
-    if not pulumi_only:
-        console.print("  - TPU VMs (if any)")
     console.print()
 
     if not yes:
@@ -68,12 +61,6 @@ def down(project, zone, yes, pulumi_only):
         success(f"Pulumi destroy complete. {result.summary.resource_changes}")
     except auto.errors.CommandError as e:
         warning(f"Pulumi destroy encountered an issue: {e}")
-        console.print("Continuing with supplementary cleanup...\n")
-
-    # Supplementary cleanup
-    if not pulumi_only:
-        console.print("\n[bold]Running supplementary cleanup...[/bold]\n")
-        _cleanup_tpu_vms(project, zone, config.cluster_name, console)
 
     # Summary
     console.print()
@@ -89,52 +76,3 @@ def down(project, zone, yes, pulumi_only):
         f"?project={project}"
     )
     console.print()
-
-
-def _is_api_disabled(exc):
-    """Check if an exception indicates the API is not enabled."""
-    msg = str(exc).lower()
-    return "not enabled" in msg or "disabled" in msg or "not been used" in msg
-
-
-def _cleanup_tpu_vms(project, zone, cluster_name, console):
-    """Delete TPU VMs in the project."""
-    console.print("Checking for TPU VMs...")
-    client = tpu_v2.TpuClient()
-    parent = f"projects/{project}/locations/{zone}"
-
-    try:
-        nodes = list(client.list_nodes(parent=parent))
-    except api_exceptions.GoogleAPICallError as e:
-        if _is_api_disabled(e):
-            success("  Skipped (TPU API not enabled)")
-        else:
-            warning(f"  Failed to list TPU VMs: {e}")
-        return
-
-    if not nodes:
-        success("  No TPU VMs found")
-        return
-
-    deleted_any = False
-    for node in nodes:
-        labels = dict(node.labels) if node.labels else {}
-        is_keras_remote = (
-            labels.get(RESOURCE_NAME_PREFIX) == "true" or
-            labels.get("goog-k8s-cluster-name") == cluster_name
-        )
-
-        if not is_keras_remote:
-            continue
-
-        deleted_any = True
-        short_name = node.name.split("/")[-1]
-        try:
-            operation = client.delete_node(name=node.name)
-            operation.result()
-            success(f"  Deleted TPU VM: {short_name}")
-        except Exception as e:
-            warning(f"  Failed to delete TPU VM: {short_name}: {e}")
-
-    if not deleted_any:
-        success("  No keras-remote TPU VMs found")
