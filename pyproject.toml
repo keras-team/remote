@@ -32,6 +32,10 @@ cli = [
     "pulumi-gcp>=9.0",
     "pulumi-command>=1.0",
 ]
+dev = [
+    "pre-commit",
+    "ruff",
+]
 demo = [
     "jax",
     "keras",
@@ -53,3 +57,11 @@ requires = [
     "twine",
 ]
 build-backend = "hatchling.build"
+
+[tool.ruff]
+indent-width = 2
+line-length = 80
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "N", "PYI", "T20", "TID", "SIM", "W", "I", "NPY"]
+ignore = ["E501"]
