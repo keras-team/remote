@@ -3,10 +3,8 @@
 import os
 import tempfile
 
+from absl import logging
 from google.cloud import storage
-from keras_remote.infra import infra
-
-logger = infra.logger
 
 
 def _get_project():
@@ -32,16 +30,16 @@ def upload_artifacts(bucket_name, job_id, payload_path, context_path, project=No
     # Upload payload
     blob = bucket.blob(f'{job_id}/payload.pkl')
     blob.upload_from_filename(payload_path)
-    logger.info(f"Uploaded payload to gs://{bucket_name}/{job_id}/payload.pkl")
+    logging.info(f"Uploaded payload to gs://{bucket_name}/{job_id}/payload.pkl")
 
     # Upload context
     blob = bucket.blob(f'{job_id}/context.zip')
     blob.upload_from_filename(context_path)
-    logger.info(f"Uploaded context to gs://{bucket_name}/{job_id}/context.zip")
+    logging.info(f"Uploaded context to gs://{bucket_name}/{job_id}/context.zip")
 
     # Get project ID for console link
     project = client.project
-    logger.info(f"View artifacts: https://console.cloud.google.com/storage/browser/{bucket_name}/{job_id}?project={project}")
+    logging.info(f"View artifacts: https://console.cloud.google.com/storage/browser/{bucket_name}/{job_id}?project={project}")
 
 
 def download_result(bucket_name, job_id, project=None):
@@ -62,7 +60,7 @@ def download_result(bucket_name, job_id, project=None):
     blob = bucket.blob(f'{job_id}/result.pkl')
     local_path = os.path.join(tempfile.gettempdir(), f'result-{job_id}.pkl')
     blob.download_to_filename(local_path)
-    logger.info(f"Downloaded result from gs://{bucket_name}/{job_id}/result.pkl")
+    logging.info(f"Downloaded result from gs://{bucket_name}/{job_id}/result.pkl")
 
     return local_path
 
@@ -87,6 +85,6 @@ def cleanup_artifacts(bucket_name, job_id, project=None):
         deleted_count += 1
 
     if deleted_count > 0:
-        logger.info(f"Cleaned up {deleted_count} artifacts from gs://{bucket_name}/{job_id}/")
+        logging.info(f"Cleaned up {deleted_count} artifacts from gs://{bucket_name}/{job_id}/")
 
 

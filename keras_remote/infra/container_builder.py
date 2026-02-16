@@ -12,11 +12,10 @@ from google.api_core import exceptions as google_exceptions
 from google.cloud import artifactregistry_v1
 from google.cloud import storage
 from google.cloud.devtools import cloudbuild_v1
+from absl import logging
+
 from keras_remote.constants import zone_to_ar_location, get_default_zone
 from keras_remote.core import accelerators
-from keras_remote.infra import infra
-
-logger = infra.logger
 
 REMOTE_RUNNER_FILE_NAME = "remote_runner.py"
 # Paths relative to this file's location (keras_remote/infra/)
@@ -54,17 +53,17 @@ def get_or_build_container(base_image, requirements_path, accelerator_type, proj
 
     # Check if image exists
     if _image_exists(image_uri, project):
-        logger.info(f"Using cached container: {image_uri}")
+        logging.info(f"Using cached container: {image_uri}")
         ar_url = (
             "https://console.cloud.google.com/artifacts"
             f"/docker/{project}/{ar_location}"
             f"/keras-remote/base?project={project}"
         )
-        logger.info(f"View image: {ar_url}")
+        logging.info(f"View image: {ar_url}")
         return image_uri
 
     # Build new image
-    logger.info(
+    logging.info(
         f"Building new container (requirements changed): "
         f"{image_uri}"
     )
@@ -138,7 +137,7 @@ def _image_exists(image_uri, project):
     except google_exceptions.NotFound:
         return False
     except Exception:
-        logger.warning("Unexpected error checking image existence",
+        logging.warning("Unexpected error checking image existence",
                        exc_info=True)
         return False
 
@@ -212,26 +211,26 @@ def _build_and_push(base_image, requirements_path, accelerator_type,
             )
         )
 
-        logger.info("Submitting build to Cloud Build...")
+        logging.info("Submitting build to Cloud Build...")
         operation = build_client.create_build(project_id=project, build=build_config)
 
         # Get build ID from the operation metadata
         build_id = operation.metadata.build.id if hasattr(operation, "metadata") else None
         if build_id:
-            logger.info(f"Build ID: {build_id}")
-            logger.info(f"View build: https://console.cloud.google.com/cloud-build/builds/{build_id}?project={project}")
+            logging.info(f"Build ID: {build_id}")
+            logging.info(f"View build: https://console.cloud.google.com/cloud-build/builds/{build_id}?project={project}")
 
-        logger.info("Building container image (this may take 5-10 minutes)...")
+        logging.info("Building container image (this may take 5-10 minutes)...")
         result = operation.result(timeout=1200)  # 20 minute timeout
 
         if result.status == cloudbuild_v1.Build.Status.SUCCESS:
-            logger.info(f"Container built successfully: {image_uri}")
+            logging.info(f"Container built successfully: {image_uri}")
             ar_url = (
                 "https://console.cloud.google.com/artifacts"
                 f"/docker/{project}/{ar_location}"
                 f"/keras-remote/base?project={project}"
             )
-            logger.info(f"View image: {ar_url}")
+            logging.info(f"View image: {ar_url}")
             return image_uri
         else:
             raise RuntimeError(f"Build failed with status: {result.status}")
@@ -298,7 +297,7 @@ def _upload_build_source(tarball_path, bucket_name, project):
     blob.upload_from_filename(tarball_path)
 
     gcs_uri = f"gs://{bucket_name}/{blob_name}"
-    logger.info(f"Uploaded build source to {gcs_uri}")
-    logger.info(f"View source: https://console.cloud.google.com/storage/browser/{bucket_name}?project={project}")
+    logging.info(f"Uploaded build source to {gcs_uri}")
+    logging.info(f"View source: https://console.cloud.google.com/storage/browser/{bucket_name}?project={project}")
 
     return gcs_uri
