@@ -45,7 +45,9 @@ final_loss = train_model()
 
 ## Installation
 
-### From Source
+### Library Only
+
+Install the core package to use the `@keras_remote.run()` decorator in your code:
 
 ```bash
 git clone https://github.com/keras-team/keras-remote.git
@@ -53,30 +55,64 @@ cd keras-remote
 pip install -e .
 ```
 
+This is sufficient if your infrastructure (GKE cluster, Artifact Registry, etc.) is already provisioned.
+
+### Library + CLI
+
+Install with the `cli` extra to also get the `keras-remote` command for managing infrastructure:
+
+```bash
+git clone https://github.com/keras-team/keras-remote.git
+cd keras-remote
+pip install -e ".[cli]"
+```
+
+This adds the `keras-remote up`, `keras-remote down`, `keras-remote status`, and `keras-remote config` commands for provisioning and tearing down cloud resources.
+
 ### Requirements
 
 - Python 3.11+
 - Google Cloud SDK (`gcloud`)
   - Run `gcloud auth login` and `gcloud auth application-default login`
+- [Pulumi CLI](https://www.pulumi.com/docs/install/) (required for `[cli]` install only)
 - A Google Cloud project with billing enabled
 
 ## Quick Start
 
 ### 1. Configure Google Cloud
 
-Run the automated setup script:
+Run the CLI setup command:
 
 ```bash
-./setup.sh
+keras-remote up
 ```
 
-The script will:
+This will interactively:
 
 - Prompt for your GCP project ID
+- Let you choose an accelerator type (CPU, GPU, or TPU)
 - Enable required APIs (Cloud Build, Artifact Registry, Cloud Storage, GKE)
 - Create the Artifact Registry repository
-- Configure Docker authentication
-- Verify the setup
+- Provision a GKE cluster with optional accelerator node pools
+- Configure Docker authentication and kubectl access
+
+You can also run non-interactively:
+
+```bash
+keras-remote up --project=my-project --accelerator=t4 --yes
+```
+
+To view current infrastructure state:
+
+```bash
+keras-remote status
+```
+
+To view configuration:
+
+```bash
+keras-remote config
+```
 
 ### 2. Set Environment Variables
 
@@ -124,7 +160,7 @@ def train():
 - Support for GPU accelerators (T4, L4, A100, V100, H100)
 - Lower overhead for iterative development
 
-**Setup:** Run `./setup.sh` and select GKE.
+**Setup:** Run `keras-remote up` and select a GPU accelerator.
 
 ### TPU VM
 
@@ -348,15 +384,18 @@ gcloud artifacts repositories describe keras-remote \
 Remove all Keras Remote resources to avoid charges:
 
 ```bash
-./cleanup.sh
+keras-remote down
 ```
 
 This removes:
 
-- Cloud Storage buckets
-- Artifact Registry repositories
-- GKE clusters (if created by setup)
-- TPU VMs
+- GKE cluster and accelerator node pools (via Pulumi)
+- Artifact Registry repository and container images
+- Cloud Storage buckets (jobs and builds)
+- TPU VMs and orphaned Compute Engine VMs
+
+Use `--yes` to skip the confirmation prompt, or `--pulumi-only` to only
+destroy Pulumi-managed resources.
 
 ## Contributing
 

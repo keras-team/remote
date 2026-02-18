@@ -5,6 +5,9 @@ import shlex
 import subprocess
 import sys
 
+from keras_remote.cli.constants import RESOURCE_NAME_PREFIX
+from keras_remote.constants import get_default_zone
+
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger("keras_remote")
@@ -17,10 +20,6 @@ _ACCELERATOR_IMAGE_MAP = {
     "v2": "tpu-vm-base",
     "v3": "tpu-vm-base",
 }
-
-
-def get_default_zone():
-  return os.environ.get("KERAS_REMOTE_ZONE", "us-central1-a")
 
 
 def get_default_project():
@@ -98,7 +97,8 @@ def ensure_tpu_vm(name, accelerator_type, container_image=None, zone=None, proje
       "gcloud", "compute", "tpus", "tpu-vm", "create", name,
       f"--zone={zone}",
       f"--accelerator-type={accelerator_type}",
-      f"--version={container_image}"
+      f"--version={container_image}",
+      f"--labels={RESOURCE_NAME_PREFIX}=true",
   ]
   if project:
       create_cmd.append(f"--project={project}")

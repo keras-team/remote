@@ -4,37 +4,24 @@ import hashlib
 import os
 import shutil
 import string
-import subprocess
 import tarfile
 import tempfile
 import time
 
+from google.api_core import exceptions as google_exceptions
+from google.cloud import artifactregistry_v1
 from google.cloud import storage
 from google.cloud.devtools import cloudbuild_v1
-from google.cloud.exceptions import NotFound
-
+from keras_remote.constants import zone_to_ar_location, get_default_zone
 from keras_remote.core import accelerators
 from keras_remote.infra import infra
 
 logger = infra.logger
 
 REMOTE_RUNNER_FILE_NAME = "remote_runner.py"
-
-
-def _zone_to_ar_location(zone):
-    """Derive Artifact Registry multi-region location from a GCP zone.
-
-    Args:
-        zone: GCP zone (e.g., 'us-central1-a', 'europe-west4-a')
-
-    Returns:
-        Multi-region string (e.g., 'us', 'europe', 'asia')
-    """
-    zone = zone or os.environ.get("KERAS_REMOTE_ZONE", "us-central1-a")
-    # zone -> region: us-central1-a -> us-central1
-    region = zone.rsplit("-", 1)[0] if zone and "-" in zone else "us-central1"
-    # region -> multi-region: us-central1 -> us
-    return region.split("-")[0]
+# Paths relative to this file's location (keras_remote/infra/)
+_PACKAGE_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), os.pardir))
+_RUNNER_DIR = os.path.join(os.path.dirname(__file__), os.pardir, "runner")
 
 
 def get_or_build_container(base_image, requirements_path, accelerator_type, project, zone=None):
@@ -52,7 +39,7 @@ def get_or_build_container(base_image, requirements_path, accelerator_type, proj
     Returns:
         Container image URI in Artifact Registry
     """
-    ar_location = _zone_to_ar_location(zone)
+    ar_location = zone_to_ar_location(zone or get_default_zone())
 
     # Generate deterministic hash from requirements + base image
     requirements_hash = _hash_requirements(requirements_path, accelerator_type, base_image)
@@ -105,13 +92,13 @@ def _hash_requirements(requirements_path, accelerator_type, base_image):
             content += f.read()
 
     # Include remote_runner.py in the hash so container rebuilds when it changes
-    remote_runner_path = os.path.join(os.path.dirname(__file__), REMOTE_RUNNER_FILE_NAME)
+    remote_runner_path = os.path.join(_RUNNER_DIR, REMOTE_RUNNER_FILE_NAME)
     if os.path.exists(remote_runner_path):
         with open(remote_runner_path, "r") as f:
             content += f"\n---{REMOTE_RUNNER_FILE_NAME}---\n{f.read()}"
 
     # Include Dockerfile template in the hash so container rebuilds when it changes
-    template_path = os.path.join(os.path.dirname(__file__), "Dockerfile.template")
+    template_path = os.path.join(_PACKAGE_ROOT, "Dockerfile.template")
     if os.path.exists(template_path):
         with open(template_path, "r") as f:
             content += f"\n---Dockerfile.template---\n{f.read()}"
@@ -124,24 +111,35 @@ def _image_exists(image_uri, project):
 
     Args:
         image_uri: Full image URI
+            (e.g., 'us-docker.pkg.dev/my-project/keras-remote/base:tag')
         project: GCP project ID
 
     Returns:
         True if image exists, False otherwise
     """
     try:
-        # Use gcloud to directly describe the specific image:tag
-        # Just check for successful return code (exit 0 = image exists)
-        cmd = [
-            "gcloud", "artifacts", "docker", "images", "describe",
-            image_uri,
-            "--format", "value(image_summary.digest)"
-        ]
+        # Parse: {location}-docker.pkg.dev/{project}/{repo}/{image}:{tag}
+        host, _, repo, image_and_tag = image_uri.split("/", 3)
+        location = host.split("-docker.pkg.dev")[0]
+        image, tag = image_and_tag.split(":", 1)
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        return result.returncode == 0
+        # Look up the tag directly — dockerImages resources use digests,
+        # not tags, so get_docker_image cannot resolve image:tag URIs.
+        name = (
+            f"projects/{project}/locations/{location}"
+            f"/repositories/{repo}/packages/{image}/tags/{tag}"
+        )
+        client = artifactregistry_v1.ArtifactRegistryClient()
+        client.get_tag(
+            request=artifactregistry_v1.GetTagRequest(name=name),
+        )
+        return True
 
-    except (OSError, subprocess.SubprocessError):
+    except google_exceptions.NotFound:
+        return False
+    except Exception:
+        logger.warning("Unexpected error checking image existence",
+                       exc_info=True)
         return False
 
 
@@ -177,7 +175,7 @@ def _build_and_push(base_image, requirements_path, accelerator_type,
             shutil.copy(requirements_path, os.path.join(tmpdir, "requirements.txt"))
 
         # Copy remote_runner.py
-        remote_runner_src = os.path.join(os.path.dirname(__file__), REMOTE_RUNNER_FILE_NAME)
+        remote_runner_src = os.path.join(_RUNNER_DIR, REMOTE_RUNNER_FILE_NAME)
         remote_runner_dst = os.path.join(tmpdir, REMOTE_RUNNER_FILE_NAME)
         shutil.copy(remote_runner_src, remote_runner_dst)
 
@@ -192,7 +190,7 @@ def _build_and_push(base_image, requirements_path, accelerator_type,
         # Upload source to GCS
         bucket_name = f"{project}-keras-remote-builds"
         source_gcs = _upload_build_source(
-            tarball_path, bucket_name, project, ar_location
+            tarball_path, bucket_name, project
         )
 
         # Submit build to Cloud Build
@@ -269,7 +267,7 @@ def _generate_dockerfile(base_image, requirements_path, accelerator_type):
             "RUN python3 -m pip install -r /tmp/requirements.txt\n"
         )
 
-    template_path = os.path.join(os.path.dirname(__file__), "Dockerfile.template")
+    template_path = os.path.join(_PACKAGE_ROOT, "Dockerfile.template")
     with open(template_path, "r") as f:
         template = string.Template(f.read())
 
@@ -280,30 +278,19 @@ def _generate_dockerfile(base_image, requirements_path, accelerator_type):
     )
 
 
-def _upload_build_source(tarball_path, bucket_name, project,
-                         ar_location="us"):
+def _upload_build_source(tarball_path, bucket_name, project):
     """Upload build source tarball to Cloud Storage.
 
     Args:
         tarball_path: Local path to tarball
         bucket_name: GCS bucket name
         project: GCP project ID
-        ar_location: Multi-region for bucket creation
 
     Returns:
         GCS URI of uploaded tarball
     """
     client = storage.Client(project=project)
-
-    # Ensure bucket exists
-    try:
-        bucket = client.get_bucket(bucket_name)
-    except NotFound:
-        bucket = client.create_bucket(
-            bucket_name, location=ar_location
-        )
-        logger.info(f"Created build bucket: gs://{bucket_name}")
-        logger.info(f"View bucket: https://console.cloud.google.com/storage/browser/{bucket_name}?project={project}")
+    bucket = client.bucket(bucket_name)
 
     # Upload tarball
     blob_name = f"source-{int(time.time())}.tar.gz"
