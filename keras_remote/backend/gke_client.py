@@ -6,11 +6,10 @@ import time
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 
+from absl import logging
+
 from keras_remote.core.accelerators import TpuConfig
 from keras_remote.core import accelerators
-from keras_remote.infra import infra
-
-logger = infra.logger
 
 
 def submit_k8s_job(
@@ -58,10 +57,10 @@ def submit_k8s_job(
 
     try:
         created_job = batch_v1.create_namespaced_job(namespace=namespace, body=job)
-        logger.info(f"Submitted K8s job: {job_name}")
-        logger.info(f"View job with: kubectl get job {job_name} -n {namespace}")
-        logger.info(
-            f"View logs with: kubectl logs -l job-name={job_name} -n {namespace}"
+        logging.info("Submitted K8s job: %s", job_name)
+        logging.info("View job with: kubectl get job %s -n %s", job_name, namespace)
+        logging.info(
+            "View logs with: kubectl logs -l job-name=%s -n %s", job_name, namespace
         )
         return created_job
     except ApiException as e:
@@ -124,7 +123,7 @@ def wait_for_job(job, namespace="default", timeout=3600, poll_interval=10):
 
         # Check completion conditions
         if job_status.status.succeeded and job_status.status.succeeded >= 1:
-            print(f"[REMOTE] Job {job_name} completed successfully")
+            logging.info("Job %s completed successfully", job_name)
             return "success"
 
         if job_status.status.failed and job_status.status.failed >= 1:
@@ -137,7 +136,7 @@ def wait_for_job(job, namespace="default", timeout=3600, poll_interval=10):
 
         # Job still running
         if not logged_running:
-            logger.info(f"Job {job_name} running...")
+            logging.info("Job %s running...", job_name)
             logged_running = True
 
         time.sleep(poll_interval)
@@ -160,13 +159,13 @@ def cleanup_job(job_name, namespace="default"):
             namespace=namespace,
             body=client.V1DeleteOptions(propagation_policy="Foreground"),
         )
-        logger.info(f"Deleted K8s job: {job_name}")
+        logging.info("Deleted K8s job: %s", job_name)
     except ApiException as e:
         if e.status == 404:
             # Job already deleted
             pass
         else:
-            logger.warning(f"Failed to delete job {job_name}: {e.reason}")
+            logging.warning("Failed to delete job %s: %s", job_name, e.reason)
 
 
 def _parse_accelerator(accelerator):
@@ -339,7 +338,7 @@ def _print_pod_logs(core_v1, job_name, namespace):
                 logs = core_v1.read_namespaced_pod_log(
                     pod.metadata.name, namespace, tail_lines=100
                 )
-                print(f"[REMOTE] Pod {pod.metadata.name} logs:\n{logs}")
+                logging.info("Pod %s logs:\n%s", pod.metadata.name, logs)
 
 
 def _check_pod_scheduling(core_v1, job_name, namespace):

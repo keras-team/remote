@@ -13,14 +13,13 @@ from typing import Any, Callable, Optional, Protocol
 
 import cloudpickle
 
+from absl import logging
+
 from keras_remote.constants import get_default_zone, zone_to_region
 from keras_remote.infra import container_builder
 from keras_remote.backend import gke_client
-from keras_remote.infra import infra
 from keras_remote.utils import packager
 from keras_remote.utils import storage
-
-logger = infra.logger
 
 
 @dataclass
@@ -155,7 +154,7 @@ def _prepare_artifacts(
     ctx: JobContext, tmpdir: str, caller_frame_depth: int = 3
 ) -> None:
     """Phase 1: Package function payload and working directory context."""
-    logger.info("Packaging function and context...")
+    logging.info("Packaging function and context...")
 
     # Get caller directory
     frame = inspect.stack()[caller_frame_depth]
@@ -170,28 +169,28 @@ def _prepare_artifacts(
     packager.save_payload(
         ctx.func, ctx.args, ctx.kwargs, ctx.env_vars, ctx.payload_path
     )
-    logger.info(f"Payload serialized to {ctx.payload_path}")
+    logging.info("Payload serialized to %s", ctx.payload_path)
 
     # Zip working directory
     ctx.context_path = os.path.join(tmpdir, "context.zip")
     packager.zip_working_dir(caller_path, ctx.context_path)
-    logger.info(f"Context packaged to {ctx.context_path}")
+    logging.info("Context packaged to %s", ctx.context_path)
 
     # Find requirements.txt
     ctx.requirements_path = _find_requirements(caller_path)
     if ctx.requirements_path:
-        logger.info(f"Found requirements.txt: {ctx.requirements_path}")
+        logging.info("Found requirements.txt: %s", ctx.requirements_path)
     else:
-        logger.info("No requirements.txt found")
+        logging.info("No requirements.txt found")
 
 
 def _build_container(ctx: JobContext) -> None:
     """Phase 2: Build or get cached container image."""
     if ctx.container_image:
         ctx.image_uri = ctx.container_image
-        logger.info(f"Using custom container: {ctx.image_uri}")
+        logging.info("Using custom container: %s", ctx.image_uri)
     else:
-        logger.info("Building container image...")
+        logging.info("Building container image...")
         ctx.image_uri = container_builder.get_or_build_container(
             base_image="python:3.12-slim",
             requirements_path=ctx.requirements_path,
@@ -203,7 +202,7 @@ def _build_container(ctx: JobContext) -> None:
 
 def _upload_artifacts(ctx: JobContext) -> None:
     """Phase 3: Upload artifacts to Cloud Storage."""
-    logger.info(f"Uploading artifacts to Cloud Storage (job: {ctx.job_id})...")
+    logging.info("Uploading artifacts to Cloud Storage (job: %s)...", ctx.job_id)
     storage.upload_artifacts(
         bucket_name=ctx.bucket_name,
         job_id=ctx.job_id,
@@ -215,7 +214,7 @@ def _upload_artifacts(ctx: JobContext) -> None:
 
 def _download_result(ctx: JobContext) -> dict:
     """Phase 6: Download and deserialize result from Cloud Storage."""
-    logger.info("Downloading result...")
+    logging.info("Downloading result...")
     result_path = storage.download_result(
         ctx.bucket_name, ctx.job_id, project=ctx.project
     )
@@ -226,14 +225,14 @@ def _download_result(ctx: JobContext) -> dict:
 
 def _cleanup_and_return(ctx: JobContext, result_payload: dict) -> Any:
     """Phase 7: Cleanup Cloud Storage artifacts and handle result."""
-    logger.info("Cleaning up artifacts...")
+    logging.info("Cleaning up artifacts...")
     storage.cleanup_artifacts(ctx.bucket_name, ctx.job_id, project=ctx.project)
 
     if result_payload["success"]:
-        logger.info("Remote execution completed successfully")
+        logging.info("Remote execution completed successfully")
         return result_payload["result"]
     else:
-        logger.error(f"Remote execution failed:\n{result_payload['traceback']}")
+        logging.error("Remote execution failed:\n%s", result_payload['traceback'])
         raise result_payload["exception"]
 
 
@@ -264,7 +263,7 @@ def execute_remote(ctx: JobContext, backend: BackendClient) -> Any:
         _upload_artifacts(ctx)
 
         # Phase 4: Submit job (backend-specific)
-        logger.info(f"Submitting job to {backend.__class__.__name__}...")
+        logging.info("Submitting job to %s...", backend.__class__.__name__)
         job = backend.submit_job(ctx)
 
         # Phase 5: Wait for completion (with cleanup on failure)

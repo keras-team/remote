@@ -12,6 +12,7 @@ import tempfile
 import traceback
 import zipfile
 
+from absl import logging
 import cloudpickle
 from google.cloud import storage
 
@@ -26,7 +27,9 @@ def main():
     """
 
     if len(sys.argv) < 4:
-        print("Usage: remote_runner.py <context_gcs> <payload_gcs> <result_gcs>")
+        logging.error(
+            "Usage: remote_runner.py <context_gcs> <payload_gcs> <result_gcs>"
+        )
         sys.exit(1)
 
     run_gcs_mode()
@@ -44,7 +47,7 @@ def run_gcs_mode():
     payload_gcs = sys.argv[2]
     result_gcs = sys.argv[3]
 
-    print(f"[REMOTE] Starting GCS execution mode", flush=True)
+    logging.info("Starting GCS execution mode")
 
     # Define local paths using tempfile
     context_path = os.path.join(TEMP_DIR, "context.zip")
@@ -56,7 +59,7 @@ def run_gcs_mode():
         storage_client = storage.Client()
 
         # Download artifacts from Cloud Storage
-        print(f"[REMOTE] Downloading artifacts...", flush=True)
+        logging.info("Downloading artifacts...")
         _download_from_gcs(storage_client, context_gcs, context_path)
         _download_from_gcs(storage_client, payload_gcs, payload_path)
 
@@ -72,7 +75,7 @@ def run_gcs_mode():
         sys.path.insert(0, workspace_dir)
 
         # Load and deserialize payload
-        print("[REMOTE] Loading function payload", flush=True)
+        logging.info("Loading function payload")
         with open(payload_path, "rb") as f:
             payload = cloudpickle.load(f)
 
@@ -81,19 +84,19 @@ def run_gcs_mode():
         kwargs = payload["kwargs"]
         env_vars = payload.get("env_vars", {})
         if env_vars:
-            print(f"[REMOTE] Setting {len(env_vars)} environment variables", flush=True)
+            logging.info("Setting %d environment variables", len(env_vars))
             os.environ.update(env_vars)
 
         # Execute function and capture result
-        print(f"[REMOTE] Executing {func.__name__}()", flush=True)
+        logging.info("Executing %s()", func.__name__)
         result = None
         exception = None
 
         try:
             result = func(*args, **kwargs)
-            print(f"[REMOTE] Function completed successfully", flush=True)
+            logging.info("Function completed successfully")
         except BaseException as e:
-            print(f"[REMOTE] ERROR: {type(e).__name__}: {e}", flush=True)
+            logging.error("%s: %s", type(e).__name__, e)
             traceback.print_exc()
             sys.stdout.flush()
             sys.stderr.flush()
@@ -107,21 +110,21 @@ def run_gcs_mode():
             "success": exception is None,
             "result": result if exception is None else None,
             "exception": exception,
-            "traceback": traceback.format_exc() if exception else None
+            "traceback": traceback.format_exc() if exception else None,
         }
 
         with open(result_path, "wb") as f:
             cloudpickle.dump(result_payload, f)
 
         # Upload result to Cloud Storage
-        print(f"[REMOTE] Uploading result...", flush=True)
+        logging.info("Uploading result...")
         _upload_to_gcs(storage_client, result_path, result_gcs)
 
-        print("[REMOTE] Execution complete", flush=True)
+        logging.info("Execution complete")
         sys.exit(0 if exception is None else 1)
 
     except Exception as e:
-        print(f"[REMOTE] FATAL ERROR: {e}", flush=True)
+        logging.fatal("%s", e)
         traceback.print_exc()
         sys.exit(1)
 
