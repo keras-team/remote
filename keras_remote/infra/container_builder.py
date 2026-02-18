@@ -53,19 +53,18 @@ def get_or_build_container(base_image, requirements_path, accelerator_type, proj
 
     # Check if image exists
     if _image_exists(image_uri, project):
-        logging.info(f"Using cached container: {image_uri}")
+        logging.info("Using cached container: %s", image_uri)
         ar_url = (
             "https://console.cloud.google.com/artifacts"
             f"/docker/{project}/{ar_location}"
             f"/keras-remote/base?project={project}"
         )
-        logging.info(f"View image: {ar_url}")
+        logging.info("View image: %s", ar_url)
         return image_uri
 
     # Build new image
     logging.info(
-        f"Building new container (requirements changed): "
-        f"{image_uri}"
+        "Building new container (requirements changed): %s", image_uri
     )
     return _build_and_push(
         base_image, requirements_path, accelerator_type,
@@ -217,20 +216,20 @@ def _build_and_push(base_image, requirements_path, accelerator_type,
         # Get build ID from the operation metadata
         build_id = operation.metadata.build.id if hasattr(operation, "metadata") else None
         if build_id:
-            logging.info(f"Build ID: {build_id}")
-            logging.info(f"View build: https://console.cloud.google.com/cloud-build/builds/{build_id}?project={project}")
+            logging.info("Build ID: %s", build_id)
+            logging.info("View build: https://console.cloud.google.com/cloud-build/builds/%s?project=%s", build_id, project)
 
         logging.info("Building container image (this may take 5-10 minutes)...")
         result = operation.result(timeout=1200)  # 20 minute timeout
 
         if result.status == cloudbuild_v1.Build.Status.SUCCESS:
-            logging.info(f"Container built successfully: {image_uri}")
+            logging.info("Container built successfully: %s", image_uri)
             ar_url = (
                 "https://console.cloud.google.com/artifacts"
                 f"/docker/{project}/{ar_location}"
                 f"/keras-remote/base?project={project}"
             )
-            logging.info(f"View image: {ar_url}")
+            logging.info("View image: %s", ar_url)
             return image_uri
         else:
             raise RuntimeError(f"Build failed with status: {result.status}")
@@ -297,7 +296,7 @@ def _upload_build_source(tarball_path, bucket_name, project):
     blob.upload_from_filename(tarball_path)
 
     gcs_uri = f"gs://{bucket_name}/{blob_name}"
-    logging.info(f"Uploaded build source to {gcs_uri}")
-    logging.info(f"View source: https://console.cloud.google.com/storage/browser/{bucket_name}?project={project}")
+    logging.info("Uploaded build source to %s", gcs_uri)
+    logging.info("View source: https://console.cloud.google.com/storage/browser/%s?project=%s", bucket_name, project)
 
     return gcs_uri

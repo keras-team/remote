@@ -30,16 +30,16 @@ def upload_artifacts(bucket_name, job_id, payload_path, context_path, project=No
     # Upload payload
     blob = bucket.blob(f'{job_id}/payload.pkl')
     blob.upload_from_filename(payload_path)
-    logging.info(f"Uploaded payload to gs://{bucket_name}/{job_id}/payload.pkl")
+    logging.info("Uploaded payload to gs://%s/%s/payload.pkl", bucket_name, job_id)
 
     # Upload context
     blob = bucket.blob(f'{job_id}/context.zip')
     blob.upload_from_filename(context_path)
-    logging.info(f"Uploaded context to gs://{bucket_name}/{job_id}/context.zip")
+    logging.info("Uploaded context to gs://%s/%s/context.zip", bucket_name, job_id)
 
     # Get project ID for console link
     project = client.project
-    logging.info(f"View artifacts: https://console.cloud.google.com/storage/browser/{bucket_name}/{job_id}?project={project}")
+    logging.info("View artifacts: https://console.cloud.google.com/storage/browser/%s/%s?project=%s", bucket_name, job_id, project)
 
 
 def download_result(bucket_name, job_id, project=None):
@@ -60,7 +60,7 @@ def download_result(bucket_name, job_id, project=None):
     blob = bucket.blob(f'{job_id}/result.pkl')
     local_path = os.path.join(tempfile.gettempdir(), f'result-{job_id}.pkl')
     blob.download_to_filename(local_path)
-    logging.info(f"Downloaded result from gs://{bucket_name}/{job_id}/result.pkl")
+    logging.info("Downloaded result from gs://%s/%s/result.pkl", bucket_name, job_id)
 
     return local_path
 
@@ -85,6 +85,6 @@ def cleanup_artifacts(bucket_name, job_id, project=None):
         deleted_count += 1
 
     if deleted_count > 0:
-        logging.info(f"Cleaned up {deleted_count} artifacts from gs://{bucket_name}/{job_id}/")
+        logging.info("Cleaned up %d artifacts from gs://%s/%s/", deleted_count, bucket_name, job_id)
 
 

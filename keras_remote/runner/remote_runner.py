@@ -27,7 +27,9 @@ def main():
     """
 
     if len(sys.argv) < 4:
-        logging.error("Usage: remote_runner.py <context_gcs> <payload_gcs> <result_gcs>")
+        logging.error(
+            "Usage: remote_runner.py <context_gcs> <payload_gcs> <result_gcs>"
+        )
         sys.exit(1)
 
     run_gcs_mode()
@@ -94,7 +96,7 @@ def run_gcs_mode():
             result = func(*args, **kwargs)
             logging.info("Function completed successfully")
         except BaseException as e:
-            logging.error("ERROR: %s: %s", type(e).__name__, e)
+            logging.error("%s: %s", type(e).__name__, e)
             traceback.print_exc()
             sys.stdout.flush()
             sys.stderr.flush()
@@ -108,7 +110,7 @@ def run_gcs_mode():
             "success": exception is None,
             "result": result if exception is None else None,
             "exception": exception,
-            "traceback": traceback.format_exc() if exception else None
+            "traceback": traceback.format_exc() if exception else None,
         }
 
         with open(result_path, "wb") as f:
@@ -122,7 +124,7 @@ def run_gcs_mode():
         sys.exit(0 if exception is None else 1)
 
     except Exception as e:
-        logging.fatal("FATAL ERROR: %s", e)
+        logging.fatal("%s", e)
         traceback.print_exc()
         sys.exit(1)
 

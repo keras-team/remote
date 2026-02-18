@@ -57,10 +57,10 @@ def submit_k8s_job(
 
     try:
         created_job = batch_v1.create_namespaced_job(namespace=namespace, body=job)
-        logging.info(f"Submitted K8s job: {job_name}")
-        logging.info(f"View job with: kubectl get job {job_name} -n {namespace}")
+        logging.info("Submitted K8s job: %s", job_name)
+        logging.info("View job with: kubectl get job %s -n %s", job_name, namespace)
         logging.info(
-            f"View logs with: kubectl logs -l job-name={job_name} -n {namespace}"
+            "View logs with: kubectl logs -l job-name=%s -n %s", job_name, namespace
         )
         return created_job
     except ApiException as e:
@@ -136,7 +136,7 @@ def wait_for_job(job, namespace="default", timeout=3600, poll_interval=10):
 
         # Job still running
         if not logged_running:
-            logging.info(f"Job {job_name} running...")
+            logging.info("Job %s running...", job_name)
             logged_running = True
 
         time.sleep(poll_interval)
@@ -159,13 +159,13 @@ def cleanup_job(job_name, namespace="default"):
             namespace=namespace,
             body=client.V1DeleteOptions(propagation_policy="Foreground"),
         )
-        logging.info(f"Deleted K8s job: {job_name}")
+        logging.info("Deleted K8s job: %s", job_name)
     except ApiException as e:
         if e.status == 404:
             # Job already deleted
             pass
         else:
-            logging.warning(f"Failed to delete job {job_name}: {e.reason}")
+            logging.warning("Failed to delete job %s: %s", job_name, e.reason)
 
 
 def _parse_accelerator(accelerator):
