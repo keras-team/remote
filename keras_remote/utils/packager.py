@@ -3,12 +3,13 @@ import zipfile
 
 import cloudpickle
 
+
 def zip_working_dir(base_dir, output_path):
   """Zips the base_dir into output_path, excluding .git and __pycache__."""
-  with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+  with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zipf:
     for root, dirs, files in os.walk(base_dir):
       # Exclude .git and __pycache__ directories
-      dirs[:] = [d for d in dirs if d not in ['.git', '__pycache__']]
+      dirs[:] = [d for d in dirs if d not in [".git", "__pycache__"]]
 
       for file in files:
         file_path = os.path.join(root, file)
@@ -19,10 +20,10 @@ def zip_working_dir(base_dir, output_path):
 def save_payload(func, args, kwargs, env_vars, output_path):
   """Uses cloudpickle to serialize the function, args, kwargs, and dummy env_vars."""
   payload = {
-    'func': func,
-    'args': args,
-    'kwargs': kwargs,
-    'env_vars': env_vars,
+    "func": func,
+    "args": args,
+    "kwargs": kwargs,
+    "env_vars": env_vars,
   }
-  with open(output_path, 'wb') as f:
+  with open(output_path, "wb") as f:
     cloudpickle.dump(payload, f)

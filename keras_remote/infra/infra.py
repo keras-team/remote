@@ -1,8 +1,7 @@
 import logging
 import os
 
-
-logging.basicConfig(level=logging.INFO, format='%(message)s')
+logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("keras_remote")
 
 

@@ -3,22 +3,23 @@
 import os
 
 from keras_remote.constants import DEFAULT_ZONE  # noqa: F401 — re-exported
+
 RESOURCE_NAME_PREFIX = "keras-remote"
 DEFAULT_CLUSTER_NAME = f"{RESOURCE_NAME_PREFIX}-cluster"
 STATE_DIR = os.environ.get(
-    "KERAS_REMOTE_STATE_DIR",
-    os.path.expanduser("~/.keras-remote/pulumi"),
+  "KERAS_REMOTE_STATE_DIR",
+  os.path.expanduser("~/.keras-remote/pulumi"),
 )
 REQUIRED_APIS = [
-    "compute.googleapis.com",
-    "cloudbuild.googleapis.com",
-    "artifactregistry.googleapis.com",
-    "storage.googleapis.com",
-    "container.googleapis.com",
+  "compute.googleapis.com",
+  "cloudbuild.googleapis.com",
+  "artifactregistry.googleapis.com",
+  "storage.googleapis.com",
+  "container.googleapis.com",
 ]
 
 NVIDIA_DRIVER_DAEMONSET_URL = (
-    "https://raw.githubusercontent.com/GoogleCloudPlatform/"
-    "container-engine-accelerators/v1.0.20/"
-    "nvidia-driver-installer/cos/daemonset-preloaded.yaml"
+  "https://raw.githubusercontent.com/GoogleCloudPlatform/"
+  "container-engine-accelerators/v1.0.20/"
+  "nvidia-driver-installer/cos/daemonset-preloaded.yaml"
 )
