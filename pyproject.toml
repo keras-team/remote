@@ -30,7 +30,6 @@ cli = [
     "pulumi>=3.0",
     "pulumi-gcp>=9.0",
     "pulumi-command>=1.0",
-    "google-cloud-tpu>=1.0",
 ]
 demo = [
     "jax",
