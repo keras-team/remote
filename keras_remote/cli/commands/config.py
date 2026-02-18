@@ -60,7 +60,7 @@ def show():
     table.add_row(
         "Pulumi State Dir",
         state_dir or STATE_DIR,
-        "KERAS_REMOTE_STATE_DIR" if state_dir else f"default",
+        "KERAS_REMOTE_STATE_DIR" if state_dir else "default",
     )
 
     console.print()

@@ -7,7 +7,10 @@ or apply Kubernetes manifests that depend on the cluster being ready.
 import os
 import subprocess
 
-from keras_remote.cli.constants import NVIDIA_DRIVER_DAEMONSET_URL
+from keras_remote.cli.constants import (
+    NVIDIA_DRIVER_DAEMONSET_URL,
+    LWS_INSTALL_URL,
+)
 
 
 def configure_docker_auth(ar_location):
@@ -54,5 +57,16 @@ def install_gpu_drivers():
     """
     subprocess.run(
         ["kubectl", "apply", "-f", NVIDIA_DRIVER_DAEMONSET_URL],
+        check=True,
+    )
+
+
+def install_lws():
+    """Install the LeaderWorkerSet custom resource controller.
+    
+    This enables Pathways scheduling on the GKE cluster.
+    """
+    subprocess.run(
+        ["kubectl", "apply", "--server-side", "-f", LWS_INSTALL_URL],
         check=True,
     )

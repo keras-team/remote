@@ -60,7 +60,7 @@ def run_gcs_mode():
     payload_gcs = sys.argv[2]
     result_gcs = sys.argv[3]
 
-    print(f"[REMOTE] Starting GCS execution mode", flush=True)
+    print("[REMOTE] Starting GCS execution mode", flush=True)
 
     # Define local paths using tempfile
     context_path = os.path.join(TEMP_DIR, "context.zip")
@@ -72,7 +72,7 @@ def run_gcs_mode():
         storage_client = storage.Client()
 
         # Download artifacts from Cloud Storage
-        print(f"[REMOTE] Downloading artifacts...", flush=True)
+        print("[REMOTE] Downloading artifacts...", flush=True)
         _download_from_gcs(storage_client, context_gcs, context_path)
         _download_from_gcs(storage_client, payload_gcs, payload_path)
 
@@ -107,7 +107,7 @@ def run_gcs_mode():
 
         try:
             result = func(*args, **kwargs)
-            print(f"[REMOTE] Function completed successfully", flush=True)
+            print("[REMOTE] Function completed successfully", flush=True)
         except BaseException as e:
             print(f"[REMOTE] ERROR: {type(e).__name__}: {e}", flush=True)
             traceback.print_exc()
@@ -130,7 +130,7 @@ def run_gcs_mode():
             cloudpickle.dump(result_payload, f)
 
         # Upload result to Cloud Storage
-        print(f"[REMOTE] Uploading result...", flush=True)
+        print("[REMOTE] Uploading result...", flush=True)
         _upload_to_gcs(storage_client, result_path, result_gcs)
 
         print("[REMOTE] Execution complete", flush=True)
@@ -150,7 +150,7 @@ def run_tpu_vm_mode():
     """
     context_zip_path = sys.argv[1]
 
-    print(f"[REMOTE] Starting TPU VM execution mode")
+    print("[REMOTE] Starting TPU VM execution mode")
     print(f"[REMOTE] Context: {context_zip_path}")
 
     # Workspace setup
@@ -188,8 +188,8 @@ def run_tpu_vm_mode():
     try:
         result = func(*args, **kwargs)
         print(f"[REMOTE] Function execution completed. Result: {result}", flush=True)
-    except Exception as e:
-        print(f"[REMOTE] Error during function execution:", flush=True)
+    except Exception:
+        print("[REMOTE] Error during function execution:", flush=True)
         traceback.print_exc()
         sys.exit(1)
 

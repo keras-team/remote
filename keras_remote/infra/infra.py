@@ -197,6 +197,6 @@ def ssh_execute(
   ssh_cmd.append(f"--command={docker_run_cmd}")
 
   logger.info(f"Running script inside Docker container on {name}")
-  stdout = run_cmd(ssh_cmd, stream=True)
+  run_cmd(ssh_cmd, stream=True)
   # TODO: Parse stdout to extract and deserialize the function result.
   return None

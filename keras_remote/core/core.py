@@ -13,7 +13,9 @@ from keras_remote.backend.execution import (
     JobContext,
     execute_remote,
     GKEBackend,
+    PathwaysBackend,
 )
+from keras_remote.core import accelerators
 
 logger = infra.logger
 
@@ -54,12 +56,26 @@ def run(accelerator="v3-8",
               elif pattern in os.environ:
                   env_vars[pattern] = os.environ[pattern]
 
-      if backend == "gke":
+      # Resolve default backend strategy
+      resolved_backend = backend
+      if resolved_backend is None:
+          try:
+              accel_config = accelerators.parse_accelerator(accelerator)
+              if isinstance(accel_config, accelerators.TpuConfig) and accel_config.num_nodes > 1:
+                  resolved_backend = "pathways"
+              else:
+                  resolved_backend = "gke"
+          except ValueError:
+              resolved_backend = "gke"
+
+      if resolved_backend == "gke":
         return _execute_on_gke(func, args, kwargs, accelerator, container_image, zone, project, cluster, namespace, env_vars)
-      elif backend == "tpu-vm":
+      elif resolved_backend == "pathways":
+        return _execute_on_pathways(func, args, kwargs, accelerator, container_image, zone, project, cluster, namespace, env_vars)
+      elif resolved_backend == "tpu-vm":
         return _execute_on_tpu_vm(func, args, kwargs, accelerator, container_image, zone, project, vm_name, env_vars)
       else:
-        raise ValueError(f"Unknown backend: {backend}. Use 'gke' or 'tpu-vm'.")
+        raise ValueError(f"Unknown backend: {resolved_backend}. Use 'gke', 'pathways', or 'tpu-vm'.")
     return wrapper
   return decorator
 
@@ -154,3 +170,16 @@ def _execute_on_gke(func, args, kwargs, accelerator, container_image, zone, proj
         func, args, kwargs, accelerator, container_image, zone, project, env_vars
     )
     return execute_remote(ctx, GKEBackend(cluster=cluster, namespace=namespace))
+
+
+def _execute_on_pathways(func, args, kwargs, accelerator, container_image, zone, project, cluster, namespace, env_vars):
+    """Execute function on GKE cluster via ML Pathways."""
+    if not cluster:
+        cluster = os.environ.get("KERAS_REMOTE_GKE_CLUSTER")
+    if not namespace:
+        namespace = os.environ.get("KERAS_REMOTE_GKE_NAMESPACE", "default")
+
+    ctx = JobContext.from_params(
+        func, args, kwargs, accelerator, container_image, zone, project, env_vars
+    )
+    return execute_remote(ctx, PathwaysBackend(cluster=cluster, namespace=namespace))

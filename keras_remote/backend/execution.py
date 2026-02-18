@@ -16,6 +16,7 @@ import cloudpickle
 from keras_remote.constants import get_default_zone, zone_to_region
 from keras_remote.infra import container_builder
 from keras_remote.backend import gke_client
+from keras_remote.backend import pathways_client
 from keras_remote.infra import infra
 from keras_remote.utils import packager
 from keras_remote.utils import storage
@@ -108,13 +109,14 @@ class BackendClient(Protocol):
         ...
 
 
-class GKEBackend:
-    """Backend adapter for GKE."""
-
+class BaseK8sBackend:
+    """Base class for Kubernetes-based backends."""
     def __init__(self, cluster: Optional[str] = None, namespace: str = "default"):
         self.cluster = cluster
         self.namespace = namespace
 
+class GKEBackend(BaseK8sBackend):
+    """Backend adapter for standard GKE Jobs."""
     def submit_job(self, ctx: JobContext) -> Any:
         """Submit job to GKE cluster."""
         return gke_client.submit_k8s_job(
@@ -135,6 +137,30 @@ class GKEBackend:
         """Clean up K8s job resources."""
         job_name = job.metadata.name
         gke_client.cleanup_job(job_name, namespace=self.namespace)
+
+
+class PathwaysBackend(BaseK8sBackend):
+    """Backend adapter for ML Pathways using LeaderWorkerSet."""
+    def submit_job(self, ctx: JobContext) -> Any:
+        """Submit LWS job to GKE cluster."""
+        return pathways_client.submit_pathways_job(
+            display_name=ctx.display_name,
+            container_uri=ctx.image_uri,
+            accelerator=ctx.accelerator,
+            project=ctx.project,
+            job_id=ctx.job_id,
+            bucket_name=ctx.bucket_name,
+            namespace=self.namespace,
+        )
+
+    def wait_for_job(self, job: Any, ctx: JobContext) -> None:
+        """Wait for Pathways LWS completion."""
+        pathways_client.wait_for_job(job, ctx.job_id, namespace=self.namespace)
+
+    def cleanup_job(self, job: Any, ctx: JobContext) -> None:
+        """Clean up LWS resources."""
+        job_name = f"keras-pathways-{ctx.job_id}"
+        pathways_client.cleanup_job(job_name, namespace=self.namespace)
 
 
 def _find_requirements(start_dir: str) -> Optional[str]:
@@ -193,7 +219,7 @@ def _build_container(ctx: JobContext) -> None:
     else:
         logger.info("Building container image...")
         ctx.image_uri = container_builder.get_or_build_container(
-            base_image="python:3.12-slim",
+            base_image="python:3.11-slim",
             requirements_path=ctx.requirements_path,
             accelerator_type=ctx.accelerator,
             project=ctx.project,

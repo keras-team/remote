@@ -355,14 +355,14 @@ def _check_pod_scheduling(core_v1, job_name, namespace):
                         msg = condition.message or ""
                         if "Insufficient nvidia.com/gpu" in msg:
                             raise RuntimeError(
-                                f"No GPU nodes available. Ensure your GKE cluster has a "
-                                f"node pool with the required GPU type and available capacity."
+                                "No GPU nodes available. Ensure your GKE cluster has a "
+                                "node pool with the required GPU type and available capacity."
                             )
                         elif (
                             "didn't match Pod's node affinity/selector" in msg
                             or "node selector" in msg.lower()
                         ):
                             raise RuntimeError(
-                                f"No nodes match the GPU selector. Check that your node pool "
-                                f"has the correct GPU type label."
+                                "No nodes match the GPU selector. Check that your node pool "
+                                "has the correct GPU type label."
                             )

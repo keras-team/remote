@@ -51,12 +51,7 @@ def check_gcloud_auth():
         capture_output=True,
     )
     if result.returncode != 0:
-        warning("Application Default Credentials not found.")
-        click.echo("Running: gcloud auth application-default login")
-        subprocess.run(
-            ["gcloud", "auth", "application-default", "login"],
-            check=True,
-        )
+        warning("Application Default Credentials not found via print-access-token. Assuming GCE metadata credentials will be used.")
 
 
 def check_all():
