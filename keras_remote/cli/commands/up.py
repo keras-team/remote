@@ -64,7 +64,7 @@ def up(project, zone, accelerator, cluster_name, yes):
     try:
       accel_config = accelerators.parse_accelerator(accelerator)
     except ValueError as e:
-      raise click.BadParameter(str(e), param_hint="--accelerator")
+      raise click.BadParameter(str(e), param_hint="--accelerator") from e
   else:
     accel_config = prompt_accelerator()
 

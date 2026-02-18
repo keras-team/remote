@@ -68,21 +68,21 @@ def submit_k8s_job(
         f"Permission denied creating K8s Job. Ensure your kubeconfig "
         f"has 'create' permission for Jobs in namespace '{namespace}'. "
         f"Run: kubectl auth can-i create jobs -n {namespace}"
-      )
+      ) from e
     elif e.status == 404:
       raise RuntimeError(
         f"Namespace '{namespace}' not found. Create it with: "
         f"kubectl create namespace {namespace}"
-      )
+      ) from e
     elif e.status == 409:
       raise RuntimeError(
         f"Job '{job_name}' already exists. "
         f"Clean up with: kubectl delete job {job_name} -n {namespace}"
-      )
+      ) from e
     else:
       raise RuntimeError(
         f"Kubernetes API error: {e.status} - {e.reason}: {e.body}"
-      )
+      ) from e
 
 
 def wait_for_job(job, namespace="default", timeout=3600, poll_interval=10):
@@ -118,7 +118,7 @@ def wait_for_job(job, namespace="default", timeout=3600, poll_interval=10):
     try:
       job_status = batch_v1.read_namespaced_job_status(job_name, namespace)
     except ApiException as e:
-      raise RuntimeError(f"Failed to read job status: {e.reason}")
+      raise RuntimeError(f"Failed to read job status: {e.reason}") from e
 
     # Check completion conditions
     if job_status.status.succeeded and job_status.status.succeeded >= 1:
@@ -232,7 +232,7 @@ def _load_kube_config():
       f"Failed to load Kubernetes configuration. "
       f"Ensure you have run 'gcloud container clusters get-credentials <cluster-name>' "
       f"or have a valid kubeconfig. Error: {e}"
-    )
+    ) from e
 
 
 def _create_job_spec(
