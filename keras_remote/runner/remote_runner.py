@@ -12,8 +12,8 @@ import tempfile
 import traceback
 import zipfile
 
-from absl import logging
 import cloudpickle
+from absl import logging
 from google.cloud import storage
 
 # Base temp directory for remote execution artifacts
@@ -21,148 +21,148 @@ TEMP_DIR = tempfile.gettempdir()
 
 
 def main():
-    """Main entry point for remote execution.
+  """Main entry point for remote execution.
 
-    Usage: python remote_runner.py gs://bucket/context.zip gs://bucket/payload.pkl gs://bucket/result.pkl
-    """
+  Usage: python remote_runner.py gs://bucket/context.zip gs://bucket/payload.pkl gs://bucket/result.pkl
+  """
 
-    if len(sys.argv) < 4:
-        logging.error(
-            "Usage: remote_runner.py <context_gcs> <payload_gcs> <result_gcs>"
-        )
-        sys.exit(1)
+  if len(sys.argv) < 4:
+    logging.error(
+      "Usage: remote_runner.py <context_gcs> <payload_gcs> <result_gcs>"
+    )
+    sys.exit(1)
 
-    run_gcs_mode()
+  run_gcs_mode()
 
 
 def run_gcs_mode():
-    """Execute with Cloud Storage artifacts.
+  """Execute with Cloud Storage artifacts.
 
-    Args from sys.argv:
-        sys.argv[1]: GCS path to context.zip
-        sys.argv[2]: GCS path to payload.pkl
-        sys.argv[3]: GCS path to result.pkl (output)
-    """
-    context_gcs = sys.argv[1]
-    payload_gcs = sys.argv[2]
-    result_gcs = sys.argv[3]
+  Args from sys.argv:
+      sys.argv[1]: GCS path to context.zip
+      sys.argv[2]: GCS path to payload.pkl
+      sys.argv[3]: GCS path to result.pkl (output)
+  """
+  context_gcs = sys.argv[1]
+  payload_gcs = sys.argv[2]
+  result_gcs = sys.argv[3]
 
-    logging.info("Starting GCS execution mode")
+  logging.info("Starting GCS execution mode")
 
-    # Define local paths using tempfile
-    context_path = os.path.join(TEMP_DIR, "context.zip")
-    payload_path = os.path.join(TEMP_DIR, "payload.pkl")
-    result_path = os.path.join(TEMP_DIR, "result.pkl")
-    workspace_dir = os.path.join(TEMP_DIR, "workspace")
+  # Define local paths using tempfile
+  context_path = os.path.join(TEMP_DIR, "context.zip")
+  payload_path = os.path.join(TEMP_DIR, "payload.pkl")
+  result_path = os.path.join(TEMP_DIR, "result.pkl")
+  workspace_dir = os.path.join(TEMP_DIR, "workspace")
+
+  try:
+    storage_client = storage.Client()
+
+    # Download artifacts from Cloud Storage
+    logging.info("Downloading artifacts...")
+    _download_from_gcs(storage_client, context_gcs, context_path)
+    _download_from_gcs(storage_client, payload_gcs, payload_path)
+
+    # Extract context
+    if os.path.exists(workspace_dir):
+      shutil.rmtree(workspace_dir)
+    os.makedirs(workspace_dir)
+
+    with zipfile.ZipFile(context_path, "r") as zip_ref:
+      zip_ref.extractall(workspace_dir)
+
+    # Add workspace to Python path
+    sys.path.insert(0, workspace_dir)
+
+    # Load and deserialize payload
+    logging.info("Loading function payload")
+    with open(payload_path, "rb") as f:
+      payload = cloudpickle.load(f)
+
+    func = payload["func"]
+    args = payload["args"]
+    kwargs = payload["kwargs"]
+    env_vars = payload.get("env_vars", {})
+    if env_vars:
+      logging.info("Setting %d environment variables", len(env_vars))
+      os.environ.update(env_vars)
+
+    # Execute function and capture result
+    logging.info("Executing %s()", func.__name__)
+    result = None
+    exception = None
 
     try:
-        storage_client = storage.Client()
+      result = func(*args, **kwargs)
+      logging.info("Function completed successfully")
+    except BaseException as e:
+      logging.error("%s: %s", type(e).__name__, e)
+      traceback.print_exc()
+      sys.stdout.flush()
+      sys.stderr.flush()
+      if isinstance(e, Exception):
+        exception = e
+      else:
+        exception = RuntimeError(f"{type(e).__name__}: {e}")
 
-        # Download artifacts from Cloud Storage
-        logging.info("Downloading artifacts...")
-        _download_from_gcs(storage_client, context_gcs, context_path)
-        _download_from_gcs(storage_client, payload_gcs, payload_path)
+    # Serialize result or exception
+    result_payload = {
+      "success": exception is None,
+      "result": result if exception is None else None,
+      "exception": exception,
+      "traceback": traceback.format_exc() if exception else None,
+    }
 
-        # Extract context
-        if os.path.exists(workspace_dir):
-            shutil.rmtree(workspace_dir)
-        os.makedirs(workspace_dir)
+    with open(result_path, "wb") as f:
+      cloudpickle.dump(result_payload, f)
 
-        with zipfile.ZipFile(context_path, "r") as zip_ref:
-            zip_ref.extractall(workspace_dir)
+    # Upload result to Cloud Storage
+    logging.info("Uploading result...")
+    _upload_to_gcs(storage_client, result_path, result_gcs)
 
-        # Add workspace to Python path
-        sys.path.insert(0, workspace_dir)
+    logging.info("Execution complete")
+    sys.exit(0 if exception is None else 1)
 
-        # Load and deserialize payload
-        logging.info("Loading function payload")
-        with open(payload_path, "rb") as f:
-            payload = cloudpickle.load(f)
-
-        func = payload["func"]
-        args = payload["args"]
-        kwargs = payload["kwargs"]
-        env_vars = payload.get("env_vars", {})
-        if env_vars:
-            logging.info("Setting %d environment variables", len(env_vars))
-            os.environ.update(env_vars)
-
-        # Execute function and capture result
-        logging.info("Executing %s()", func.__name__)
-        result = None
-        exception = None
-
-        try:
-            result = func(*args, **kwargs)
-            logging.info("Function completed successfully")
-        except BaseException as e:
-            logging.error("%s: %s", type(e).__name__, e)
-            traceback.print_exc()
-            sys.stdout.flush()
-            sys.stderr.flush()
-            if isinstance(e, Exception):
-                exception = e
-            else:
-                exception = RuntimeError(f"{type(e).__name__}: {e}")
-
-        # Serialize result or exception
-        result_payload = {
-            "success": exception is None,
-            "result": result if exception is None else None,
-            "exception": exception,
-            "traceback": traceback.format_exc() if exception else None,
-        }
-
-        with open(result_path, "wb") as f:
-            cloudpickle.dump(result_payload, f)
-
-        # Upload result to Cloud Storage
-        logging.info("Uploading result...")
-        _upload_to_gcs(storage_client, result_path, result_gcs)
-
-        logging.info("Execution complete")
-        sys.exit(0 if exception is None else 1)
-
-    except Exception as e:
-        logging.fatal("%s", e)
-        traceback.print_exc()
-        sys.exit(1)
+  except Exception as e:
+    logging.fatal("%s", e)
+    traceback.print_exc()
+    sys.exit(1)
 
 
 def _download_from_gcs(client, gcs_path, local_path):
-    """Download file from GCS.
+  """Download file from GCS.
 
-    Args:
-        client: Cloud Storage client
-        gcs_path: GCS URI (gs://bucket/path)
-        local_path: Local file path
-    """
-    # Parse gs://bucket/path format
-    parts = gcs_path.replace("gs://", "").split("/", 1)
-    bucket_name = parts[0]
-    blob_path = parts[1]
+  Args:
+      client: Cloud Storage client
+      gcs_path: GCS URI (gs://bucket/path)
+      local_path: Local file path
+  """
+  # Parse gs://bucket/path format
+  parts = gcs_path.replace("gs://", "").split("/", 1)
+  bucket_name = parts[0]
+  blob_path = parts[1]
 
-    bucket = client.bucket(bucket_name)
-    blob = bucket.blob(blob_path)
-    blob.download_to_filename(local_path)
+  bucket = client.bucket(bucket_name)
+  blob = bucket.blob(blob_path)
+  blob.download_to_filename(local_path)
 
 
 def _upload_to_gcs(client, local_path, gcs_path):
-    """Upload file to GCS.
+  """Upload file to GCS.
 
-    Args:
-        client: Cloud Storage client
-        local_path: Local file path
-        gcs_path: GCS URI (gs://bucket/path)
-    """
-    parts = gcs_path.replace("gs://", "").split("/", 1)
-    bucket_name = parts[0]
-    blob_path = parts[1]
+  Args:
+      client: Cloud Storage client
+      local_path: Local file path
+      gcs_path: GCS URI (gs://bucket/path)
+  """
+  parts = gcs_path.replace("gs://", "").split("/", 1)
+  bucket_name = parts[0]
+  blob_path = parts[1]
 
-    bucket = client.bucket(bucket_name)
-    blob = bucket.blob(blob_path)
-    blob.upload_from_filename(local_path)
+  bucket = client.bucket(bucket_name)
+  blob = bucket.blob(blob_path)
+  blob.upload_from_filename(local_path)
 
 
 if __name__ == "__main__":
-    main()
+  main()

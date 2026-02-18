@@ -2,20 +2,21 @@ import functools
 import os
 
 from keras_remote.backend.execution import (
-    JobContext,
-    execute_remote,
-    GKEBackend,
+  GKEBackend,
+  JobContext,
+  execute_remote,
 )
 
 
-def run(accelerator="v3-8",
-        container_image=None,
-        zone=None,
-        project=None,
-        capture_env_vars=None,
-        cluster=None,
-        namespace="default",
-        ):
+def run(
+  accelerator="v3-8",
+  container_image=None,
+  zone=None,
+  project=None,
+  capture_env_vars=None,
+  cluster=None,
+  namespace="default",
+):
   """Execute function on remote TPU/GPU.
 
   Args:
@@ -28,33 +29,60 @@ def run(accelerator="v3-8",
     cluster: GKE cluster name (default: from KERAS_REMOTE_GKE_CLUSTER)
     namespace: Kubernetes namespace (default: 'default')
   """
+
   def decorator(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
       # Capture environment variables
       env_vars = {}
       if capture_env_vars:
-          for pattern in capture_env_vars:
-              if pattern.endswith("*"):
-                  prefix = pattern[:-1]
-                  env_vars.update({k: v for k, v in os.environ.items() if k.startswith(prefix)})
-              elif pattern in os.environ:
-                  env_vars[pattern] = os.environ[pattern]
+        for pattern in capture_env_vars:
+          if pattern.endswith("*"):
+            prefix = pattern[:-1]
+            env_vars.update(
+              {k: v for k, v in os.environ.items() if k.startswith(prefix)}
+            )
+          elif pattern in os.environ:
+            env_vars[pattern] = os.environ[pattern]
 
-      return _execute_on_gke(func, args, kwargs, accelerator, container_image, zone, project, cluster, namespace, env_vars)
+      return _execute_on_gke(
+        func,
+        args,
+        kwargs,
+        accelerator,
+        container_image,
+        zone,
+        project,
+        cluster,
+        namespace,
+        env_vars,
+      )
+
     return wrapper
+
   return decorator
 
 
-def _execute_on_gke(func, args, kwargs, accelerator, container_image, zone, project, cluster, namespace, env_vars):
-    """Execute function on GKE cluster with GPU nodes."""
-    # Get GKE-specific defaults
-    if not cluster:
-        cluster = os.environ.get("KERAS_REMOTE_GKE_CLUSTER")
-    if not namespace:
-        namespace = os.environ.get("KERAS_REMOTE_GKE_NAMESPACE", "default")
+def _execute_on_gke(
+  func,
+  args,
+  kwargs,
+  accelerator,
+  container_image,
+  zone,
+  project,
+  cluster,
+  namespace,
+  env_vars,
+):
+  """Execute function on GKE cluster with GPU nodes."""
+  # Get GKE-specific defaults
+  if not cluster:
+    cluster = os.environ.get("KERAS_REMOTE_GKE_CLUSTER")
+  if not namespace:
+    namespace = os.environ.get("KERAS_REMOTE_GKE_NAMESPACE", "default")
 
-    ctx = JobContext.from_params(
-        func, args, kwargs, accelerator, container_image, zone, project, env_vars
-    )
-    return execute_remote(ctx, GKEBackend(cluster=cluster, namespace=namespace))
+  ctx = JobContext.from_params(
+    func, args, kwargs, accelerator, container_image, zone, project, env_vars
+  )
+  return execute_remote(ctx, GKEBackend(cluster=cluster, namespace=namespace))
