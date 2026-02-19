@@ -105,10 +105,10 @@ def submit_pathways_job(
   except ApiException as e:
     if e.status == 404:
       raise RuntimeError(
-        "LeaderWorkerSet CRD not found. Please assure it is "
-        "installed on the cluster. Run: kubectl apply "
-        "--server-side -f https://github.com/kubernetes-sigs"
-        "/lws/releases/download/v0.3.2/lws.yaml"
+        "LeaderWorkerSet CRD not found. Please ensure it is "
+        "installed on the cluster. You can install it by running "
+        "the `keras-remote infra up` command, or by following the "
+        "official LWS installation guide."
       ) from e
     else:
       raise RuntimeError(
