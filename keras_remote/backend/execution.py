@@ -105,33 +105,60 @@ class BackendClient(Protocol):
     ...
 
 
-class GKEBackend:
-  """Backend adapter for GKE."""
+class BaseK8sBackend:
+    """Base class for Kubernetes-based backends."""
 
-  def __init__(self, cluster: Optional[str] = None, namespace: str = "default"):
-    self.cluster = cluster
-    self.namespace = namespace
+    def __init__(self, cluster: Optional[str] = None, namespace: str = "default"):
+        self.cluster = cluster
+        self.namespace = namespace
 
-  def submit_job(self, ctx: JobContext) -> Any:
-    """Submit job to GKE cluster."""
-    return gke_client.submit_k8s_job(
-      display_name=ctx.display_name,
-      container_uri=ctx.image_uri,
-      accelerator=ctx.accelerator,
-      project=ctx.project,
-      job_id=ctx.job_id,
-      bucket_name=ctx.bucket_name,
-      namespace=self.namespace,
-    )
+class GKEBackend(BaseK8sBackend):
+    """Backend adapter for standard GKE Jobs."""
+    def submit_job(self, ctx: JobContext) -> Any:
+        """Submit job to GKE cluster."""
+        return gke_client.submit_k8s_job(
+        display_name=ctx.display_name,
+        container_uri=ctx.image_uri,
+        accelerator=ctx.accelerator,
+        project=ctx.project,
+        job_id=ctx.job_id,
+        bucket_name=ctx.bucket_name,
+        namespace=self.namespace,
+        )
 
-  def wait_for_job(self, job: Any, ctx: JobContext) -> None:
-    """Wait for GKE job completion."""
-    gke_client.wait_for_job(job, namespace=self.namespace)
+    def wait_for_job(self, job: Any, ctx: JobContext) -> None:
+        """Wait for GKE job completion."""
+        gke_client.wait_for_job(job, namespace=self.namespace)
 
-  def cleanup_job(self, job: Any, ctx: JobContext) -> None:
-    """Clean up K8s job resources."""
-    job_name = job.metadata.name
-    gke_client.cleanup_job(job_name, namespace=self.namespace)
+    def cleanup_job(self, job: Any, ctx: JobContext) -> None:
+        """Clean up K8s job resources."""
+        job_name = job.metadata.name
+        gke_client.cleanup_job(job_name, namespace=self.namespace)
+
+
+class PathwaysBackend(BaseK8sBackend):
+    """Backend adapter for ML Pathways using LeaderWorkerSet."""
+    def submit_job(self, ctx: JobContext) -> Any:
+        """Submit LWS job to GKE cluster."""
+        return pathways_client.submit_pathways_job(
+            display_name=ctx.display_name,
+            container_uri=ctx.image_uri,
+            accelerator=ctx.accelerator,
+            project=ctx.project,
+            job_id=ctx.job_id,
+            bucket_name=ctx.bucket_name,
+            namespace=self.namespace,
+        )
+
+    def wait_for_job(self, job: Any, ctx: JobContext) -> None:
+        """Wait for Pathways LWS completion."""
+        pathways_client.wait_for_job(job, ctx.job_id, namespace=self.namespace)
+
+    def cleanup_job(self, job: Any, ctx: JobContext) -> None:
+        """Clean up LWS resources."""
+        job_name = f"keras-pathways-{ctx.job_id}"
+        pathways_client.cleanup_job(job_name, namespace=self.namespace)
+
 
 
 def _find_requirements(start_dir: str) -> Optional[str]:
