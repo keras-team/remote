@@ -7,6 +7,7 @@ from keras_remote.backend.execution import (
   JobContext,
   execute_remote,
 )
+from keras_remote.core import accelerators
 
 
 def run(
@@ -16,7 +17,7 @@ def run(
   project=None,
   capture_env_vars=None,
   cluster=None,
-  backend= None,
+  backend=None,
   namespace="default",
 ):
   """Execute function on remote TPU/GPU.
@@ -48,34 +49,49 @@ def run(
           elif pattern in os.environ:
             env_vars[pattern] = os.environ[pattern]
 
-      return _execute_on_gke(
-        func,
-        args,
-        kwargs,
-        accelerator,
-        container_image,
-        zone,
-        project,
-        cluster,
-        namespace,
-        env_vars,
-      )
-    if backend is None:
-          try:
-              accel_config = accelerators.parse_accelerator(accelerator)
-              if isinstance(accel_config, accelerators.TpuConfig) and accel_config.num_nodes > 1:
-                  resolved_backend = "pathways"
-              else:
-                  resolved_backend = "gke"
-          except ValueError:
-              resolved_backend = "gke"
+      # Resolve backend
+      resolved_backend = backend
+      if resolved_backend is None:
+        try:
+          accel_config = accelerators.parse_accelerator(accelerator)
+          # Use Pathways for multi-host TPUs (if supported) or simplified logic
+          # For now, let's default to GKE unless explicit or strictly needed
+          if isinstance(accel_config, accelerators.TpuConfig) and accel_config.num_nodes > 1:
+             resolved_backend = "pathways"
+          else:
+             resolved_backend = "gke"
+        except ValueError:
+          resolved_backend = "gke"
 
-    if resolved_backend == "gke":
-      return _execute_on_gke(func, args, kwargs, accelerator, container_image, zone, project, cluster, namespace, env_vars)
-    elif backend == "pathways":
-      return _execute_on_pathways(func, args, kwargs, accelerator, container_image, zone, project, cluster, namespace, env_vars)
-    else:
-      raise ValueError(f"Unknown backend: {resolved_backend}. Use 'gke', 'pathways', or None for auto-detection")
+      if resolved_backend == "gke":
+        return _execute_on_gke(
+          func,
+          args,
+          kwargs,
+          accelerator,
+          container_image,
+          zone,
+          project,
+          cluster,
+          namespace,
+          env_vars,
+        )
+      elif resolved_backend == "pathways":
+        return _execute_on_pathways(
+          func,
+          args,
+          kwargs,
+          accelerator,
+          container_image,
+          zone,
+          project,
+          cluster,
+          namespace,
+          env_vars,
+        )
+      else:
+        raise ValueError(f"Unknown backend: {resolved_backend}. Use 'gke', 'pathways', or None for auto-detection")
+
     return wrapper
 
   return decorator
@@ -93,10 +109,10 @@ def _execute_on_gke(
   namespace,
   env_vars,
 ):
-  """Execute function on GKE cluster with GPU nodes."""
+  """Execute function on GKE cluster with GPU/TPU nodes."""
   # Get GKE-specific defaults
   if not cluster:
-    cluster = os.environ.get("KERAS_REMOTE_GKE_CLUSTER")
+    cluster = os.environ.get("KERAS_REMOTE_CLUSTER") or os.environ.get("KERAS_REMOTE_GKE_CLUSTER")
   if not namespace:
     namespace = os.environ.get("KERAS_REMOTE_GKE_NAMESPACE", "default")
 
@@ -106,11 +122,21 @@ def _execute_on_gke(
   return execute_remote(ctx, GKEBackend(cluster=cluster, namespace=namespace))
 
 
-
-def _execute_on_pathways(func, args, kwargs, accelerator, container_image, zone, project, cluster, namespace, env_vars):
+def _execute_on_pathways(
+  func, 
+  args, 
+  kwargs, 
+  accelerator, 
+  container_image, 
+  zone, 
+  project, 
+  cluster, 
+  namespace, 
+  env_vars
+):
     """Execute function on GKE cluster via ML Pathways."""
     if not cluster:
-        cluster = os.environ.get("KERAS_REMOTE_GKE_CLUSTER")
+        cluster = os.environ.get("KERAS_REMOTE_CLUSTER") or os.environ.get("KERAS_REMOTE_GKE_CLUSTER")
     if not namespace:
         namespace = os.environ.get("KERAS_REMOTE_GKE_NAMESPACE", "default")
 
