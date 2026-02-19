@@ -29,7 +29,7 @@ def run(
     project: GCP project (default: from KERAS_REMOTE_PROJECT)
     capture_env_vars: List of environment variable names or patterns (ending in *)
       to propagate to the remote environment. Defaults to None.
-    cluster: GKE cluster name (default: from KERAS_REMOTE_GKE_CLUSTER)
+    cluster: GKE cluster name (default: from KERAS_REMOTE_CLUSTER)
     backend: Backend to use ('gke' or 'pathways')
     namespace: Kubernetes namespace (default: 'default')
   """
@@ -117,9 +117,7 @@ def _execute_on_gke(
   """Execute function on GKE cluster with GPU/TPU nodes."""
   # Get GKE-specific defaults
   if not cluster:
-    cluster = os.environ.get("KERAS_REMOTE_CLUSTER") or os.environ.get(
-      "KERAS_REMOTE_GKE_CLUSTER"
-    )
+    cluster = os.environ.get("KERAS_REMOTE_CLUSTER")
   if not namespace:
     namespace = os.environ.get("KERAS_REMOTE_GKE_NAMESPACE", "default")
 
@@ -143,9 +141,7 @@ def _execute_on_pathways(
 ):
   """Execute function on GKE cluster via ML Pathways."""
   if not cluster:
-    cluster = os.environ.get("KERAS_REMOTE_CLUSTER") or os.environ.get(
-      "KERAS_REMOTE_GKE_CLUSTER"
-    )
+    cluster = os.environ.get("KERAS_REMOTE_CLUSTER")
   if not namespace:
     namespace = os.environ.get("KERAS_REMOTE_GKE_NAMESPACE", "default")
 
