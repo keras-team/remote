@@ -20,7 +20,6 @@ LWS_VERSION = "v1"
 LWS_PLURAL = "leaderworkersets"
 
 
-
 def _get_lws_version(group=LWS_GROUP):
   """Get the preferred version for the LeaderWorkerSet API."""
   _load_kube_config()
@@ -159,7 +158,9 @@ def wait_for_job(
         # Pod might not be created yet
         pod = None
       else:
-        raise RuntimeError(f"Failed to read leader pod status: {e.reason}") from e
+        raise RuntimeError(
+          f"Failed to read leader pod status: {e.reason}"
+        ) from e
 
     if pod is not None and pod.status.container_statuses:
       container_status = pod.status.container_statuses[0]
@@ -179,7 +180,9 @@ def wait_for_job(
       # Check last state (in case it restarted)
       if container_status.last_state.terminated:
         if container_status.last_state.terminated.exit_code == 0:
-          logger.info(f"[REMOTE] Job {job_name} completed successfully (restarted)")
+          logger.info(
+            f"[REMOTE] Job {job_name} completed successfully (restarted)"
+          )
           return "success"
         else:
           _print_pod_logs(core_v1, job_name, namespace)
