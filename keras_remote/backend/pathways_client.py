@@ -20,6 +20,22 @@ LWS_VERSION = "v1"
 LWS_PLURAL = "leaderworkersets"
 
 
+
+def _get_lws_version(group=LWS_GROUP):
+  """Get the preferred version for the LeaderWorkerSet API."""
+  _load_kube_config()
+  api = client.ApisApi()
+  try:
+    api_group = api.get_api_group(group)
+    return api_group.preferred_version.version
+  except ApiException:
+    logger.warning(
+      "Failed to retrieve LWS API version from cluster. Defaulting to '%s'",
+      LWS_VERSION,
+    )
+    return LWS_VERSION
+
+
 def submit_pathways_job(
   display_name,
   container_uri,
@@ -44,6 +60,7 @@ def submit_pathways_job(
       dict: The created LeaderWorkerSet object
   """
   _load_kube_config()
+  lws_version = _get_lws_version()
 
   accel_config = _parse_accelerator(accelerator)
   job_name = f"keras-pathways-{job_id}"
@@ -68,6 +85,7 @@ def submit_pathways_job(
     bucket_name=bucket_name,
     num_workers=num_workers,
     namespace=namespace,
+    version=lws_version,
   )
 
   custom_api = client.CustomObjectsApi()
@@ -75,7 +93,7 @@ def submit_pathways_job(
   try:
     created_lws = custom_api.create_namespaced_custom_object(
       group=LWS_GROUP,
-      version=LWS_VERSION,
+      version=lws_version,
       namespace=namespace,
       plural=LWS_PLURAL,
       body=lws_manifest,
@@ -176,12 +194,13 @@ def wait_for_job(
 def cleanup_job(job_name, namespace="default"):
   """Delete LeaderWorkerSet."""
   _load_kube_config()
+  lws_version = _get_lws_version()
   custom_api = client.CustomObjectsApi()
 
   try:
     custom_api.delete_namespaced_custom_object(
       group=LWS_GROUP,
-      version=LWS_VERSION,
+      version=lws_version,
       namespace=namespace,
       plural=LWS_PLURAL,
       name=job_name,
@@ -204,6 +223,7 @@ def _create_lws_spec(
   bucket_name,
   num_workers,
   namespace,
+  version=LWS_VERSION,
 ):
   """Create a LeaderWorkerSet manifest."""
 
@@ -252,7 +272,7 @@ def _create_lws_spec(
     pod_template["spec"]["nodeSelector"] = accel_config["node_selector"]
 
   return {
-    "apiVersion": f"{LWS_GROUP}/{LWS_VERSION}",
+    "apiVersion": f"{LWS_GROUP}/{version}",
     "kind": "LeaderWorkerSet",
     "metadata": {
       "name": job_name,
