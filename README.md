@@ -349,37 +349,9 @@ Use `--yes` to skip the confirmation prompt.
 
 ## Contributing
 
-Contributions are welcome. Please read our contributing guidelines before submitting pull requests.
+Contributions are welcome. Please read our [contributing guidelines](docs/contributing.md) before submitting pull requests.
 
-### Development Setup
-
-1. Install the package with dev dependencies:
-
-```bash
-pip install -e ".[dev]"
-```
-
-2. Install pre-commit hooks:
-
-```bash
-pre-commit install
-```
-
-This enables automatic linting and formatting checks (via [Ruff](https://docs.astral.sh/ruff/)) on every commit.
-
-To run the checks manually against all files:
-
-```bash
-pre-commit run --all-files
-```
-
-### Submitting Changes
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+All contributions must follow our [Code of Conduct](docs/code-of-conduct.md).
 
 ## License
 
