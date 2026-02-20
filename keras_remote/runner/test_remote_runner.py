@@ -1,7 +1,7 @@
 """Tests for keras_remote.runner.remote_runner — GCS helpers and execution."""
 
 import os
-import pickle
+import sys
 
 import cloudpickle
 import pytest
@@ -65,6 +65,11 @@ class TestUploadToGcs:
 
 
 class TestRunGcsMode:
+  @pytest.fixture(autouse=True)
+  def _protect_sys_path(self, monkeypatch):
+    """Prevent run_gcs_mode's sys.path.insert from leaking across tests."""
+    monkeypatch.setattr(sys, "path", sys.path[:])
+
   def test_success_flow(self, mocker, tmp_path):
     """Verify successful function execution: download, execute, upload result."""
     src_dir = tmp_path / "src"
@@ -139,7 +144,7 @@ class TestRunGcsMode:
     # Verify result payload
     result_path = upload_args[1]
     with open(result_path, "rb") as f:
-      result_payload = pickle.load(f)
+      result_payload = cloudpickle.load(f)
     assert result_payload["success"] is True
     assert result_payload["result"] == 5
 
@@ -210,7 +215,7 @@ class TestRunGcsMode:
     # Verify result payload has the exception
     result_path = mock_upload.call_args[0][1]
     with open(result_path, "rb") as f:
-      result_payload = pickle.load(f)
+      result_payload = cloudpickle.load(f)
     assert result_payload["success"] is False
     assert isinstance(result_payload["exception"], ValueError)
     assert "test error" in str(result_payload["exception"])
@@ -286,7 +291,7 @@ class TestRunGcsMode:
 
     result_path = mock_upload.call_args[0][1]
     with open(result_path, "rb") as f:
-      result_payload = pickle.load(f)
+      result_payload = cloudpickle.load(f)
     assert result_payload["success"] is True
     assert result_payload["result"] == "hello"
 
