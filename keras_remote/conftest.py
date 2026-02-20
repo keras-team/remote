@@ -4,24 +4,6 @@ import pytest
 
 
 @pytest.fixture
-def sample_function():
-  """A simple function suitable for serialization tests."""
-
-  def add(a, b):
-    return a + b
-
-  return add
-
-
-@pytest.fixture
-def gcp_env(monkeypatch):
-  """Set standard GCP env vars for unit tests."""
-  monkeypatch.setenv("KERAS_REMOTE_PROJECT", "test-project")
-  monkeypatch.setenv("KERAS_REMOTE_ZONE", "us-central1-a")
-  monkeypatch.setenv("KERAS_REMOTE_GKE_CLUSTER", "test-cluster")
-
-
-@pytest.fixture
 def mock_storage_client(mocker):
   """Mock google.cloud.storage.Client."""
   mock_client = mocker.MagicMock()

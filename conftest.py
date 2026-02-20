@@ -1,4 +1,4 @@
-"""Shared fixtures for integration and e2e tests."""
+"""Shared fixtures available to all test directories."""
 
 import pytest
 

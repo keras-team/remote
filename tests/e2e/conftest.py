@@ -11,7 +11,7 @@ def pytest_collection_modifyitems(config, items):
     return
   skip = pytest.mark.skip(reason="E2E_TESTS not set")
   for item in items:
-    if "e2e" in str(item.fspath):
+    if item.get_closest_marker("e2e"):
       item.add_marker(skip)
 
 
