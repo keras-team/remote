@@ -23,3 +23,5 @@ NVIDIA_DRIVER_DAEMONSET_URL = (
   "container-engine-accelerators/v1.0.20/"
   "nvidia-driver-installer/cos/daemonset-preloaded.yaml"
 )
+
+LWS_INSTALL_URL = "https://github.com/kubernetes-sigs/lws/releases/download/v0.5.1/manifests.yaml"

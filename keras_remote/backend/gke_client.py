@@ -300,7 +300,7 @@ def _create_job_spec(
 
   pod_template = client.V1PodTemplateSpec(
     metadata=client.V1ObjectMeta(
-      labels={"app": "keras-remote", "job-id": job_id}
+      labels={"app": "keras-remote", "job-id": job_id, "job-name": job_name}
     ),
     spec=client.V1PodSpec(**pod_spec_kwargs),
   )
