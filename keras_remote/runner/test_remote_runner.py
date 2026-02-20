@@ -1,10 +1,16 @@
 """Tests for keras_remote.runner.remote_runner — GCS helpers and execution."""
 
 import os
+import pathlib
+import shutil
 import sys
+import tempfile
+import zipfile
+from unittest import mock
+from unittest.mock import MagicMock
 
 import cloudpickle
-import pytest
+from absl.testing import absltest
 
 from keras_remote.runner.remote_runner import (
   _download_from_gcs,
@@ -14,11 +20,18 @@ from keras_remote.runner.remote_runner import (
 )
 
 
-class TestDownloadFromGcs:
-  def test_parses_gcs_path(self, mocker):
-    mock_client = mocker.MagicMock()
-    mock_bucket = mocker.MagicMock()
-    mock_blob = mocker.MagicMock()
+def _make_temp_path(test_case):
+  """Create a temp directory that is cleaned up after the test."""
+  td = tempfile.TemporaryDirectory()
+  test_case.addCleanup(td.cleanup)
+  return pathlib.Path(td.name)
+
+
+class TestDownloadFromGcs(absltest.TestCase):
+  def test_parses_gcs_path(self):
+    mock_client = MagicMock()
+    mock_bucket = MagicMock()
+    mock_blob = MagicMock()
     mock_client.bucket.return_value = mock_bucket
     mock_bucket.blob.return_value = mock_blob
 
@@ -30,10 +43,10 @@ class TestDownloadFromGcs:
     mock_bucket.blob.assert_called_once_with("path/to/file.pkl")
     mock_blob.download_to_filename.assert_called_once_with("/tmp/local.pkl")
 
-  def test_handles_nested_path(self, mocker):
-    mock_client = mocker.MagicMock()
-    mock_bucket = mocker.MagicMock()
-    mock_blob = mocker.MagicMock()
+  def test_handles_nested_path(self):
+    mock_client = MagicMock()
+    mock_bucket = MagicMock()
+    mock_blob = MagicMock()
     mock_client.bucket.return_value = mock_bucket
     mock_bucket.blob.return_value = mock_blob
 
@@ -47,11 +60,11 @@ class TestDownloadFromGcs:
     mock_bucket.blob.assert_called_once_with("a/b/c/deep/file.zip")
 
 
-class TestUploadToGcs:
-  def test_parses_gcs_path(self, mocker):
-    mock_client = mocker.MagicMock()
-    mock_bucket = mocker.MagicMock()
-    mock_blob = mocker.MagicMock()
+class TestUploadToGcs(absltest.TestCase):
+  def test_parses_gcs_path(self):
+    mock_client = MagicMock()
+    mock_bucket = MagicMock()
+    mock_blob = MagicMock()
     mock_client.bucket.return_value = mock_bucket
     mock_bucket.blob.return_value = mock_blob
 
@@ -64,34 +77,56 @@ class TestUploadToGcs:
     mock_blob.upload_from_filename.assert_called_once_with("/tmp/result.pkl")
 
 
-class TestRunGcsMode:
-  @pytest.fixture(autouse=True)
-  def _protect_sys_path(self, monkeypatch):
-    """Prevent run_gcs_mode's sys.path.insert from leaking across tests."""
-    monkeypatch.setattr(sys, "path", sys.path[:])
+class TestRunGcsMode(absltest.TestCase):
+  def setUp(self):
+    super().setUp()
+    # Prevent run_gcs_mode's sys.path.insert from leaking across tests.
+    original_path = sys.path[:]
+    self.addCleanup(setattr, sys, "path", original_path)
 
-  def test_success_flow(self, mocker, tmp_path):
-    """Verify successful function execution: download, execute, upload result."""
+  def _setup_gcs_test(self, tmp_path, func, env_vars=None):
+    """Set up common GCS test fixtures: context zip, payload pkl, patches."""
+    if env_vars is None:
+      env_vars = {}
+
     src_dir = tmp_path / "src"
     work_dir = tmp_path / "work"
     src_dir.mkdir()
     work_dir.mkdir()
 
-    mocker.patch(
-      "sys.argv",
-      [
-        "remote_runner.py",
-        "gs://bucket/context.zip",
-        "gs://bucket/payload.pkl",
-        "gs://bucket/result.pkl",
-      ],
-    )
-    mocker.patch(
-      "keras_remote.runner.remote_runner.TEMP_DIR",
-      str(work_dir),
-    )
+    context_zip = src_dir / "context.zip"
+    with zipfile.ZipFile(context_zip, "w") as zf:
+      zf.writestr("dummy.py", "x = 1")
 
-    import zipfile
+    payload_pkl = src_dir / "payload.pkl"
+    with open(payload_pkl, "wb") as f:
+      cloudpickle.dump(
+        {
+          "func": func,
+          "args": getattr(func, "_test_args", ()),
+          "kwargs": {},
+          "env_vars": env_vars,
+        },
+        f,
+      )
+
+    mock_client = MagicMock()
+
+    def fake_download(client, gcs_path, local_path):
+      if "context.zip" in gcs_path:
+        shutil.copy(str(context_zip), local_path)
+      elif "payload.pkl" in gcs_path:
+        shutil.copy(str(payload_pkl), local_path)
+
+    return work_dir, mock_client, fake_download
+
+  def test_success_flow(self):
+    """Verify successful function execution: download, execute, upload result."""
+    tmp_path = _make_temp_path(self)
+    src_dir = tmp_path / "src"
+    work_dir = tmp_path / "work"
+    src_dir.mkdir()
+    work_dir.mkdir()
 
     context_zip = src_dir / "context.zip"
     with zipfile.ZipFile(context_zip, "w") as zf:
@@ -108,68 +143,61 @@ class TestRunGcsMode:
         f,
       )
 
-    mock_client = mocker.MagicMock()
+    mock_client = MagicMock()
 
     def fake_download(client, gcs_path, local_path):
-      import shutil
-
       if "context.zip" in gcs_path:
         shutil.copy(str(context_zip), local_path)
       elif "payload.pkl" in gcs_path:
         shutil.copy(str(payload_pkl), local_path)
 
-    mocker.patch(
-      "keras_remote.runner.remote_runner._download_from_gcs",
-      side_effect=fake_download,
-    )
-    mock_upload = mocker.patch(
-      "keras_remote.runner.remote_runner._upload_to_gcs",
-    )
-    mocker.patch(
-      "keras_remote.runner.remote_runner.storage.Client",
-      return_value=mock_client,
-    )
+    with (
+      mock.patch(
+        "sys.argv",
+        [
+          "remote_runner.py",
+          "gs://bucket/context.zip",
+          "gs://bucket/payload.pkl",
+          "gs://bucket/result.pkl",
+        ],
+      ),
+      mock.patch(
+        "keras_remote.runner.remote_runner.TEMP_DIR",
+        str(work_dir),
+      ),
+      mock.patch(
+        "keras_remote.runner.remote_runner._download_from_gcs",
+        side_effect=fake_download,
+      ),
+      mock.patch(
+        "keras_remote.runner.remote_runner._upload_to_gcs",
+      ) as mock_upload,
+      mock.patch(
+        "keras_remote.runner.remote_runner.storage.Client",
+        return_value=mock_client,
+      ),
+    ):
+      with self.assertRaises(SystemExit) as cm:
+        run_gcs_mode()
+      self.assertEqual(cm.exception.code, 0)
 
-    # run_gcs_mode calls sys.exit, so catch it
-    with pytest.raises(SystemExit) as exc_info:
-      run_gcs_mode()
+      mock_upload.assert_called_once()
+      upload_args = mock_upload.call_args[0]
+      self.assertEqual(upload_args[2], "gs://bucket/result.pkl")
 
-    assert exc_info.value.code == 0
+      result_path = upload_args[1]
+      with open(result_path, "rb") as f:
+        result_payload = cloudpickle.load(f)
+      self.assertTrue(result_payload["success"])
+      self.assertEqual(result_payload["result"], 5)
 
-    # Verify upload was called
-    mock_upload.assert_called_once()
-    upload_args = mock_upload.call_args[0]
-    assert upload_args[2] == "gs://bucket/result.pkl"
-
-    # Verify result payload
-    result_path = upload_args[1]
-    with open(result_path, "rb") as f:
-      result_payload = cloudpickle.load(f)
-    assert result_payload["success"] is True
-    assert result_payload["result"] == 5
-
-  def test_function_exception(self, mocker, tmp_path):
+  def test_function_exception(self):
     """When the user function raises, result has success=False."""
+    tmp_path = _make_temp_path(self)
     src_dir = tmp_path / "src"
     work_dir = tmp_path / "work"
     src_dir.mkdir()
     work_dir.mkdir()
-
-    mocker.patch(
-      "sys.argv",
-      [
-        "remote_runner.py",
-        "gs://bucket/context.zip",
-        "gs://bucket/payload.pkl",
-        "gs://bucket/result.pkl",
-      ],
-    )
-    mocker.patch(
-      "keras_remote.runner.remote_runner.TEMP_DIR",
-      str(work_dir),
-    )
-
-    import zipfile
 
     context_zip = src_dir / "context.zip"
     with zipfile.ZipFile(context_zip, "w") as zf:
@@ -185,63 +213,58 @@ class TestRunGcsMode:
         f,
       )
 
-    mock_client = mocker.MagicMock()
+    mock_client = MagicMock()
 
     def fake_download(client, gcs_path, local_path):
-      import shutil
-
       if "context.zip" in gcs_path:
         shutil.copy(str(context_zip), local_path)
       elif "payload.pkl" in gcs_path:
         shutil.copy(str(payload_pkl), local_path)
 
-    mocker.patch(
-      "keras_remote.runner.remote_runner._download_from_gcs",
-      side_effect=fake_download,
-    )
-    mock_upload = mocker.patch(
-      "keras_remote.runner.remote_runner._upload_to_gcs",
-    )
-    mocker.patch(
-      "keras_remote.runner.remote_runner.storage.Client",
-      return_value=mock_client,
-    )
+    with (
+      mock.patch(
+        "sys.argv",
+        [
+          "remote_runner.py",
+          "gs://bucket/context.zip",
+          "gs://bucket/payload.pkl",
+          "gs://bucket/result.pkl",
+        ],
+      ),
+      mock.patch(
+        "keras_remote.runner.remote_runner.TEMP_DIR",
+        str(work_dir),
+      ),
+      mock.patch(
+        "keras_remote.runner.remote_runner._download_from_gcs",
+        side_effect=fake_download,
+      ),
+      mock.patch(
+        "keras_remote.runner.remote_runner._upload_to_gcs",
+      ) as mock_upload,
+      mock.patch(
+        "keras_remote.runner.remote_runner.storage.Client",
+        return_value=mock_client,
+      ),
+    ):
+      with self.assertRaises(SystemExit) as cm:
+        run_gcs_mode()
+      self.assertEqual(cm.exception.code, 1)
 
-    with pytest.raises(SystemExit) as exc_info:
-      run_gcs_mode()
+      result_path = mock_upload.call_args[0][1]
+      with open(result_path, "rb") as f:
+        result_payload = cloudpickle.load(f)
+      self.assertFalse(result_payload["success"])
+      self.assertIsInstance(result_payload["exception"], ValueError)
+      self.assertIn("test error", str(result_payload["exception"]))
 
-    assert exc_info.value.code == 1
-
-    # Verify result payload has the exception
-    result_path = mock_upload.call_args[0][1]
-    with open(result_path, "rb") as f:
-      result_payload = cloudpickle.load(f)
-    assert result_payload["success"] is False
-    assert isinstance(result_payload["exception"], ValueError)
-    assert "test error" in str(result_payload["exception"])
-
-  def test_env_vars_applied(self, mocker, tmp_path):
+  def test_env_vars_applied(self):
     """Verify env_vars from payload are set in os.environ."""
+    tmp_path = _make_temp_path(self)
     src_dir = tmp_path / "src"
     work_dir = tmp_path / "work"
     src_dir.mkdir()
     work_dir.mkdir()
-
-    mocker.patch(
-      "sys.argv",
-      [
-        "remote_runner.py",
-        "gs://bucket/context.zip",
-        "gs://bucket/payload.pkl",
-        "gs://bucket/result.pkl",
-      ],
-    )
-    mocker.patch(
-      "keras_remote.runner.remote_runner.TEMP_DIR",
-      str(work_dir),
-    )
-
-    import zipfile
 
     context_zip = src_dir / "context.zip"
     with zipfile.ZipFile(context_zip, "w") as zf:
@@ -262,63 +285,82 @@ class TestRunGcsMode:
         f,
       )
 
-    mock_client = mocker.MagicMock()
+    mock_client = MagicMock()
 
     def fake_download(client, gcs_path, local_path):
-      import shutil
-
       if "context.zip" in gcs_path:
         shutil.copy(str(context_zip), local_path)
       elif "payload.pkl" in gcs_path:
         shutil.copy(str(payload_pkl), local_path)
 
-    mocker.patch(
-      "keras_remote.runner.remote_runner._download_from_gcs",
-      side_effect=fake_download,
-    )
-    mock_upload = mocker.patch(
-      "keras_remote.runner.remote_runner._upload_to_gcs",
-    )
-    mocker.patch(
-      "keras_remote.runner.remote_runner.storage.Client",
-      return_value=mock_client,
-    )
+    with (
+      mock.patch(
+        "sys.argv",
+        [
+          "remote_runner.py",
+          "gs://bucket/context.zip",
+          "gs://bucket/payload.pkl",
+          "gs://bucket/result.pkl",
+        ],
+      ),
+      mock.patch(
+        "keras_remote.runner.remote_runner.TEMP_DIR",
+        str(work_dir),
+      ),
+      mock.patch(
+        "keras_remote.runner.remote_runner._download_from_gcs",
+        side_effect=fake_download,
+      ),
+      mock.patch(
+        "keras_remote.runner.remote_runner._upload_to_gcs",
+      ) as mock_upload,
+      mock.patch(
+        "keras_remote.runner.remote_runner.storage.Client",
+        return_value=mock_client,
+      ),
+    ):
+      with self.assertRaises(SystemExit) as cm:
+        run_gcs_mode()
+      self.assertEqual(cm.exception.code, 0)
 
-    with pytest.raises(SystemExit) as exc_info:
-      run_gcs_mode()
-
-    assert exc_info.value.code == 0
-
-    result_path = mock_upload.call_args[0][1]
-    with open(result_path, "rb") as f:
-      result_payload = cloudpickle.load(f)
-    assert result_payload["success"] is True
-    assert result_payload["result"] == "hello"
+      result_path = mock_upload.call_args[0][1]
+      with open(result_path, "rb") as f:
+        result_payload = cloudpickle.load(f)
+      self.assertTrue(result_payload["success"])
+      self.assertEqual(result_payload["result"], "hello")
 
 
-class TestMain:
-  def test_too_few_args(self, mocker):
-    mocker.patch("sys.argv", ["remote_runner.py"])
-    with pytest.raises(SystemExit) as exc_info:
+class TestMain(absltest.TestCase):
+  def test_too_few_args(self):
+    with mock.patch("sys.argv", ["remote_runner.py"]):
+      with self.assertRaises(SystemExit) as cm:
+        main()
+      self.assertEqual(cm.exception.code, 1)
+
+  def test_too_few_args_two(self):
+    with mock.patch(
+      "sys.argv", ["remote_runner.py", "gs://bucket/context.zip"]
+    ):
+      with self.assertRaises(SystemExit) as cm:
+        main()
+      self.assertEqual(cm.exception.code, 1)
+
+  def test_correct_args_calls_run_gcs_mode(self):
+    with (
+      mock.patch(
+        "sys.argv",
+        [
+          "remote_runner.py",
+          "gs://bucket/context.zip",
+          "gs://bucket/payload.pkl",
+          "gs://bucket/result.pkl",
+        ],
+      ),
+      mock.patch("keras_remote.runner.remote_runner.run_gcs_mode") as mock_run,
+    ):
       main()
-    assert exc_info.value.code == 1
+      mock_run.assert_called_once()
 
-  def test_too_few_args_two(self, mocker):
-    mocker.patch("sys.argv", ["remote_runner.py", "gs://bucket/context.zip"])
-    with pytest.raises(SystemExit) as exc_info:
-      main()
-    assert exc_info.value.code == 1
 
-  def test_correct_args_calls_run_gcs_mode(self, mocker):
-    mocker.patch(
-      "sys.argv",
-      [
-        "remote_runner.py",
-        "gs://bucket/context.zip",
-        "gs://bucket/payload.pkl",
-        "gs://bucket/result.pkl",
-      ],
-    )
-    mock_run = mocker.patch("keras_remote.runner.remote_runner.run_gcs_mode")
-    main()
-    mock_run.assert_called_once()
+if __name__ == "__main__":
+  absltest.main()
