@@ -1,9 +1,12 @@
 """Tests for keras_remote.backend.execution — JobContext and execute_remote."""
 
-import re
+import os
+import pathlib
+import tempfile
+from unittest import mock
 from unittest.mock import MagicMock
 
-import pytest
+from absl.testing import absltest
 
 from keras_remote.backend.execution import (
   JobContext,
@@ -12,7 +15,14 @@ from keras_remote.backend.execution import (
 )
 
 
-class TestJobContext:
+def _make_temp_path(test_case):
+  """Create a temp directory that is cleaned up after the test."""
+  td = tempfile.TemporaryDirectory()
+  test_case.addCleanup(td.cleanup)
+  return pathlib.Path(td.name)
+
+
+class TestJobContext(absltest.TestCase):
   def _make_func(self):
     def my_train():
       return 42
@@ -30,10 +40,10 @@ class TestJobContext:
       zone="europe-west4-b",
       project="my-proj",
     )
-    assert ctx.bucket_name == "my-proj-keras-remote-jobs"
-    assert ctx.region == "europe-west4"
-    assert ctx.display_name.startswith("keras-remote-my_train-")
-    assert re.fullmatch(r"job-[0-9a-f]{8}", ctx.job_id)
+    self.assertEqual(ctx.bucket_name, "my-proj-keras-remote-jobs")
+    self.assertEqual(ctx.region, "europe-west4")
+    self.assertTrue(ctx.display_name.startswith("keras-remote-my_train-"))
+    self.assertRegex(ctx.job_id, r"^job-[0-9a-f]{8}$")
 
   def test_from_params_explicit(self):
     ctx = JobContext.from_params(
@@ -46,35 +56,38 @@ class TestJobContext:
       project="explicit-proj",
       env_vars={"X": "Y"},
     )
-    assert ctx.zone == "us-west1-a"
-    assert ctx.project == "explicit-proj"
-    assert ctx.accelerator == "l4"
-    assert ctx.container_image == "my-image:latest"
-    assert ctx.args == (1, 2)
-    assert ctx.kwargs == {"k": "v"}
-    assert ctx.env_vars == {"X": "Y"}
+    self.assertEqual(ctx.zone, "us-west1-a")
+    self.assertEqual(ctx.project, "explicit-proj")
+    self.assertEqual(ctx.accelerator, "l4")
+    self.assertEqual(ctx.container_image, "my-image:latest")
+    self.assertEqual(ctx.args, (1, 2))
+    self.assertEqual(ctx.kwargs, {"k": "v"})
+    self.assertEqual(ctx.env_vars, {"X": "Y"})
 
-  def test_from_params_resolves_zone_from_env(self, monkeypatch):
-    monkeypatch.setenv("KERAS_REMOTE_ZONE", "asia-east1-c")
-    monkeypatch.setenv("KERAS_REMOTE_PROJECT", "env-proj")
+  def test_from_params_resolves_zone_from_env(self):
+    with mock.patch.dict(
+      os.environ,
+      {"KERAS_REMOTE_ZONE": "asia-east1-c", "KERAS_REMOTE_PROJECT": "env-proj"},
+    ):
+      ctx = JobContext.from_params(
+        func=self._make_func(),
+        args=(),
+        kwargs={},
+        accelerator="cpu",
+        container_image=None,
+        zone=None,
+        project=None,
+        env_vars={},
+      )
+    self.assertEqual(ctx.zone, "asia-east1-c")
+    self.assertEqual(ctx.project, "env-proj")
 
-    ctx = JobContext.from_params(
-      func=self._make_func(),
-      args=(),
-      kwargs={},
-      accelerator="cpu",
-      container_image=None,
-      zone=None,
-      project=None,
-      env_vars={},
-    )
-    assert ctx.zone == "asia-east1-c"
-    assert ctx.project == "env-proj"
-
-  def test_from_params_no_project_raises(self, monkeypatch):
-    monkeypatch.delenv("KERAS_REMOTE_PROJECT", raising=False)
-
-    with pytest.raises(ValueError, match="project must be specified"):
+  def test_from_params_no_project_raises(self):
+    env = {k: v for k, v in os.environ.items() if k != "KERAS_REMOTE_PROJECT"}
+    with (
+      mock.patch.dict(os.environ, env, clear=True),
+      self.assertRaisesRegex(ValueError, "project must be specified"),
+    ):
       JobContext.from_params(
         func=self._make_func(),
         args=(),
@@ -87,29 +100,36 @@ class TestJobContext:
       )
 
 
-class TestFindRequirements:
-  def test_finds_in_start_dir(self, tmp_path):
+class TestFindRequirements(absltest.TestCase):
+  def test_finds_in_start_dir(self):
     """Returns the path when requirements.txt exists in the start directory."""
+    tmp_path = _make_temp_path(self)
     (tmp_path / "requirements.txt").write_text("numpy\n")
-    assert _find_requirements(str(tmp_path)) == str(
-      tmp_path / "requirements.txt"
+    self.assertEqual(
+      _find_requirements(str(tmp_path)),
+      str(tmp_path / "requirements.txt"),
     )
 
-  def test_finds_in_parent_dir(self, tmp_path):
+  def test_finds_in_parent_dir(self):
     """Walks up the directory tree to find requirements.txt in a parent."""
+    tmp_path = _make_temp_path(self)
     (tmp_path / "requirements.txt").write_text("numpy\n")
     child = tmp_path / "subdir"
     child.mkdir()
-    assert _find_requirements(str(child)) == str(tmp_path / "requirements.txt")
+    self.assertEqual(
+      _find_requirements(str(child)),
+      str(tmp_path / "requirements.txt"),
+    )
 
-  def test_returns_none_when_not_found(self, tmp_path):
+  def test_returns_none_when_not_found(self):
     """Returns None when no requirements.txt exists in any ancestor."""
+    tmp_path = _make_temp_path(self)
     empty = tmp_path / "empty"
     empty.mkdir()
-    assert _find_requirements(str(empty)) is None
+    self.assertIsNone(_find_requirements(str(empty)))
 
 
-class TestExecuteRemote:
+class TestExecuteRemote(absltest.TestCase):
   def _make_func(self):
     def my_train():
       return 42
@@ -128,38 +148,44 @@ class TestExecuteRemote:
       project="proj",
     )
 
-  def test_success_flow(self, mocker):
-    mocker.patch("keras_remote.backend.execution._build_container")
-    mocker.patch("keras_remote.backend.execution._upload_artifacts")
-    mocker.patch(
-      "keras_remote.backend.execution._download_result",
-      return_value={"success": True, "result": 42},
-    )
-    mocker.patch(
-      "keras_remote.backend.execution._cleanup_and_return",
-      return_value=42,
-    )
+  def test_success_flow(self):
+    with (
+      mock.patch("keras_remote.backend.execution._build_container"),
+      mock.patch("keras_remote.backend.execution._upload_artifacts"),
+      mock.patch(
+        "keras_remote.backend.execution._download_result",
+        return_value={"success": True, "result": 42},
+      ),
+      mock.patch(
+        "keras_remote.backend.execution._cleanup_and_return",
+        return_value=42,
+      ),
+    ):
+      ctx = self._make_ctx()
+      backend = MagicMock()
 
-    ctx = self._make_ctx()
-    backend = MagicMock()
+      result = execute_remote(ctx, backend)
 
-    result = execute_remote(ctx, backend)
+      backend.submit_job.assert_called_once_with(ctx)
+      backend.wait_for_job.assert_called_once()
+      backend.cleanup_job.assert_called_once()
+      self.assertEqual(result, 42)
 
-    backend.submit_job.assert_called_once_with(ctx)
-    backend.wait_for_job.assert_called_once()
-    backend.cleanup_job.assert_called_once()
-    assert result == 42
+  def test_cleanup_on_wait_failure(self):
+    with (
+      mock.patch("keras_remote.backend.execution._build_container"),
+      mock.patch("keras_remote.backend.execution._upload_artifacts"),
+    ):
+      ctx = self._make_ctx()
+      backend = MagicMock()
+      backend.wait_for_job.side_effect = RuntimeError("job failed")
 
-  def test_cleanup_on_wait_failure(self, mocker):
-    mocker.patch("keras_remote.backend.execution._build_container")
-    mocker.patch("keras_remote.backend.execution._upload_artifacts")
+      with self.assertRaisesRegex(RuntimeError, "job failed"):
+        execute_remote(ctx, backend)
 
-    ctx = self._make_ctx()
-    backend = MagicMock()
-    backend.wait_for_job.side_effect = RuntimeError("job failed")
+      # cleanup_job is called in finally block even when wait fails
+      backend.cleanup_job.assert_called_once()
 
-    with pytest.raises(RuntimeError, match="job failed"):
-      execute_remote(ctx, backend)
 
-    # cleanup_job is called in finally block even when wait fails
-    backend.cleanup_job.assert_called_once()
+if __name__ == "__main__":
+  absltest.main()
