@@ -246,6 +246,12 @@ def _create_lws_spec(
     },
     {"name": "JOB_ID", "value": job_id},
     {"name": "GCS_BUCKET", "value": bucket_name},
+    {
+      "name": "MEGASCALE_COORDINATOR_ADDRESS",
+      "value": "$(LWS_LEADER_ADDRESS)",
+    },
+    {"name": "MEGASCALE_NUM_SLICES", "value": str(num_workers + 1)},
+    {"name": "TPU_WORKER_ID", "value": "$(LWS_WORKER_INDEX)"},
   ]
 
   tolerations = [
