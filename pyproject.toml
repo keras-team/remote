@@ -33,10 +33,7 @@ cli = [
     "pulumi-command>=1.0",
 ]
 test = [
-    "pytest>=9.0",
-    "pytest-cov>=7.0",
-    "pytest-mock>=3.14",
-    "pytest-timeout>=2.3",
+    "coverage>=7.0",
 ]
 dev = [
     "pre-commit",
@@ -78,8 +75,3 @@ ignore = ["E501"]
 "**/test_*.py" = ["T201"]
 "tests/**" = ["T201"]
 
-[tool.pytest.ini_options]
-testpaths = ["keras_remote", "tests"]
-markers = [
-    "e2e: end-to-end tests requiring GCP infrastructure",
-]

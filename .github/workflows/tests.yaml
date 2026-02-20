@@ -22,11 +22,13 @@ jobs:
 
       - name: Run unit tests
         run: >
-          pytest keras_remote/
-          -v --tb=short
-          --cov=keras_remote
-          --cov-report=xml
-          --ignore=keras_remote/src
+          coverage run
+          -m unittest discover
+          -s keras_remote -p "test_*.py"
+          -v
+
+      - name: Generate coverage report
+        run: coverage xml
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
