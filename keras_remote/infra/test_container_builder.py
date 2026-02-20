@@ -1,9 +1,11 @@
 """Tests for keras_remote.infra.container_builder — hashing, Dockerfile gen, caching."""
 
-import re
+import pathlib
+import tempfile
+from unittest import mock
 from unittest.mock import MagicMock
 
-import pytest
+from absl.testing import absltest, parameterized
 from google.api_core import exceptions as google_exceptions
 
 from keras_remote.infra.container_builder import (
@@ -14,16 +16,25 @@ from keras_remote.infra.container_builder import (
 )
 
 
-class TestHashRequirements:
-  def test_deterministic(self, tmp_path):
+def _make_temp_path(test_case):
+  """Create a temp directory that is cleaned up after the test."""
+  td = tempfile.TemporaryDirectory()
+  test_case.addCleanup(td.cleanup)
+  return pathlib.Path(td.name)
+
+
+class TestHashRequirements(parameterized.TestCase):
+  def test_deterministic(self):
+    tmp_path = _make_temp_path(self)
     req = tmp_path / "requirements.txt"
     req.write_text("numpy==1.26\n")
 
     h1 = _hash_requirements(str(req), "l4", "python:3.12-slim")
     h2 = _hash_requirements(str(req), "l4", "python:3.12-slim")
-    assert h1 == h2
+    self.assertEqual(h1, h2)
 
-  def test_different_requirements_different_hash(self, tmp_path):
+  def test_different_requirements_different_hash(self):
+    tmp_path = _make_temp_path(self)
     req1 = tmp_path / "r1.txt"
     req1.write_text("numpy==1.26\n")
     req2 = tmp_path / "r2.txt"
@@ -31,49 +42,66 @@ class TestHashRequirements:
 
     h1 = _hash_requirements(str(req1), "l4", "python:3.12-slim")
     h2 = _hash_requirements(str(req2), "l4", "python:3.12-slim")
-    assert h1 != h2
+    self.assertNotEqual(h1, h2)
 
-  def test_different_accelerator_different_hash(self, tmp_path):
+  def test_different_accelerator_different_hash(self):
+    tmp_path = _make_temp_path(self)
     req = tmp_path / "requirements.txt"
     req.write_text("numpy\n")
 
     h1 = _hash_requirements(str(req), "l4", "python:3.12-slim")
     h2 = _hash_requirements(str(req), "v3-8", "python:3.12-slim")
-    assert h1 != h2
+    self.assertNotEqual(h1, h2)
 
-  def test_different_base_image_different_hash(self, tmp_path):
+  def test_different_base_image_different_hash(self):
+    tmp_path = _make_temp_path(self)
     req = tmp_path / "requirements.txt"
     req.write_text("numpy\n")
 
     h1 = _hash_requirements(str(req), "l4", "python:3.12-slim")
     h2 = _hash_requirements(str(req), "l4", "python:3.11-slim")
-    assert h1 != h2
+    self.assertNotEqual(h1, h2)
 
-  @pytest.mark.parametrize(
-    "requirements_path",
-    [None, "/nonexistent/path.txt"],
-    ids=["none", "nonexistent"],
+  @parameterized.named_parameters(
+    dict(testcase_name="none", requirements_path=None),
+    dict(
+      testcase_name="nonexistent",
+      requirements_path="/nonexistent/path.txt",
+    ),
   )
   def test_missing_requirements_valid(self, requirements_path):
     h = _hash_requirements(requirements_path, "cpu", "python:3.12-slim")
-    assert isinstance(h, str)
-    assert len(h) == 64
+    self.assertIsInstance(h, str)
+    self.assertLen(h, 64)
 
-  def test_returns_hex_string(self, tmp_path):
+  def test_returns_hex_string(self):
+    tmp_path = _make_temp_path(self)
     req = tmp_path / "r.txt"
     req.write_text("keras\n")
     h = _hash_requirements(str(req), "l4", "python:3.12-slim")
-    assert re.fullmatch(r"[0-9a-f]{64}", h)
+    self.assertRegex(h, r"^[0-9a-f]{64}$")
 
 
-class TestGenerateDockerfile:
-  @pytest.mark.parametrize(
-    ("accelerator_type", "expected", "not_expected"),
-    [
-      pytest.param("cpu", ["pip install jax"], ["cuda", "tpu"], id="cpu"),
-      pytest.param("l4", ["jax[cuda12]"], [], id="gpu"),
-      pytest.param("v3-8", ["jax[tpu]", "libtpu_releases"], [], id="tpu"),
-    ],
+class TestGenerateDockerfile(parameterized.TestCase):
+  @parameterized.named_parameters(
+    dict(
+      testcase_name="cpu",
+      accelerator_type="cpu",
+      expected=["pip install jax"],
+      not_expected=["cuda", "tpu"],
+    ),
+    dict(
+      testcase_name="gpu",
+      accelerator_type="l4",
+      expected=["jax[cuda12]"],
+      not_expected=[],
+    ),
+    dict(
+      testcase_name="tpu",
+      accelerator_type="v3-8",
+      expected=["jax[tpu]", "libtpu_releases"],
+      not_expected=[],
+    ),
   )
   def test_jax_install(self, accelerator_type, expected, not_expected):
     content = _generate_dockerfile(
@@ -82,11 +110,12 @@ class TestGenerateDockerfile:
       accelerator_type=accelerator_type,
     )
     for s in expected:
-      assert s in content
+      self.assertIn(s, content)
     for s in not_expected:
-      assert s not in content
+      self.assertNotIn(s, content)
 
-  def test_with_requirements(self, tmp_path):
+  def test_with_requirements(self):
+    tmp_path = _make_temp_path(self)
     req = tmp_path / "requirements.txt"
     req.write_text("numpy\n")
 
@@ -95,8 +124,8 @@ class TestGenerateDockerfile:
       requirements_path=str(req),
       accelerator_type="cpu",
     )
-    assert "COPY requirements.txt" in content
-    assert "pip install -r" in content
+    self.assertIn("COPY requirements.txt", content)
+    self.assertIn("pip install -r", content)
 
   def test_without_requirements(self):
     content = _generate_dockerfile(
@@ -104,17 +133,17 @@ class TestGenerateDockerfile:
       requirements_path=None,
       accelerator_type="cpu",
     )
-    assert "COPY requirements.txt" not in content
+    self.assertNotIn("COPY requirements.txt", content)
 
-  @pytest.mark.parametrize(
-    "expected_substring",
-    [
-      pytest.param(
-        "COPY remote_runner.py /app/remote_runner.py",
-        id="remote_runner_copy",
-      ),
-      pytest.param("ENV KERAS_BACKEND=jax", id="keras_backend_env"),
-    ],
+  @parameterized.named_parameters(
+    dict(
+      testcase_name="remote_runner_copy",
+      expected_substring="COPY remote_runner.py /app/remote_runner.py",
+    ),
+    dict(
+      testcase_name="keras_backend_env",
+      expected_substring="ENV KERAS_BACKEND=jax",
+    ),
   )
   def test_contains_expected_content(self, expected_substring):
     content = _generate_dockerfile(
@@ -122,7 +151,7 @@ class TestGenerateDockerfile:
       requirements_path=None,
       accelerator_type="cpu",
     )
-    assert expected_substring in content
+    self.assertIn(expected_substring, content)
 
   def test_uses_base_image(self):
     content = _generate_dockerfile(
@@ -130,127 +159,143 @@ class TestGenerateDockerfile:
       requirements_path=None,
       accelerator_type="cpu",
     )
-    assert "FROM python:3.11-bullseye" in content
+    self.assertIn("FROM python:3.11-bullseye", content)
 
 
-class TestImageExists:
-  def test_returns_true_when_tag_found(self, mocker):
+class TestImageExists(parameterized.TestCase):
+  def test_returns_true_when_tag_found(self):
     mock_client = MagicMock()
-    mocker.patch(
+    with mock.patch(
       "keras_remote.infra.container_builder.artifactregistry_v1.ArtifactRegistryClient",
       return_value=mock_client,
-    )
-    result = _image_exists(
-      "us-docker.pkg.dev/my-proj/keras-remote/base:l4-abc123",
-      "my-proj",
-    )
-    assert result is True
+    ):
+      result = _image_exists(
+        "us-docker.pkg.dev/my-proj/keras-remote/base:l4-abc123",
+        "my-proj",
+      )
+    self.assertTrue(result)
     mock_client.get_tag.assert_called_once()
 
-  @pytest.mark.parametrize(
-    "side_effect",
-    [
-      pytest.param(google_exceptions.NotFound("nope"), id="not_found"),
-      pytest.param(RuntimeError("unexpected"), id="other_error"),
-    ],
+  @parameterized.named_parameters(
+    dict(
+      testcase_name="not_found",
+      side_effect=google_exceptions.NotFound("nope"),
+    ),
+    dict(
+      testcase_name="other_error",
+      side_effect=RuntimeError("unexpected"),
+    ),
   )
-  def test_returns_false_on_error(self, mocker, side_effect):
+  def test_returns_false_on_error(self, side_effect):
     mock_client = MagicMock()
     mock_client.get_tag.side_effect = side_effect
-    mocker.patch(
+    with mock.patch(
       "keras_remote.infra.container_builder.artifactregistry_v1.ArtifactRegistryClient",
       return_value=mock_client,
-    )
-    result = _image_exists(
-      "us-docker.pkg.dev/my-proj/keras-remote/base:l4-abc123",
-      "my-proj",
-    )
-    assert result is False
+    ):
+      result = _image_exists(
+        "us-docker.pkg.dev/my-proj/keras-remote/base:l4-abc123",
+        "my-proj",
+      )
+    self.assertFalse(result)
 
-  def test_correct_resource_name(self, mocker):
+  def test_correct_resource_name(self):
     mock_client = MagicMock()
-    mocker.patch(
+    with mock.patch(
       "keras_remote.infra.container_builder.artifactregistry_v1.ArtifactRegistryClient",
       return_value=mock_client,
-    )
-    _image_exists(
-      "us-docker.pkg.dev/my-proj/keras-remote/base:v3-8-abc123def456",
-      "my-proj",
-    )
+    ):
+      _image_exists(
+        "us-docker.pkg.dev/my-proj/keras-remote/base:v3-8-abc123def456",
+        "my-proj",
+      )
     call_args = mock_client.get_tag.call_args
     request = call_args.kwargs.get("request") or call_args[1].get("request")
-    assert request.name == (
+    self.assertEqual(
+      request.name,
       "projects/my-proj/locations/us"
       "/repositories/keras-remote"
-      "/packages/base/tags/v3-8-abc123def456"
+      "/packages/base/tags/v3-8-abc123def456",
     )
 
 
-class TestGetOrBuildContainer:
-  def test_returns_cached_when_image_exists(self, mocker):
-    mocker.patch(
-      "keras_remote.infra.container_builder._image_exists",
-      return_value=True,
-    )
-    mock_build = mocker.patch(
-      "keras_remote.infra.container_builder._build_and_push",
-    )
-
-    result = get_or_build_container(
-      base_image="python:3.12-slim",
-      requirements_path=None,
-      accelerator_type="l4",
-      project="test-proj",
-      zone="us-central1-a",
-    )
+class TestGetOrBuildContainer(absltest.TestCase):
+  def test_returns_cached_when_image_exists(self):
+    with (
+      mock.patch(
+        "keras_remote.infra.container_builder._image_exists",
+        return_value=True,
+      ),
+      mock.patch(
+        "keras_remote.infra.container_builder._build_and_push",
+      ) as mock_build,
+    ):
+      result = get_or_build_container(
+        base_image="python:3.12-slim",
+        requirements_path=None,
+        accelerator_type="l4",
+        project="test-proj",
+        zone="us-central1-a",
+      )
 
     mock_build.assert_not_called()
-    assert "us-docker.pkg.dev/test-proj/keras-remote/base:" in result
+    self.assertIn("us-docker.pkg.dev/test-proj/keras-remote/base:", result)
 
-  def test_builds_when_image_missing(self, mocker):
-    mocker.patch(
-      "keras_remote.infra.container_builder._image_exists",
-      return_value=False,
-    )
-    mock_build = mocker.patch(
-      "keras_remote.infra.container_builder._build_and_push",
-      return_value="us-docker.pkg.dev/proj/keras-remote/base:l4-bbbbbbbbbbbb",
-    )
-
-    result = get_or_build_container(
-      base_image="python:3.12-slim",
-      requirements_path=None,
-      accelerator_type="l4",
-      project="proj",
-      zone="us-central1-a",
-    )
+  def test_builds_when_image_missing(self):
+    with (
+      mock.patch(
+        "keras_remote.infra.container_builder._image_exists",
+        return_value=False,
+      ),
+      mock.patch(
+        "keras_remote.infra.container_builder._build_and_push",
+        return_value="us-docker.pkg.dev/proj/keras-remote/base:l4-bbbbbbbbbbbb",
+      ) as mock_build,
+    ):
+      result = get_or_build_container(
+        base_image="python:3.12-slim",
+        requirements_path=None,
+        accelerator_type="l4",
+        project="proj",
+        zone="us-central1-a",
+      )
 
     mock_build.assert_called_once()
-    assert result == "us-docker.pkg.dev/proj/keras-remote/base:l4-bbbbbbbbbbbb"
+    self.assertEqual(
+      result, "us-docker.pkg.dev/proj/keras-remote/base:l4-bbbbbbbbbbbb"
+    )
 
-  def _get_image_uri(self, mocker, accelerator_type, project, zone):
-    mocker.patch(
+  def _get_image_uri(self, accelerator_type, project, zone):
+    with mock.patch(
       "keras_remote.infra.container_builder._image_exists",
       return_value=True,
+    ):
+      return get_or_build_container(
+        base_image="python:3.12-slim",
+        requirements_path=None,
+        accelerator_type=accelerator_type,
+        project=project,
+        zone=zone,
+      )
+
+  def test_image_uri_format_tpu_europe(self):
+    result = self._get_image_uri("v3-8", "my-proj", "europe-west4-b")
+
+    self.assertTrue(
+      result.startswith("europe-docker.pkg.dev/my-proj/keras-remote/base:")
     )
-    return get_or_build_container(
-      base_image="python:3.12-slim",
-      requirements_path=None,
-      accelerator_type=accelerator_type,
-      project=project,
-      zone=zone,
+    tag = result.split(":")[-1]
+    self.assertRegex(tag, r"^v3-8-[0-9a-f]{12}$")
+
+  def test_image_uri_format_gpu_us(self):
+    result = self._get_image_uri("a100-80gb", "proj", "us-central1-a")
+
+    self.assertTrue(
+      result.startswith("us-docker.pkg.dev/proj/keras-remote/base:")
     )
-
-  def test_image_uri_format_tpu_europe(self, mocker):
-    result = self._get_image_uri(mocker, "v3-8", "my-proj", "europe-west4-b")
-
-    assert result.startswith("europe-docker.pkg.dev/my-proj/keras-remote/base:")
     tag = result.split(":")[-1]
-    assert re.fullmatch(r"v3-8-[0-9a-f]{12}", tag)
+    self.assertRegex(tag, r"^a100-80gb-[0-9a-f]{12}$")
 
-  def test_image_uri_format_gpu_us(self, mocker):
-    result = self._get_image_uri(mocker, "a100-80gb", "proj", "us-central1-a")
 
-    assert result.startswith("us-docker.pkg.dev/proj/keras-remote/base:")
-    tag = result.split(":")[-1]
-    assert re.fullmatch(r"a100-80gb-[0-9a-f]{12}", tag)
+if __name__ == "__main__":
+  absltest.main()
