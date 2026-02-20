@@ -1,12 +1,23 @@
 """Integration tests for the full serialization roundtrip."""
 
+import pathlib
 import sys
+import tempfile
 import zipfile
+
+from absl.testing import absltest
 
 from keras_remote.utils.packager import zip_working_dir
 
 
-class TestZipAndExtract:
+def _make_temp_path(test_case):
+  """Create a temp directory that is cleaned up after the test."""
+  td = tempfile.TemporaryDirectory()
+  test_case.addCleanup(td.cleanup)
+  return pathlib.Path(td.name)
+
+
+class TestZipAndExtract(absltest.TestCase):
   def _zip_and_extract(self, src, tmp_path):
     """Zip a directory and extract it, returning the extraction path."""
     zip_path = str(tmp_path / "context.zip")
@@ -17,8 +28,9 @@ class TestZipAndExtract:
       zf.extractall(str(extract_dir))
     return extract_dir
 
-  def test_zip_extract_preserves_files(self, tmp_path):
-    """Zip → extract roundtrip preserves file content."""
+  def test_zip_extract_preserves_files(self):
+    """Zip -> extract roundtrip preserves file content."""
+    tmp_path = _make_temp_path(self)
     src = tmp_path / "project"
     src.mkdir()
     (src / "main.py").write_text("x = 1")
@@ -26,11 +38,14 @@ class TestZipAndExtract:
 
     extract_dir = self._zip_and_extract(src, tmp_path)
 
-    assert (extract_dir / "main.py").read_text() == "x = 1"
-    assert (extract_dir / "config.json").read_text() == '{"key": "val"}'
+    self.assertEqual((extract_dir / "main.py").read_text(), "x = 1")
+    self.assertEqual(
+      (extract_dir / "config.json").read_text(), '{"key": "val"}'
+    )
 
-  def test_zip_extract_enables_imports(self, tmp_path):
+  def test_zip_extract_enables_imports(self):
     """Extracted workspace can be added to sys.path for imports."""
+    tmp_path = _make_temp_path(self)
     src = tmp_path / "project"
     src.mkdir()
     (src / "helper.py").write_text("def greet(name):\n  return f'Hi {name}'")
@@ -41,8 +56,11 @@ class TestZipAndExtract:
     try:
       import helper
 
-      assert helper.greet("World") == "Hi World"
+      self.assertEqual(helper.greet("World"), "Hi World")
     finally:
       sys.path.remove(str(extract_dir))
-      # Clean up imported module
       sys.modules.pop("helper", None)
+
+
+if __name__ == "__main__":
+  absltest.main()

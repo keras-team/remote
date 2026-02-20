@@ -1,16 +1,25 @@
 """Tests for keras_remote.utils.packager — zip and payload serialization."""
 
 import os
+import pathlib
+import tempfile
 import zipfile
 
 import cloudpickle
 import numpy as np
-import pytest
+from absl.testing import absltest
 
 from keras_remote.utils.packager import save_payload, zip_working_dir
 
 
-class TestZipWorkingDir:
+def _make_temp_path(test_case):
+  """Create a temp directory that is cleaned up after the test."""
+  td = tempfile.TemporaryDirectory()
+  test_case.addCleanup(td.cleanup)
+  return pathlib.Path(td.name)
+
+
+class TestZipWorkingDir(absltest.TestCase):
   def _zip_and_list(self, src, tmp_path):
     """Zip src directory and return the set of archive member names."""
     out = tmp_path / "context.zip"
@@ -18,15 +27,17 @@ class TestZipWorkingDir:
     with zipfile.ZipFile(str(out)) as zf:
       return set(zf.namelist())
 
-  def test_contains_all_files(self, tmp_path):
+  def test_contains_all_files(self):
+    tmp_path = _make_temp_path(self)
     src = tmp_path / "src"
     src.mkdir()
     (src / "a.py").write_text("a")
     (src / "b.txt").write_text("b")
 
-    assert self._zip_and_list(src, tmp_path) == {"a.py", "b.txt"}
+    self.assertEqual(self._zip_and_list(src, tmp_path), {"a.py", "b.txt"})
 
-  def test_excludes_git_directory(self, tmp_path):
+  def test_excludes_git_directory(self):
+    tmp_path = _make_temp_path(self)
     src = tmp_path / "src"
     src.mkdir()
     git_dir = src / ".git"
@@ -35,10 +46,11 @@ class TestZipWorkingDir:
     (src / "main.py").write_text("code")
 
     names = self._zip_and_list(src, tmp_path)
-    assert all(".git" not in n for n in names)
-    assert "main.py" in names
+    self.assertTrue(all(".git" not in n for n in names))
+    self.assertIn("main.py", names)
 
-  def test_excludes_pycache_directory(self, tmp_path):
+  def test_excludes_pycache_directory(self):
+    tmp_path = _make_temp_path(self)
     src = tmp_path / "src"
     src.mkdir()
     cache_dir = src / "__pycache__"
@@ -47,10 +59,11 @@ class TestZipWorkingDir:
     (src / "mod.py").write_text("code")
 
     names = self._zip_and_list(src, tmp_path)
-    assert all("__pycache__" not in n for n in names)
-    assert "mod.py" in names
+    self.assertTrue(all("__pycache__" not in n for n in names))
+    self.assertIn("mod.py", names)
 
-  def test_preserves_nested_structure(self, tmp_path):
+  def test_preserves_nested_structure(self):
+    tmp_path = _make_temp_path(self)
     src = tmp_path / "src"
     sub = src / "pkg" / "sub"
     sub.mkdir(parents=True)
@@ -58,17 +71,18 @@ class TestZipWorkingDir:
     (src / "top.py").write_text("top")
 
     names = self._zip_and_list(src, tmp_path)
-    assert "top.py" in names
-    assert os.path.join("pkg", "sub", "deep.py") in names
+    self.assertIn("top.py", names)
+    self.assertIn(os.path.join("pkg", "sub", "deep.py"), names)
 
-  def test_empty_directory(self, tmp_path):
+  def test_empty_directory(self):
+    tmp_path = _make_temp_path(self)
     src = tmp_path / "empty"
     src.mkdir()
 
-    assert self._zip_and_list(src, tmp_path) == set()
+    self.assertEqual(self._zip_and_list(src, tmp_path), set())
 
 
-class TestSavePayload:
+class TestSavePayload(absltest.TestCase):
   def _save_and_load(self, tmp_path, func, args=(), kwargs=None, env_vars=None):
     """Save a payload and load it back, returning the deserialized dict."""
     if kwargs is None:
@@ -80,7 +94,9 @@ class TestSavePayload:
     with open(str(out), "rb") as f:
       return cloudpickle.load(f)
 
-  def test_roundtrip_simple_function(self, tmp_path):
+  def test_roundtrip_simple_function(self):
+    tmp_path = _make_temp_path(self)
+
     def add(a, b):
       return a + b
 
@@ -88,12 +104,14 @@ class TestSavePayload:
       tmp_path, add, args=(2, 3), env_vars={"KEY": "val"}
     )
 
-    assert payload["func"](2, 3) == 5
-    assert payload["args"] == (2, 3)
-    assert payload["kwargs"] == {}
-    assert payload["env_vars"] == {"KEY": "val"}
+    self.assertEqual(payload["func"](2, 3), 5)
+    self.assertEqual(payload["args"], (2, 3))
+    self.assertEqual(payload["kwargs"], {})
+    self.assertEqual(payload["env_vars"], {"KEY": "val"})
 
-  def test_roundtrip_with_kwargs(self, tmp_path):
+  def test_roundtrip_with_kwargs(self):
+    tmp_path = _make_temp_path(self)
+
     def greet(name, greeting="Hello"):
       return f"{greeting}, {name}"
 
@@ -102,14 +120,16 @@ class TestSavePayload:
     )
 
     result = payload["func"](*payload["args"], **payload["kwargs"])
-    assert result == "Hi, World"
+    self.assertEqual(result, "Hi, World")
 
-  def test_roundtrip_lambda(self, tmp_path):
+  def test_roundtrip_lambda(self):
+    tmp_path = _make_temp_path(self)
     payload = self._save_and_load(tmp_path, lambda x: x * 2, args=(5,))
 
-    assert payload["func"](*payload["args"]) == 10
+    self.assertEqual(payload["func"](*payload["args"]), 10)
 
-  def test_roundtrip_closure(self, tmp_path):
+  def test_roundtrip_closure(self):
+    tmp_path = _make_temp_path(self)
     multiplier = 7
 
     def make_closure(x):
@@ -117,9 +137,11 @@ class TestSavePayload:
 
     payload = self._save_and_load(tmp_path, make_closure, args=(6,))
 
-    assert payload["func"](*payload["args"]) == 42
+    self.assertEqual(payload["func"](*payload["args"]), 42)
 
-  def test_roundtrip_numpy_args(self, tmp_path):
+  def test_roundtrip_numpy_args(self):
+    tmp_path = _make_temp_path(self)
+
     def dot(a, b):
       return np.dot(a, b)
 
@@ -129,9 +151,11 @@ class TestSavePayload:
     payload = self._save_and_load(tmp_path, dot, args=(arr_a, arr_b))
 
     result = payload["func"](*payload["args"])
-    assert result == pytest.approx(32.0)
+    self.assertAlmostEqual(result, 32.0)
 
-  def test_roundtrip_complex_args(self, tmp_path):
+  def test_roundtrip_complex_args(self):
+    tmp_path = _make_temp_path(self)
+
     def identity(x):
       return x
 
@@ -143,4 +167,8 @@ class TestSavePayload:
 
     payload = self._save_and_load(tmp_path, identity, args=(complex_arg,))
 
-    assert payload["func"](*payload["args"]) == complex_arg
+    self.assertEqual(payload["func"](*payload["args"]), complex_arg)
+
+
+if __name__ == "__main__":
+  absltest.main()
