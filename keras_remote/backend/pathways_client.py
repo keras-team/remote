@@ -117,7 +117,7 @@ def submit_pathways_job(
       raise RuntimeError(
         "LeaderWorkerSet CRD not found. Please ensure it is "
         "installed on the cluster. You can install it by running "
-        "the `keras-remote infra up` command, or by following the "
+        "the `keras-remote up` command, or by following the "
         "official LWS installation guide."
       ) from e
     else:
@@ -218,7 +218,10 @@ def cleanup_job(job_name, namespace="default"):
     )
     logger.info(f"Deleted LeaderWorkerSet: {job_name}")
   except ApiException as e:
-    if e.status != 404:
+    if e.status == 404:
+      # Job already deleted
+      pass
+    else:
       logger.warning(
         "Failed to delete LeaderWorkerSet %s: %s",
         job_name,
