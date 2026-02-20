@@ -32,9 +32,16 @@ cli = [
     "pulumi-gcp>=9.0",
     "pulumi-command>=1.0",
 ]
+test = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-mock>=3.14",
+    "pytest-timeout>=2.3",
+]
 dev = [
     "pre-commit",
     "ruff",
+    "keras-remote[test]",
 ]
 demo = [
     "jax",
@@ -68,3 +75,11 @@ ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "examples/*" = ["T201", "NPY002"]
+"**/test_*.py" = ["T201"]
+"tests/*" = ["T201"]
+
+[tool.pytest.ini_options]
+testpaths = ["keras_remote", "tests"]
+markers = [
+    "e2e: end-to-end tests requiring GCP infrastructure",
+]
