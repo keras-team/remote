@@ -11,7 +11,7 @@ import keras_remote
 
 # A simple model that will be executed remotely
 @keras_remote.run(
-  accelerator="v5litepod-1",
+  accelerator="v5litepod-1", backend="pathways"
 )
 def train_simple_model():
   print("Running Pathways job on JAX Backend!")

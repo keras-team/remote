@@ -155,11 +155,11 @@ class PathwaysBackend(BaseK8sBackend):
 
   def wait_for_job(self, job: Any, ctx: JobContext) -> None:
     """Wait for Pathways LWS completion."""
-    pathways_client.wait_for_job(job, ctx.job_id, namespace=self.namespace)
+    pathways_client.wait_for_job(ctx.job_id, namespace=self.namespace)
 
   def cleanup_job(self, job: Any, ctx: JobContext) -> None:
     """Clean up LWS resources."""
-    job_name = f"keras-pathways-{ctx.job_id}"
+    job_name = pathways_client._get_job_name(ctx.job_id)
     pathways_client.cleanup_job(job_name, namespace=self.namespace)
 
 

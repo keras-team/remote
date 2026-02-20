@@ -8,6 +8,7 @@ from keras_remote.cli.infra.post_deploy import (
   configure_docker_auth,
   configure_kubectl,
   install_gpu_drivers,
+  install_lws,
 )
 from keras_remote.cli.infra.program import create_program
 from keras_remote.cli.infra.stack_manager import get_stack
@@ -101,6 +102,10 @@ def up(project, zone, accelerator, cluster_name, yes):
   console.print("Configuring kubectl access...")
   configure_kubectl(cluster_name, zone, project)
   success("kubectl configured")
+
+  console.print("Installing LeaderWorkerSet CRD for Pathways support...")
+  install_lws()
+  success("LWS CRD installed")
 
   if isinstance(accel_config, GpuConfig):
     console.print("Installing NVIDIA GPU device drivers...")

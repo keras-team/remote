@@ -11,6 +11,7 @@ from keras_remote.backend.gke_client import (
   _parse_accelerator,
   _print_pod_logs,
 )
+from keras_remote.core import accelerators
 from keras_remote.infra import infra
 
 logger = infra.logger
@@ -20,13 +21,23 @@ LWS_VERSION = "v1"
 LWS_PLURAL = "leaderworkersets"
 
 
+def _get_job_name(job_id: str) -> str:
+  """Get the standardized Pathways job name for a given job ID."""
+  return f"keras-pathways-{job_id}"
+
+
 def _get_lws_version(group=LWS_GROUP):
   """Get the preferred version for the LeaderWorkerSet API."""
   _load_kube_config()
   api = client.ApisApi()
   try:
-    api_group = api.get_api_group(group)
-    return api_group.preferred_version.version
+    api_groups = api.get_api_versions().groups
+    for api_group in api_groups:
+      if api_group.name == group:
+        return api_group.preferred_version.version
+
+    # If we didn't find the group, raise ApiException to fallback
+    raise ApiException(status=404, reason=f"API group {group} not found")
   except ApiException:
     logger.warning(
       "Failed to retrieve LWS API version from cluster. Defaulting to '%s'",
@@ -62,10 +73,9 @@ def submit_pathways_job(
   lws_version = _get_lws_version()
 
   accel_config = _parse_accelerator(accelerator)
-  job_name = f"keras-pathways-{job_id}"
+  job_name = _get_job_name(job_id)
 
   # Extract num nodes from the TPU configuration
-  from keras_remote.core import accelerators
 
   parsed_config = accelerators.parse_accelerator(accelerator)
   if (
@@ -116,14 +126,12 @@ def submit_pathways_job(
       ) from e
 
 
-def wait_for_job(
-  job, job_id, namespace="default", timeout=3600, poll_interval=10
-):
+def wait_for_job(job_id, namespace="default", timeout=3600, poll_interval=10):
   """Wait for Pathways Job (LeaderWorkerSet) to complete."""
   _load_kube_config()
   core_v1 = client.CoreV1Api()
 
-  job_name = f"keras-pathways-{job_id}"
+  job_name = _get_job_name(job_id)
   start_time = time.time()
   logged_running = False
 
@@ -246,7 +254,13 @@ def _create_lws_spec(
   ]
 
   pod_template = {
-    "metadata": {"labels": {"app": "keras-remote-pathways", "job-id": job_id}},
+    "metadata": {
+      "labels": {
+        "app": "keras-remote-pathways",
+        "job-id": job_id,
+        "job-name": job_name,
+      }
+    },
     "spec": {
       "containers": [
         {
