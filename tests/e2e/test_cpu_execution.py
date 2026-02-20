@@ -9,16 +9,21 @@ Set E2E_TESTS=1 to enable.
 """
 
 import os
+from unittest import mock
 
-import pytest
+from absl.testing import absltest
 
 import keras_remote
+from tests.e2e.e2e_utils import get_gcp_project, skip_unless_e2e
 
 
-@pytest.mark.e2e
-@pytest.mark.timeout(600)
-class TestCpuExecution:
-  def test_simple_function(self, gcp_project):
+@skip_unless_e2e()
+class TestCpuExecution(absltest.TestCase):
+  def setUp(self):
+    super().setUp()
+    self.project = get_gcp_project()
+
+  def test_simple_function(self):
     """Execute a simple add function remotely and verify the result."""
 
     @keras_remote.run(accelerator="cpu")
@@ -26,9 +31,9 @@ class TestCpuExecution:
       return a + b
 
     result = add(2, 3)
-    assert result == 5
+    self.assertEqual(result, 5)
 
-  def test_complex_return_type(self, gcp_project):
+  def test_complex_return_type(self):
     """Verify complex return types survive serialization roundtrip."""
 
     @keras_remote.run(accelerator="cpu")
@@ -40,36 +45,36 @@ class TestCpuExecution:
       }
 
     result = complex_return()
-    assert result["key"] == [1, 2, 3]
-    assert result["nested"]["a"] is True
-    assert result["nested"]["b"] is None
-    assert result["tuple"] == (4, 5)
+    self.assertEqual(result["key"], [1, 2, 3])
+    self.assertTrue(result["nested"]["a"])
+    self.assertIsNone(result["nested"]["b"])
+    self.assertEqual(result["tuple"], (4, 5))
 
-  def test_function_that_raises(self, gcp_project):
+  def test_function_that_raises(self):
     """Verify remote exceptions are re-raised locally."""
 
     @keras_remote.run(accelerator="cpu")
     def bad_func():
       raise ValueError("intentional test error")
 
-    with pytest.raises(ValueError, match="intentional test error"):
+    with self.assertRaisesRegex(ValueError, "intentional test error"):
       bad_func()
 
-  def test_env_var_propagation(self, gcp_project, monkeypatch):
+  def test_env_var_propagation(self):
     """Verify captured env vars are available in the remote environment."""
-    monkeypatch.setenv("E2E_TEST_VAR", "hello_from_local")
+    with mock.patch.dict(os.environ, {"E2E_TEST_VAR": "hello_from_local"}):
 
-    @keras_remote.run(
-      accelerator="cpu",
-      capture_env_vars=["E2E_TEST_VAR"],
-    )
-    def read_env():
-      return os.environ.get("E2E_TEST_VAR")
+      @keras_remote.run(
+        accelerator="cpu",
+        capture_env_vars=["E2E_TEST_VAR"],
+      )
+      def read_env():
+        return os.environ.get("E2E_TEST_VAR")
 
-    result = read_env()
-    assert result == "hello_from_local"
+      result = read_env()
+      self.assertEqual(result, "hello_from_local")
 
-  def test_function_with_args_and_kwargs(self, gcp_project):
+  def test_function_with_args_and_kwargs(self):
     """Verify positional and keyword arguments are passed correctly."""
 
     @keras_remote.run(accelerator="cpu")
@@ -77,4 +82,8 @@ class TestCpuExecution:
       return (x + y) * scale + offset
 
     result = compute(3, 4, scale=2.0, offset=1.0)
-    assert result == 15.0
+    self.assertEqual(result, 15.0)
+
+
+if __name__ == "__main__":
+  absltest.main()

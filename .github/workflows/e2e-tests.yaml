@@ -48,4 +48,4 @@ jobs:
           KERAS_REMOTE_PROJECT: ${{ secrets.GCP_PROJECT }}
           KERAS_REMOTE_ZONE: ${{ secrets.GKE_ZONE }}
           KERAS_REMOTE_GKE_CLUSTER: ${{ secrets.GKE_CLUSTER }}
-        run: pytest tests/e2e/ -v --tb=long --timeout=600
+        run: python -m unittest discover -s tests/e2e -p "test_*.py" -v
