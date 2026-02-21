@@ -96,22 +96,34 @@ class TestCleanupArtifacts(_GcsTestBase):
 
 
 class TestGetProject(parameterized.TestCase):
-  @parameterized.parameters(
-    # Only KERAS_REMOTE_PROJECT set: use it directly
-    ("kr-proj", None, "kr-proj"),
-    # Only GOOGLE_CLOUD_PROJECT set: fall back to it
-    (None, "gc-proj", "gc-proj"),
-    # Neither set: no project resolved
-    (None, None, None),
-    # Both set: KERAS_REMOTE_PROJECT takes precedence
-    ("kr-proj", "gc-proj", "kr-proj"),
+  @parameterized.named_parameters(
+    dict(
+      testcase_name="keras_remote_project_only",
+      kr_project="kr-proj",
+      gc_project=None,
+      expected="kr-proj",
+    ),
+    dict(
+      testcase_name="google_cloud_project_fallback",
+      kr_project=None,
+      gc_project="gc-proj",
+      expected="gc-proj",
+    ),
+    dict(
+      testcase_name="neither_set",
+      kr_project=None,
+      gc_project=None,
+      expected=None,
+    ),
+    dict(
+      testcase_name="keras_remote_takes_precedence",
+      kr_project="kr-proj",
+      gc_project="gc-proj",
+      expected="kr-proj",
+    ),
   )
   def test_resolves_project(self, kr_project, gc_project, expected):
-    env = {
-      k: v
-      for k, v in os.environ.items()
-      if k not in ("KERAS_REMOTE_PROJECT", "GOOGLE_CLOUD_PROJECT")
-    }
+    env = {}
     if kr_project:
       env["KERAS_REMOTE_PROJECT"] = kr_project
     if gc_project:

@@ -210,7 +210,7 @@ class TestImageExists(parameterized.TestCase):
         "my-proj",
       )
     call_args = mock_client.get_tag.call_args
-    request = call_args.kwargs.get("request") or call_args[1].get("request")
+    request = call_args.kwargs["request"]
     self.assertEqual(
       request.name,
       "projects/my-proj/locations/us"
