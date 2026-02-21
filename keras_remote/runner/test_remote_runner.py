@@ -90,9 +90,7 @@ class TestRunGcsMode(absltest.TestCase):
       env_vars = {}
 
     src_dir = tmp_path / "src"
-    work_dir = tmp_path / "work"
     src_dir.mkdir()
-    work_dir.mkdir()
 
     context_zip = src_dir / "context.zip"
     with zipfile.ZipFile(context_zip, "w") as zf:
@@ -118,12 +116,12 @@ class TestRunGcsMode(absltest.TestCase):
       elif "payload.pkl" in gcs_path:
         shutil.copy(str(payload_pkl), local_path)
 
-    return work_dir, mock_client, fake_download
+    return mock_client, fake_download
 
   def _run_gcs_mode(self, func, args=(), env_vars=None):
     """Set up fixtures, run run_gcs_mode(), return (exit_code, result_payload)."""
     tmp_path = _make_temp_path(self)
-    work_dir, mock_client, fake_download = self._setup_gcs_test(
+    mock_client, fake_download = self._setup_gcs_test(
       tmp_path, func, args=args, env_vars=env_vars
     )
 
@@ -136,10 +134,6 @@ class TestRunGcsMode(absltest.TestCase):
           "gs://bucket/payload.pkl",
           "gs://bucket/result.pkl",
         ],
-      ),
-      mock.patch(
-        "keras_remote.runner.remote_runner.TEMP_DIR",
-        str(work_dir),
       ),
       mock.patch(
         "keras_remote.runner.remote_runner._download_from_gcs",
