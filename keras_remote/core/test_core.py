@@ -112,12 +112,12 @@ class TestEnvVarCapture(absltest.TestCase):
 
 class TestExecuteOnGkeDefaults(absltest.TestCase):
   def test_cluster_from_env(self):
-    """When cluster=None, falls back to KERAS_REMOTE_GKE_CLUSTER env var."""
+    """When cluster=None, falls back to KERAS_REMOTE_CLUSTER env var."""
     with (
       mock.patch.dict(
         os.environ,
         {
-          "KERAS_REMOTE_GKE_CLUSTER": "env-cluster",
+          "KERAS_REMOTE_CLUSTER": "env-cluster",
           "KERAS_REMOTE_PROJECT": "proj",
         },
       ),
