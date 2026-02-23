@@ -14,14 +14,13 @@ from unittest import mock
 from absl.testing import absltest
 
 import keras_remote
-from tests.e2e.e2e_utils import get_gcp_project, skip_unless_e2e
+from tests.e2e.e2e_utils import skip_unless_e2e
 
 
 @skip_unless_e2e()
 class TestCpuExecution(absltest.TestCase):
   def setUp(self):
     super().setUp()
-    self.project = get_gcp_project()
 
   def test_simple_function(self):
     """Execute a simple add function remotely and verify the result."""
