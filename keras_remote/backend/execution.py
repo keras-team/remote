@@ -13,6 +13,7 @@ from typing import Any, Callable, Optional, Protocol
 
 import cloudpickle
 from absl import logging
+from google.api_core import exceptions as google_exceptions
 
 from keras_remote.backend import gke_client, pathways_client
 from keras_remote.constants import get_default_zone, zone_to_region
@@ -294,13 +295,26 @@ def execute_remote(ctx: JobContext, backend: BackendClient) -> Any:
     job = backend.submit_job(ctx)
 
     # Phase 5: Wait for completion (with cleanup on failure)
+    job_error = None
     try:
       backend.wait_for_job(job, ctx)
+    except RuntimeError as e:
+      job_error = e
     finally:
       backend.cleanup_job(job, ctx)
 
     # Phase 6: Download and deserialize result
-    result_payload = _download_result(ctx)
+    # Try even if the job failed — the runner may have captured a user
+    # exception and uploaded the result before exiting with non-zero.
+    if job_error is not None:
+      try:
+        result_payload = _download_result(ctx)
+      except google_exceptions.NotFound:
+        # Result wasn't uploaded (infrastructure failure), surface the
+        # original job error.
+        raise job_error from None
+    else:
+      result_payload = _download_result(ctx)
 
     # Phase 7: Cleanup and return/raise
     return _cleanup_and_return(ctx, result_payload)
