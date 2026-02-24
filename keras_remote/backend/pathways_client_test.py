@@ -273,6 +273,13 @@ class TestWaitForJob(absltest.TestCase):
       mock.patch(f"{_MODULE}.client.CoreV1Api")
     ).return_value
 
+    self.mock_streamer = MagicMock()
+    self.enterContext(
+      mock.patch(f"{_MODULE}.LogStreamer", return_value=self.mock_streamer)
+    )
+    self.mock_streamer.__enter__ = MagicMock(return_value=self.mock_streamer)
+    self.mock_streamer.__exit__ = MagicMock(return_value=False)
+
   def _make_pod(self, phase, container_statuses=None):
     pod = MagicMock()
     pod.status.phase = phase
@@ -298,6 +305,7 @@ class TestWaitForJob(absltest.TestCase):
     )
     result = wait_for_job("j1")
     self.assertEqual(result, "success")
+    self.mock_streamer.start.assert_not_called()
 
   def test_immediate_failure_phase(self):
     self.mock_core.read_namespaced_pod.return_value = self._make_pod("Failed")
@@ -386,6 +394,22 @@ class TestWaitForJob(absltest.TestCase):
     self.mock_core.read_namespaced_pod.assert_called_with(
       "keras-pathways-j1-0", "default"
     )
+
+  def test_starts_streaming_when_pod_running(self):
+    running = self._make_pod("Running", container_statuses=None)
+    succeeded = self._make_pod("Succeeded")
+    self.mock_core.read_namespaced_pod.side_effect = [running, succeeded]
+    result = wait_for_job("j1")
+    self.assertEqual(result, "success")
+    self.mock_streamer.start.assert_called_once_with("keras-pathways-j1-0")
+
+  def test_no_streaming_when_pod_pending(self):
+    pending = self._make_pod("Pending", container_statuses=None)
+    succeeded = self._make_pod("Succeeded")
+    self.mock_core.read_namespaced_pod.side_effect = [pending, succeeded]
+    result = wait_for_job("j1")
+    self.assertEqual(result, "success")
+    self.mock_streamer.start.assert_not_called()
 
 
 class TestCleanupJob(absltest.TestCase):
