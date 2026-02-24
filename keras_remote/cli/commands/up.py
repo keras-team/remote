@@ -1,6 +1,9 @@
 """keras-remote up command — provision infrastructure."""
 
+import subprocess
+
 import click
+import pulumi.automation as auto
 
 from keras_remote.cli.config import InfraConfig
 from keras_remote.cli.constants import DEFAULT_CLUSTER_NAME, DEFAULT_ZONE
@@ -12,7 +15,13 @@ from keras_remote.cli.infra.post_deploy import (
 )
 from keras_remote.cli.infra.program import create_program
 from keras_remote.cli.infra.stack_manager import get_stack
-from keras_remote.cli.output import banner, config_summary, console, success
+from keras_remote.cli.output import (
+  banner,
+  config_summary,
+  console,
+  success,
+  warning,
+)
 from keras_remote.cli.prerequisites_check import check_all
 from keras_remote.cli.prompts import prompt_accelerator, resolve_project
 from keras_remote.constants import zone_to_ar_location
@@ -87,34 +96,77 @@ def up(project, zone, accelerator, cluster_name, yes):
   program = create_program(config)
   stack = get_stack(program, config)
   console.print("[bold]Provisioning infrastructure...[/bold]\n")
-  result = stack.up(on_output=print)
-  console.print()
-  success(f"Pulumi update complete. {result.summary.resource_changes}")
+
+  pulumi_failed = False
+  try:
+    result = stack.up(on_output=print)
+    console.print()
+    success(f"Pulumi update complete. {result.summary.resource_changes}")
+  except auto.errors.CommandError as e:
+    console.print()
+    pulumi_failed = True
+    warning(
+      "Pulumi update encountered an issue"
+      " (some resources may already exist):\n"
+      f"  {e}\n"
+      "Attempting post-deploy configuration anyway..."
+    )
 
   # Post-deploy steps
   ar_location = zone_to_ar_location(zone)
   console.print("\n[bold]Running post-deploy configuration...[/bold]\n")
 
+  failures = []
+
   console.print("Configuring Docker authentication...")
-  configure_docker_auth(ar_location)
-  success("Docker authentication configured")
+  try:
+    configure_docker_auth(ar_location)
+    success("Docker authentication configured")
+  except subprocess.CalledProcessError as e:
+    failures.append("Docker authentication")
+    warning(f"Docker authentication configuration failed: {e}")
 
   console.print("Configuring kubectl access...")
-  configure_kubectl(cluster_name, zone, project)
-  success("kubectl configured")
+  try:
+    configure_kubectl(cluster_name, zone, project)
+    success("kubectl configured")
+  except subprocess.CalledProcessError as e:
+    failures.append("kubectl configuration")
+    warning(f"kubectl configuration failed: {e}")
 
   console.print("Installing LeaderWorkerSet CRD for Pathways support...")
-  install_lws()
-  success("LWS CRD installed")
+  try:
+    install_lws()
+    success("LWS CRD installed")
+  except subprocess.CalledProcessError as e:
+    failures.append("LWS CRD installation")
+    warning(f"LWS CRD installation failed: {e}")
 
   if isinstance(accel_config, GpuConfig):
     console.print("Installing NVIDIA GPU device drivers...")
-    install_gpu_drivers()
-    success("GPU driver installation initiated")
+    try:
+      install_gpu_drivers()
+      success("GPU driver installation initiated")
+    except subprocess.CalledProcessError as e:
+      failures.append("GPU driver installation")
+      warning(f"GPU driver installation failed: {e}")
 
   # Final summary
   console.print()
-  banner("Setup Complete")
+  if pulumi_failed or failures:
+    banner("Setup Completed With Warnings")
+    console.print()
+    if pulumi_failed:
+      warning("Pulumi provisioning encountered errors (see above).")
+    if failures:
+      warning(f"Post-deploy steps failed: {', '.join(failures)}")
+    console.print()
+    console.print(
+      "You may re-run [bold]keras-remote up[/bold] to retry failed steps."
+    )
+  else:
+    banner("Setup Complete")
+
   console.print()
   console.print("Add these environment variables to your shell config:")
   console.print(f"  export KERAS_REMOTE_PROJECT={project}")
