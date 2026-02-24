@@ -11,6 +11,7 @@ from keras_remote.backend.gke_client import (
   _parse_accelerator,
   _print_pod_logs,
 )
+from keras_remote.backend.log_streaming import LogStreamer
 from keras_remote.core import accelerators
 from keras_remote.infra import infra
 
@@ -138,68 +139,74 @@ def wait_for_job(job_id, namespace="default", timeout=3600, poll_interval=10):
   # The leader pod is suffixed with '-0' by LWS
   leader_pod_name = f"{job_name}-0"
 
-  while True:
-    elapsed = time.time() - start_time
-    if elapsed > timeout:
-      raise RuntimeError(f"Pathways job {job_name} timed out after {timeout}s")
-
-    try:
-      pod = core_v1.read_namespaced_pod(leader_pod_name, namespace)
-      if not logged_running:
-        logger.info(f"Found pod: {leader_pod_name}")
-        logged_running = True
-
-      if pod.status.phase == "Succeeded":
-        logger.info(f"[REMOTE] Job {job_name} completed successfully")
-        return "success"
-
-      if pod.status.phase == "Failed":
-        _print_pod_logs(core_v1, job_name, namespace)
-        raise RuntimeError(f"Pathways job {job_name} failed")
-
-      elif pod.status.phase == "Pending":
-        _check_pod_scheduling(core_v1, job_name, namespace)
-        logger.debug("Pod is Pending...")
-
-    except ApiException as e:
-      if e.status == 404:
-        # Pod might not be created yet
-        pod = None
-      else:
+  with LogStreamer(core_v1, namespace) as streamer:
+    while True:
+      elapsed = time.time() - start_time
+      if elapsed > timeout:
         raise RuntimeError(
-          f"Failed to read leader pod status: {e.reason}"
-        ) from e
+          f"Pathways job {job_name} timed out after {timeout}s"
+        )
 
-    if pod is not None and pod.status.container_statuses:
-      container_status = pod.status.container_statuses[0]
+      try:
+        pod = core_v1.read_namespaced_pod(leader_pod_name, namespace)
+        if not logged_running:
+          logger.info(f"Found pod: {leader_pod_name}")
+          logged_running = True
 
-      # Check current state
-      if container_status.state.terminated:
-        if container_status.state.terminated.exit_code == 0:
+        if pod.status.phase == "Succeeded":
           logger.info(f"[REMOTE] Job {job_name} completed successfully")
           return "success"
-        else:
-          _print_pod_logs(core_v1, job_name, namespace)
-          raise RuntimeError(
-            f"Pathways job {job_name} failed with exit code "
-            f"{container_status.state.terminated.exit_code}"
-          )
 
-      # Check last state (in case it restarted)
-      if container_status.last_state.terminated:
-        if container_status.last_state.terminated.exit_code == 0:
-          logger.info(
-            f"[REMOTE] Job {job_name} completed successfully (restarted)"
-          )
-          return "success"
-        else:
+        if pod.status.phase == "Failed":
           _print_pod_logs(core_v1, job_name, namespace)
-          raise RuntimeError(
-            f"Pathways job {job_name} failed previously with "
-            f"exit code {container_status.last_state.terminated.exit_code}"
-          )
+          raise RuntimeError(f"Pathways job {job_name} failed")
 
-    time.sleep(poll_interval)
+        elif pod.status.phase == "Pending":
+          _check_pod_scheduling(core_v1, job_name, namespace)
+          logger.debug("Pod is Pending...")
+
+        elif pod.status.phase == "Running":
+          streamer.start(leader_pod_name)
+
+      except ApiException as e:
+        if e.status == 404:
+          # Pod might not be created yet
+          pod = None
+        else:
+          raise RuntimeError(
+            f"Failed to read leader pod status: {e.reason}"
+          ) from e
+
+      if pod is not None and pod.status.container_statuses:
+        container_status = pod.status.container_statuses[0]
+
+        # Check current state
+        if container_status.state.terminated:
+          if container_status.state.terminated.exit_code == 0:
+            logger.info(f"[REMOTE] Job {job_name} completed successfully")
+            return "success"
+          else:
+            _print_pod_logs(core_v1, job_name, namespace)
+            raise RuntimeError(
+              f"Pathways job {job_name} failed with exit code "
+              f"{container_status.state.terminated.exit_code}"
+            )
+
+        # Check last state (in case it restarted)
+        if container_status.last_state.terminated:
+          if container_status.last_state.terminated.exit_code == 0:
+            logger.info(
+              f"[REMOTE] Job {job_name} completed successfully (restarted)"
+            )
+            return "success"
+          else:
+            _print_pod_logs(core_v1, job_name, namespace)
+            raise RuntimeError(
+              f"Pathways job {job_name} failed previously with "
+              f"exit code {container_status.last_state.terminated.exit_code}"
+            )
+
+      time.sleep(poll_interval)
 
 
 def cleanup_job(job_name, namespace="default"):

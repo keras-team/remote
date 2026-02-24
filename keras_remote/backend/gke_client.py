@@ -7,6 +7,7 @@ from absl import logging
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 
+from keras_remote.backend.log_streaming import LogStreamer
 from keras_remote.core import accelerators
 from keras_remote.core.accelerators import TpuConfig
 
@@ -108,37 +109,48 @@ def wait_for_job(job, namespace="default", timeout=3600, poll_interval=10):
   start_time = time.time()
   logged_running = False
 
-  while True:
-    # Check timeout
-    elapsed = time.time() - start_time
-    if elapsed > timeout:
-      raise RuntimeError(f"GKE job {job_name} timed out after {timeout}s")
+  with LogStreamer(core_v1, namespace) as streamer:
+    while True:
+      # Check timeout
+      elapsed = time.time() - start_time
+      if elapsed > timeout:
+        raise RuntimeError(f"GKE job {job_name} timed out after {timeout}s")
 
-    # Get job status
-    try:
-      job_status = batch_v1.read_namespaced_job_status(job_name, namespace)
-    except ApiException as e:
-      raise RuntimeError(f"Failed to read job status: {e.reason}") from e
+      # Get job status
+      try:
+        job_status = batch_v1.read_namespaced_job_status(job_name, namespace)
+      except ApiException as e:
+        raise RuntimeError(f"Failed to read job status: {e.reason}") from e
 
-    # Check completion conditions
-    if job_status.status.succeeded and job_status.status.succeeded >= 1:
-      logging.info("Job %s completed successfully", job_name)
-      return "success"
+      # Check completion conditions
+      if job_status.status.succeeded and job_status.status.succeeded >= 1:
+        logging.info("Job %s completed successfully", job_name)
+        return "success"
 
-    if job_status.status.failed and job_status.status.failed >= 1:
-      # Get pod logs for debugging
-      _print_pod_logs(core_v1, job_name, namespace)
-      raise RuntimeError(f"GKE job {job_name} failed")
+      if job_status.status.failed and job_status.status.failed >= 1:
+        # Get pod logs for debugging
+        _print_pod_logs(core_v1, job_name, namespace)
+        raise RuntimeError(f"GKE job {job_name} failed")
 
-    # Check for pod scheduling issues
-    _check_pod_scheduling(core_v1, job_name, namespace)
+      # Check for pod scheduling issues
+      _check_pod_scheduling(core_v1, job_name, namespace)
 
-    # Job still running
-    if not logged_running:
-      logging.info("Job %s running...", job_name)
-      logged_running = True
+      # Start log streaming when pod is running
+      with suppress(ApiException):
+        pods = core_v1.list_namespaced_pod(
+          namespace, label_selector=f"job-name={job_name}"
+        )
+        for pod in pods.items:
+          if pod.status.phase == "Running":
+            streamer.start(pod.metadata.name)
+            break
 
-    time.sleep(poll_interval)
+      # Job still running
+      if not logged_running:
+        logging.info("Job %s running...", job_name)
+        logged_running = True
+
+      time.sleep(poll_interval)
 
 
 def cleanup_job(job_name, namespace="default"):
