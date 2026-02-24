@@ -233,10 +233,10 @@ class TestSubmitPathwaysJob(absltest.TestCase):
     ]
 
   def test_multi_node_tpu(self):
-    # v3-8 → 2 nodes → 1 worker
-    self._call(accelerator="v3-8")
+    # v3-16 → 4 nodes → 3 workers
+    self._call(accelerator="v3-16")
     body = self._get_created_body()
-    self.assertEqual(body["spec"]["leaderWorkerTemplate"]["size"], 2)
+    self.assertEqual(body["spec"]["leaderWorkerTemplate"]["size"], 4)
 
   def test_single_node_tpu(self):
     # v5litepod-4 → 1 node → 0 workers
