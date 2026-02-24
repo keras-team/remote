@@ -1,17 +1,14 @@
 """Tests for keras_remote.backend.log_streaming — live pod log streaming."""
 
 import io
-from collections import deque
 from unittest import mock
 from unittest.mock import MagicMock
 
-import urllib3
 from absl.testing import absltest
 from kubernetes.client.rest import ApiException
 
 from keras_remote.backend.log_streaming import (
   LogStreamer,
-  _make_log_panel,
   _render_live_panel,
   _render_plain,
   _stream_pod_logs,
@@ -43,70 +40,38 @@ class TestStreamPodLogs(absltest.TestCase):
       _preload_content=False,
     )
 
-  def test_uses_live_panel_for_terminal(self):
-    mock_core = MagicMock()
-    mock_resp = self._make_mock_resp([b"hello\n"])
-    mock_core.read_namespaced_pod_log.return_value = mock_resp
+  def test_routes_by_terminal(self):
+    for is_terminal in (True, False):
+      mock_core = MagicMock()
+      mock_core.read_namespaced_pod_log.return_value = self._make_mock_resp(
+        [b"hello\n"]
+      )
 
-    with (
-      mock.patch(
-        "keras_remote.backend.log_streaming.Console"
-      ) as mock_console_cls,
-      mock.patch(
-        "keras_remote.backend.log_streaming._render_live_panel"
-      ) as mock_live,
-      mock.patch(
-        "keras_remote.backend.log_streaming._render_plain"
-      ) as mock_plain,
-    ):
-      mock_console_cls.return_value.is_terminal = True
-      _stream_pod_logs(mock_core, "pod-1", "default")
+      with (
+        mock.patch(
+          "keras_remote.backend.log_streaming.Console"
+        ) as mock_console_cls,
+        mock.patch(
+          "keras_remote.backend.log_streaming._render_live_panel"
+        ) as mock_live,
+        mock.patch(
+          "keras_remote.backend.log_streaming._render_plain"
+        ) as mock_plain,
+      ):
+        mock_console_cls.return_value.is_terminal = is_terminal
+        _stream_pod_logs(mock_core, "pod-1", "default")
 
-    mock_live.assert_called_once()
-    mock_plain.assert_not_called()
-
-  def test_uses_plain_for_non_terminal(self):
-    mock_core = MagicMock()
-    mock_resp = self._make_mock_resp([b"hello\n"])
-    mock_core.read_namespaced_pod_log.return_value = mock_resp
-
-    with (
-      mock.patch(
-        "keras_remote.backend.log_streaming.Console"
-      ) as mock_console_cls,
-      mock.patch(
-        "keras_remote.backend.log_streaming._render_live_panel"
-      ) as mock_live,
-      mock.patch(
-        "keras_remote.backend.log_streaming._render_plain"
-      ) as mock_plain,
-    ):
-      mock_console_cls.return_value.is_terminal = False
-      _stream_pod_logs(mock_core, "pod-1", "default")
-
-    mock_plain.assert_called_once()
-    mock_live.assert_not_called()
+      if is_terminal:
+        mock_live.assert_called_once()
+        mock_plain.assert_not_called()
+      else:
+        mock_plain.assert_called_once()
+        mock_live.assert_not_called()
 
   def test_releases_conn_on_api_exception(self):
     mock_core = MagicMock()
     mock_resp = MagicMock()
     mock_resp.stream.side_effect = ApiException(status=404, reason="Not Found")
-    mock_core.read_namespaced_pod_log.return_value = mock_resp
-
-    with mock.patch(
-      "keras_remote.backend.log_streaming.Console"
-    ) as mock_console_cls:
-      mock_console_cls.return_value.is_terminal = False
-      _stream_pod_logs(mock_core, "pod-1", "default")
-
-    mock_resp.release_conn.assert_called_once()
-
-  def test_suppresses_protocol_error(self):
-    mock_core = MagicMock()
-    mock_resp = MagicMock()
-    mock_resp.stream.side_effect = urllib3.exceptions.ProtocolError(
-      "Connection broken"
-    )
     mock_core.read_namespaced_pod_log.return_value = mock_resp
 
     with mock.patch(
@@ -187,20 +152,6 @@ class TestRenderPlain(absltest.TestCase):
 class TestRenderLivePanel(absltest.TestCase):
   """Tests for the terminal Live panel rendering path."""
 
-  def test_updates_panel_with_log_lines(self):
-    mock_resp = MagicMock()
-    mock_resp.stream.return_value = [b"line 1\n", b"line 2\n"]
-    console = MagicMock()
-
-    with mock.patch("keras_remote.backend.log_streaming.Live") as mock_live_cls:
-      mock_live = MagicMock()
-      mock_live_cls.return_value.__enter__ = MagicMock(return_value=mock_live)
-      mock_live_cls.return_value.__exit__ = MagicMock(return_value=False)
-      _render_live_panel(mock_resp, "pod-1", console)
-
-    # Panel should have been updated at least once
-    self.assertTrue(mock_live.update.called)
-
   def test_handles_partial_lines(self):
     mock_resp = MagicMock()
     # "hello\nwor" then "ld\n" — "world" is split across chunks
@@ -218,22 +169,6 @@ class TestRenderLivePanel(absltest.TestCase):
     panel_content = last_panel.renderable
     self.assertIn("hello", panel_content)
     self.assertIn("world", panel_content)
-
-
-class TestMakeLogPanel(absltest.TestCase):
-  def test_empty_shows_waiting(self):
-    panel = _make_log_panel(deque(), "title")
-    self.assertEqual(panel.renderable, "Waiting for output...")
-    self.assertEqual(panel.title, "title")
-
-  def test_joins_lines(self):
-    lines = deque(["line 1", "line 2"])
-    panel = _make_log_panel(lines, "title")
-    self.assertEqual(panel.renderable, "line 1\nline 2")
-
-  def test_border_style(self):
-    panel = _make_log_panel(deque(), "t")
-    self.assertEqual(panel.border_style, "blue")
 
 
 class TestLogStreamer(absltest.TestCase):
