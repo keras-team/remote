@@ -15,14 +15,6 @@ def _make_output(value):
   return ov
 
 
-def _render(outputs):
-  """Render infrastructure_state to a plain string."""
-  buf = Console(file=None, force_terminal=False, width=120)
-  with mock.patch.object(output, "console", buf):
-    output.infrastructure_state(outputs)
-  return buf.file.getvalue() if hasattr(buf.file, "getvalue") else ""
-
-
 def _render_text(outputs):
   """Render infrastructure_state and capture output as text."""
   from io import StringIO
