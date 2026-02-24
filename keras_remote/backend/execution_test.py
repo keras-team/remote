@@ -7,6 +7,7 @@ from unittest import mock
 from unittest.mock import MagicMock
 
 from absl.testing import absltest
+from google.api_core import exceptions as google_exceptions
 
 from keras_remote.backend.execution import (
   JobContext,
@@ -175,6 +176,10 @@ class TestExecuteRemote(absltest.TestCase):
     with (
       mock.patch("keras_remote.backend.execution._build_container"),
       mock.patch("keras_remote.backend.execution._upload_artifacts"),
+      mock.patch(
+        "keras_remote.backend.execution._download_result",
+        side_effect=google_exceptions.NotFound("no result uploaded"),
+      ),
     ):
       ctx = self._make_ctx()
       backend = MagicMock()
