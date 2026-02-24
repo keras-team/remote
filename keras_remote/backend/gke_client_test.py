@@ -163,9 +163,9 @@ class TestCreateJobSpec(absltest.TestCase):
 class TestWaitForJob(absltest.TestCase):
   def setUp(self):
     super().setUp()
-    patcher = mock.patch("keras_remote.backend.gke_client._load_kube_config")
-    patcher.start()
-    self.addCleanup(patcher.stop)
+    self.enterContext(
+      mock.patch("keras_remote.backend.gke_client._load_kube_config")
+    )
 
   def _make_mock_job(self):
     job = MagicMock()

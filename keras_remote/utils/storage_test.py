@@ -19,13 +19,11 @@ class _GcsTestBase(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
-    self.mock_gcs = MagicMock()
-    patcher = mock.patch(
-      "keras_remote.utils.storage.storage.Client",
-      return_value=self.mock_gcs,
-    )
-    patcher.start()
-    self.addCleanup(patcher.stop)
+    self.mock_gcs = self.enterContext(
+      mock.patch(
+        "keras_remote.utils.storage.storage.Client",
+      )
+    ).return_value
 
 
 class TestUploadArtifacts(_GcsTestBase):
