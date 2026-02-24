@@ -7,7 +7,7 @@ from absl import logging
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 
-from keras_remote.backend.log_streaming import _start_log_streaming
+from keras_remote.backend.log_streaming import LogStreamer
 from keras_remote.core import accelerators
 from keras_remote.core.accelerators import TpuConfig
 
@@ -108,9 +108,8 @@ def wait_for_job(job, namespace="default", timeout=3600, poll_interval=10):
   job_name = job.metadata.name
   start_time = time.time()
   logged_running = False
-  log_thread = None
 
-  try:
+  with LogStreamer(core_v1, namespace) as streamer:
     while True:
       # Check timeout
       elapsed = time.time() - start_time
@@ -137,17 +136,14 @@ def wait_for_job(job, namespace="default", timeout=3600, poll_interval=10):
       _check_pod_scheduling(core_v1, job_name, namespace)
 
       # Start log streaming when pod is running
-      if log_thread is None:
-        with suppress(ApiException):
-          pods = core_v1.list_namespaced_pod(
-            namespace, label_selector=f"job-name={job_name}"
-          )
-          for pod in pods.items:
-            if pod.status.phase == "Running":
-              log_thread = _start_log_streaming(
-                core_v1, pod.metadata.name, namespace
-              )
-              break
+      with suppress(ApiException):
+        pods = core_v1.list_namespaced_pod(
+          namespace, label_selector=f"job-name={job_name}"
+        )
+        for pod in pods.items:
+          if pod.status.phase == "Running":
+            streamer.start(pod.metadata.name)
+            break
 
       # Job still running
       if not logged_running:
@@ -155,9 +151,6 @@ def wait_for_job(job, namespace="default", timeout=3600, poll_interval=10):
         logged_running = True
 
       time.sleep(poll_interval)
-  finally:
-    if log_thread is not None:
-      log_thread.join(timeout=5)
 
 
 def cleanup_job(job_name, namespace="default"):

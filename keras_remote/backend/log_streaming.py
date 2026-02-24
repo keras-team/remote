@@ -99,22 +99,39 @@ def _make_log_panel(lines, title):
   return Panel(content, title=title, border_style="blue")
 
 
-def _start_log_streaming(core_v1, pod_name, namespace):
-  """Start streaming pod logs in a background daemon thread.
+class LogStreamer:
+  """Context manager that owns the log-streaming thread lifecycle.
 
-  Args:
-      core_v1: Kubernetes CoreV1Api client.
-      pod_name: Name of the pod to stream logs from.
-      namespace: Kubernetes namespace.
+  Usage::
 
-  Returns:
-      threading.Thread: The daemon thread streaming logs.
+      with LogStreamer(core_v1, namespace) as streamer:
+          while polling:
+              ...
+              if pod_is_running:
+                  streamer.start(pod_name)  # idempotent
   """
-  logging.info("Streaming logs from %s...", pod_name)
-  thread = threading.Thread(
-    target=_stream_pod_logs,
-    args=(core_v1, pod_name, namespace),
-    daemon=True,
-  )
-  thread.start()
-  return thread
+
+  def __init__(self, core_v1, namespace):
+    self._core_v1 = core_v1
+    self._namespace = namespace
+    self._thread = None
+
+  def __enter__(self):
+    return self
+
+  def __exit__(self, *exc):
+    if self._thread is not None:
+      self._thread.join(timeout=5)
+    return False
+
+  def start(self, pod_name):
+    """Start streaming if not already active (idempotent)."""
+    if self._thread is not None:
+      return
+    logging.info("Streaming logs from %s...", pod_name)
+    self._thread = threading.Thread(
+      target=_stream_pod_logs,
+      args=(self._core_v1, pod_name, self._namespace),
+      daemon=True,
+    )
+    self._thread.start()

@@ -11,7 +11,7 @@ from keras_remote.backend.gke_client import (
   _parse_accelerator,
   _print_pod_logs,
 )
-from keras_remote.backend.log_streaming import _start_log_streaming
+from keras_remote.backend.log_streaming import LogStreamer
 from keras_remote.core import accelerators
 from keras_remote.infra import infra
 
@@ -135,12 +135,11 @@ def wait_for_job(job_id, namespace="default", timeout=3600, poll_interval=10):
   job_name = _get_job_name(job_id)
   start_time = time.time()
   logged_running = False
-  log_thread = None
 
   # The leader pod is suffixed with '-0' by LWS
   leader_pod_name = f"{job_name}-0"
 
-  try:
+  with LogStreamer(core_v1, namespace) as streamer:
     while True:
       elapsed = time.time() - start_time
       if elapsed > timeout:
@@ -166,8 +165,8 @@ def wait_for_job(job_id, namespace="default", timeout=3600, poll_interval=10):
           _check_pod_scheduling(core_v1, job_name, namespace)
           logger.debug("Pod is Pending...")
 
-        elif pod.status.phase == "Running" and log_thread is None:
-          log_thread = _start_log_streaming(core_v1, leader_pod_name, namespace)
+        elif pod.status.phase == "Running":
+          streamer.start(leader_pod_name)
 
       except ApiException as e:
         if e.status == 404:
@@ -208,9 +207,6 @@ def wait_for_job(job_id, namespace="default", timeout=3600, poll_interval=10):
             )
 
       time.sleep(poll_interval)
-  finally:
-    if log_thread is not None:
-      log_thread.join(timeout=5)
 
 
 def cleanup_job(job_name, namespace="default"):

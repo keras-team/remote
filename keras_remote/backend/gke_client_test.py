@@ -167,12 +167,15 @@ class TestWaitForJob(absltest.TestCase):
       mock.patch("keras_remote.backend.gke_client._load_kube_config")
     )
 
-    stream_patcher = mock.patch(
-      "keras_remote.backend.gke_client._start_log_streaming"
+    self.mock_streamer = MagicMock()
+    self.enterContext(
+      mock.patch(
+        "keras_remote.backend.gke_client.LogStreamer",
+        return_value=self.mock_streamer,
+      )
     )
-    self.mock_start_streaming = stream_patcher.start()
-    self.mock_start_streaming.return_value = MagicMock()
-    self.addCleanup(stream_patcher.stop)
+    self.mock_streamer.__enter__ = MagicMock(return_value=self.mock_streamer)
+    self.mock_streamer.__exit__ = MagicMock(return_value=False)
 
   def _make_mock_job(self):
     job = MagicMock()
@@ -201,7 +204,7 @@ class TestWaitForJob(absltest.TestCase):
     ):
       result = wait_for_job(self._make_mock_job())
     self.assertEqual(result, "success")
-    self.mock_start_streaming.assert_not_called()
+    self.mock_streamer.start.assert_not_called()
 
   def test_first_poll_failure(self):
     mock_batch = MagicMock()
@@ -289,9 +292,6 @@ class TestWaitForJob(absltest.TestCase):
     mock_core = MagicMock()
     mock_core.list_namespaced_pod.return_value.items = [running_pod]
 
-    mock_thread = MagicMock()
-    self.mock_start_streaming.return_value = mock_thread
-
     with (
       mock.patch(
         "keras_remote.backend.gke_client.client.BatchV1Api",
@@ -306,10 +306,7 @@ class TestWaitForJob(absltest.TestCase):
       result = wait_for_job(self._make_mock_job())
 
     self.assertEqual(result, "success")
-    self.mock_start_streaming.assert_called_once_with(
-      mock_core, "keras-remote-job-abc-pod", "default"
-    )
-    mock_thread.join.assert_called_once_with(timeout=5)
+    self.mock_streamer.start.assert_called_once_with("keras-remote-job-abc-pod")
 
   def test_no_streaming_when_pod_pending(self):
     mock_batch = MagicMock()
@@ -342,7 +339,7 @@ class TestWaitForJob(absltest.TestCase):
       result = wait_for_job(self._make_mock_job())
 
     self.assertEqual(result, "success")
-    self.mock_start_streaming.assert_not_called()
+    self.mock_streamer.start.assert_not_called()
 
 
 class TestLoadKubeConfig(absltest.TestCase):

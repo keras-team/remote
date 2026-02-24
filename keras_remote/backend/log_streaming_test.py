@@ -1,7 +1,6 @@
 """Tests for keras_remote.backend.log_streaming — live pod log streaming."""
 
 import io
-import threading
 from collections import deque
 from unittest import mock
 from unittest.mock import MagicMock
@@ -11,10 +10,10 @@ from absl.testing import absltest
 from kubernetes.client.rest import ApiException
 
 from keras_remote.backend.log_streaming import (
+  LogStreamer,
   _make_log_panel,
   _render_live_panel,
   _render_plain,
-  _start_log_streaming,
   _stream_pod_logs,
 )
 
@@ -237,28 +236,57 @@ class TestMakeLogPanel(absltest.TestCase):
     self.assertEqual(panel.border_style, "blue")
 
 
-class TestStartLogStreaming(absltest.TestCase):
-  def test_starts_daemon_thread(self):
+class TestLogStreamer(absltest.TestCase):
+  def test_start_launches_daemon_thread(self):
     mock_core = MagicMock()
 
-    with mock.patch(
-      "keras_remote.backend.log_streaming._stream_pod_logs"
-    ) as mock_stream:
-      thread = _start_log_streaming(mock_core, "pod-1", "default")
+    with (
+      mock.patch(
+        "keras_remote.backend.log_streaming._stream_pod_logs"
+      ) as mock_stream,
+      LogStreamer(mock_core, "default") as streamer,
+    ):
+      streamer.start("pod-1")
+      self.assertIsNotNone(streamer._thread)
+      self.assertTrue(streamer._thread.daemon)
 
-    self.assertIsInstance(thread, threading.Thread)
-    self.assertTrue(thread.daemon)
-    thread.join(timeout=2)
     mock_stream.assert_called_once_with(mock_core, "pod-1", "default")
 
-  def test_returns_thread_handle(self):
+  def test_start_is_idempotent(self):
     mock_core = MagicMock()
 
-    with mock.patch("keras_remote.backend.log_streaming._stream_pod_logs"):
-      thread = _start_log_streaming(mock_core, "pod-1", "ns")
+    with (
+      mock.patch(
+        "keras_remote.backend.log_streaming._stream_pod_logs"
+      ) as mock_stream,
+      LogStreamer(mock_core, "default") as streamer,
+    ):
+      streamer.start("pod-1")
+      streamer.start("pod-1")
+      streamer.start("pod-2")  # different name, still no-op
 
-    self.assertIsNotNone(thread)
-    thread.join(timeout=2)
+    mock_stream.assert_called_once_with(mock_core, "pod-1", "default")
+
+  def test_exit_joins_thread(self):
+    mock_core = MagicMock()
+    mock_thread = MagicMock()
+
+    with (
+      mock.patch(
+        "keras_remote.backend.log_streaming.threading.Thread",
+        return_value=mock_thread,
+      ),
+      LogStreamer(mock_core, "ns") as streamer,
+    ):
+      streamer.start("pod-1")
+
+    mock_thread.join.assert_called_once_with(timeout=5)
+
+  def test_exit_without_start_is_noop(self):
+    mock_core = MagicMock()
+    # Should not raise
+    with LogStreamer(mock_core, "default"):
+      pass
 
 
 if __name__ == "__main__":
