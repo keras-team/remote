@@ -116,40 +116,30 @@ def up(project, zone, accelerator, cluster_name, yes):
   ar_location = zone_to_ar_location(zone)
   console.print("\n[bold]Running post-deploy configuration...[/bold]\n")
 
-  failures = []
-
-  console.print("Configuring Docker authentication...")
-  try:
-    configure_docker_auth(ar_location)
-    success("Docker authentication configured")
-  except subprocess.CalledProcessError as e:
-    failures.append("Docker authentication")
-    warning(f"Docker authentication configuration failed: {e}")
-
-  console.print("Configuring kubectl access...")
-  try:
-    configure_kubectl(cluster_name, zone, project)
-    success("kubectl configured")
-  except subprocess.CalledProcessError as e:
-    failures.append("kubectl configuration")
-    warning(f"kubectl configuration failed: {e}")
-
-  console.print("Installing LeaderWorkerSet CRD for Pathways support...")
-  try:
-    install_lws()
-    success("LWS CRD installed")
-  except subprocess.CalledProcessError as e:
-    failures.append("LWS CRD installation")
-    warning(f"LWS CRD installation failed: {e}")
-
+  steps = [
+    ("Docker authentication", lambda: configure_docker_auth(ar_location)),
+    (
+      "kubectl configuration",
+      lambda: configure_kubectl(
+        cluster_name,
+        zone,
+        project,
+      ),
+    ),
+    ("LWS CRD installation", install_lws),
+  ]
   if isinstance(accel_config, GpuConfig):
-    console.print("Installing NVIDIA GPU device drivers...")
+    steps.append(("GPU driver installation", install_gpu_drivers))
+
+  failures = []
+  for name, fn in steps:
+    console.print(f"{name}...")
     try:
-      install_gpu_drivers()
-      success("GPU driver installation initiated")
+      fn()
+      success(f"{name} complete.")
     except subprocess.CalledProcessError as e:
-      failures.append("GPU driver installation")
-      warning(f"GPU driver installation failed: {e}")
+      failures.append(name)
+      warning(f"{name} failed: {e}")
 
   # Final summary
   console.print()
