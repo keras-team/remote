@@ -44,13 +44,13 @@ class TestParseAccelerator(absltest.TestCase):
     self.assertEqual(result["resource_requests"], {"nvidia.com/gpu": "4"})
 
   def test_tpu_v3_8(self):
-    result = _parse_accelerator("v3-8")
+    result = _parse_accelerator("v3-4")
     self.assertIn(
       "cloud.google.com/gke-tpu-accelerator", result["node_selector"]
     )
     self.assertIn("cloud.google.com/gke-tpu-topology", result["node_selector"])
-    self.assertEqual(result["resource_limits"], {"google.com/tpu": "8"})
-    self.assertEqual(result["resource_requests"], {"google.com/tpu": "8"})
+    self.assertEqual(result["resource_limits"], {"google.com/tpu": "4"})
+    self.assertEqual(result["resource_requests"], {"google.com/tpu": "4"})
     self.assertEqual(result["jax_platform"], "tpu")
     self.assertLen(result["tolerations"], 1)
     self.assertEqual(result["tolerations"][0]["key"], "google.com/tpu")
