@@ -18,6 +18,7 @@ dependencies = [
     "cloudpickle",
     "numpy",
     "keras",
+    "rich>=14.0",
     "google-cloud-artifact-registry>=1.11",
     "google-cloud-storage>=3.9",
     "google-cloud-build>=3.24",
@@ -27,7 +28,6 @@ dependencies = [
 [project.optional-dependencies]
 cli = [
     "click>=8.1",
-    "rich>=14.0",
     "pulumi>=3.0",
     "pulumi-gcp>=9.0",
     "pulumi-command>=1.0",
