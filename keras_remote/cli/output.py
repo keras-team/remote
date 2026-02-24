@@ -29,6 +29,68 @@ def error(msg):
   console.print(f"[red]{msg}[/red]")
 
 
+_INFRA_LABELS = {
+  "project": "Project",
+  "zone": "Zone",
+  "cluster_name": "Cluster Name",
+  "cluster_endpoint": "Cluster Endpoint",
+  "ar_registry": "Artifact Registry",
+}
+
+_GPU_LABELS = {
+  "name": "GPU Type",
+  "count": "GPU Count",
+  "machine_type": "Machine Type",
+  "node_pool": "Node Pool",
+  "node_count": "Node Count",
+}
+
+_TPU_LABELS = {
+  "name": "TPU Type",
+  "chips": "TPU Chips",
+  "topology": "Topology",
+  "machine_type": "Machine Type",
+  "node_pool": "Node Pool",
+  "node_count": "Node Count",
+}
+
+
+def infrastructure_state(outputs):
+  """Display infrastructure state from Pulumi stack outputs.
+
+  Args:
+      outputs: dict of key -> pulumi.automation.OutputValue from stack.outputs().
+  """
+  table = Table(title="Infrastructure State")
+  table.add_column("Resource", style="bold")
+  table.add_column("Value", style="green")
+
+  for key, label in _INFRA_LABELS.items():
+    if key in outputs:
+      table.add_row(label, str(outputs[key].value))
+
+  if "accelerator" not in outputs:
+    table.add_row(
+      "Accelerator",
+      "[dim]Unknown (run 'keras-remote up' to refresh)[/dim]",
+    )
+  elif outputs["accelerator"].value is None:
+    table.add_row("Accelerator", "CPU only")
+  else:
+    accel = outputs["accelerator"].value
+    accel_type = accel.get("type", "Unknown")
+    table.add_row("", "")
+    table.add_row("Accelerator", accel_type)
+    labels = _GPU_LABELS if accel_type == "GPU" else _TPU_LABELS
+    for key, label in labels.items():
+      if key in accel:
+        table.add_row(f"  {label}", str(accel[key]))
+
+  console.print()
+  console.print(table)
+  console.print()
+
+
 def config_summary(config):
   """Display a configuration summary table."""
   table = Table(title="Configuration Summary")

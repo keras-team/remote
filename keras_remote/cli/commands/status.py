@@ -2,13 +2,17 @@
 
 import click
 from pulumi.automation import CommandError
-from rich.table import Table
 
 from keras_remote.cli.config import InfraConfig
 from keras_remote.cli.constants import DEFAULT_ZONE
 from keras_remote.cli.infra.program import create_program
 from keras_remote.cli.infra.stack_manager import get_stack
-from keras_remote.cli.output import banner, console, warning
+from keras_remote.cli.output import (
+  banner,
+  console,
+  infrastructure_state,
+  warning,
+)
 from keras_remote.cli.prerequisites_check import check_all
 from keras_remote.cli.prompts import resolve_project
 
@@ -57,13 +61,4 @@ def status(project, zone):
     warning("No infrastructure found. Run 'keras-remote up' first.")
     return
 
-  table = Table(title="Infrastructure State")
-  table.add_column("Resource", style="bold")
-  table.add_column("Value", style="green")
-
-  for key, output in outputs.items():
-    table.add_row(key, str(output.value))
-
-  console.print()
-  console.print(table)
-  console.print()
+  infrastructure_state(outputs)

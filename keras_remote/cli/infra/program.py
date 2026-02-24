@@ -131,6 +131,35 @@ def create_program(config):
       f"{ar_location}-docker.pkg.dev/{project_id}/keras-remote",
     )
 
+    # 7. Accelerator node pool exports
+    if isinstance(accelerator, GpuConfig):
+      pulumi.export(
+        "accelerator",
+        {
+          "type": "GPU",
+          "name": accelerator.name,
+          "count": accelerator.count,
+          "machine_type": accelerator.machine_type,
+          "node_pool": "gpu-pool",
+          "node_count": 1,
+        },
+      )
+    elif isinstance(accelerator, TpuConfig):
+      pulumi.export(
+        "accelerator",
+        {
+          "type": "TPU",
+          "name": accelerator.name,
+          "chips": accelerator.chips,
+          "topology": accelerator.topology,
+          "machine_type": accelerator.machine_type,
+          "node_pool": f"tpu-{accelerator.name}-pool",
+          "node_count": accelerator.num_nodes,
+        },
+      )
+    else:
+      pulumi.export("accelerator", None)
+
   return pulumi_program
 
 
