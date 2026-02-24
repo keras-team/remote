@@ -171,7 +171,7 @@ def parse_accelerator(accel_str: str) -> Accelerator:
   if s in TPUS:
     return _make_tpu(s, TPUS[s].default_chips)
 
-  # TPU with topology string: "v5litepod-2x2"
+  # TPU with topology string: "v5litepod-2x2", "v5p-2x2x2"
   m = _TPU_TOPO_RE.match(s)
   if m and m.group(1) in TPUS:
     name = m.group(1)
@@ -179,6 +179,11 @@ def parse_accelerator(accel_str: str) -> Accelerator:
     for chips, topo_spec in TPUS[name].topologies.items():
       if topo_spec.topology == topo_str:
         return _make_tpu(name, chips)
+    valid = [ts.topology for ts in TPUS[name].topologies.values()]
+    raise ValueError(
+      f"Topology '{topo_str}' not supported for '{name}'. "
+      f"Supported: {', '.join(valid)}."
+    )
 
   # TPU with chip count: "v3-8", "v5litepod-4"
   m = _TPU_CHIPS_RE.match(s)

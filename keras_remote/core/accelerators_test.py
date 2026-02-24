@@ -123,7 +123,7 @@ class TestParseTpuErrors(absltest.TestCase):
       parse_accelerator("v3-8")
 
   def test_v5litepod_3x3_invalid_topology(self):
-    with self.assertRaisesRegex(ValueError, "Unknown accelerator"):
+    with self.assertRaisesRegex(ValueError, "not supported"):
       parse_accelerator("v5litepod-3x3")
 
 
