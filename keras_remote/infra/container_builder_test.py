@@ -50,7 +50,7 @@ class TestHashRequirements(parameterized.TestCase):
     req.write_text("numpy\n")
 
     h1 = _hash_requirements(str(req), "l4", "python:3.12-slim")
-    h2 = _hash_requirements(str(req), "v3-8", "python:3.12-slim")
+    h2 = _hash_requirements(str(req), "v3-4", "python:3.12-slim")
     self.assertNotEqual(h1, h2)
 
   def test_different_base_image_different_hash(self):
@@ -98,7 +98,7 @@ class TestGenerateDockerfile(parameterized.TestCase):
     ),
     dict(
       testcase_name="tpu",
-      accelerator_type="v3-8",
+      accelerator_type="v3-4",
       expected=["jax[tpu]", "libtpu_releases"],
       not_expected=[],
     ),
@@ -206,7 +206,7 @@ class TestImageExists(parameterized.TestCase):
       return_value=mock_client,
     ):
       _image_exists(
-        "us-docker.pkg.dev/my-proj/keras-remote/base:v3-8-abc123def456",
+        "us-docker.pkg.dev/my-proj/keras-remote/base:v3-4-abc123def456",
         "my-proj",
       )
     call_args = mock_client.get_tag.call_args
@@ -215,7 +215,7 @@ class TestImageExists(parameterized.TestCase):
       request.name,
       "projects/my-proj/locations/us"
       "/repositories/keras-remote"
-      "/packages/base/tags/v3-8-abc123def456",
+      "/packages/base/tags/v3-4-abc123def456",
     )
 
 
@@ -279,13 +279,13 @@ class TestGetOrBuildContainer(absltest.TestCase):
       )
 
   def test_image_uri_format_tpu_europe(self):
-    result = self._get_image_uri("v3-8", "my-proj", "europe-west4-b")
+    result = self._get_image_uri("v3-4", "my-proj", "europe-west4-b")
 
     self.assertTrue(
       result.startswith("europe-docker.pkg.dev/my-proj/keras-remote/base:")
     )
     tag = result.split(":")[-1]
-    self.assertRegex(tag, r"^v3-8-[0-9a-f]{12}$")
+    self.assertRegex(tag, r"^v3-4-[0-9a-f]{12}$")
 
   def test_image_uri_format_gpu_us(self):
     result = self._get_image_uri("a100-80gb", "proj", "us-central1-a")

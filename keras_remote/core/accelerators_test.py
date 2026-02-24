@@ -81,11 +81,11 @@ class TestParseTpuBare(parameterized.TestCase):
 
 
 class TestParseTpuChipCount(absltest.TestCase):
-  def test_v3_8(self):
-    result = parse_accelerator("v3-8")
+  def test_v3_4(self):
+    result = parse_accelerator("v3-4")
     self.assertIsInstance(result, TpuConfig)
     self.assertEqual(result.name, "v3")
-    self.assertEqual(result.chips, 8)
+    self.assertEqual(result.chips, 4)
     self.assertEqual(result.topology, "2x2")
 
   def test_v3_32(self):
@@ -93,7 +93,7 @@ class TestParseTpuChipCount(absltest.TestCase):
     self.assertIsInstance(result, TpuConfig)
     self.assertEqual(result.name, "v3")
     self.assertEqual(result.chips, 32)
-    self.assertEqual(result.topology, "4x4")
+    self.assertEqual(result.topology, "4x8")
 
   def test_v5litepod_1(self):
     result = parse_accelerator("v5litepod-1")
@@ -118,20 +118,34 @@ class TestParseTpuTopology(absltest.TestCase):
 
 
 class TestParseTpuErrors(absltest.TestCase):
-  def test_v3_16_invalid_chips(self):
+  def test_v3_8_invalid_chips(self):
     with self.assertRaisesRegex(ValueError, "not supported"):
-      parse_accelerator("v3-16")
+      parse_accelerator("v3-8")
 
   def test_v5litepod_3x3_invalid_topology(self):
-    with self.assertRaisesRegex(ValueError, "Unknown accelerator"):
+    with self.assertRaisesRegex(ValueError, "not supported"):
       parse_accelerator("v5litepod-3x3")
 
 
 class TestParseTpuConfigFields(absltest.TestCase):
-  def test_v3_8_full_config(self):
-    result = parse_accelerator("v3-8")
+  def test_v3_4_full_config(self):
+    result = parse_accelerator("v3-4")
     self.assertEqual(result.gke_accelerator, "tpu-v3-podslice")
-    self.assertEqual(result.machine_type, "ct3p-hightpu-4t")
+    self.assertEqual(result.machine_type, "ct3-hightpu-4t")
+    self.assertEqual(result.num_nodes, 1)
+
+  def test_v5p_default(self):
+    result = parse_accelerator("v5p")
+    self.assertIsInstance(result, TpuConfig)
+    self.assertEqual(result.chips, 8)
+    self.assertEqual(result.topology, "2x2x2")
+
+  def test_v5p_3d_topology(self):
+    result = parse_accelerator("v5p-2x2x2")
+    self.assertIsInstance(result, TpuConfig)
+    self.assertEqual(result.name, "v5p")
+    self.assertEqual(result.chips, 8)
+    self.assertEqual(result.topology, "2x2x2")
     self.assertEqual(result.num_nodes, 2)
 
 

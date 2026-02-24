@@ -74,21 +74,28 @@ _GPU_ALIASES: dict[str, str] = {
   spec.gke_label: name for name, spec in GPUS.items()
 }
 
+# Topology reference — verify new entries against:
+#   https://docs.cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus
+# Formula: num_nodes = product(topology_dims) / chips_per_VM
+# Machine-type suffix "-Nt" → N chips per VM (e.g. ct5p-hightpu-4t → 4 chips).
+# v5p uses 3-D topologies (AxBxC); v2, v3, v5litepod, v6e use 2-D (AxB).
 TPUS: dict[str, TpuSpec] = {
   "v2": TpuSpec(
     "tpu-v2-podslice",
-    8,
+    4,
     {
-      8: TpuTopologySpec("2x2", "ct2-hightpu-4t", 2),
-      32: TpuTopologySpec("4x4", "ct2-hightpu-4t", 8),
+      4: TpuTopologySpec("2x2", "ct2-hightpu-4t", 1),
+      16: TpuTopologySpec("4x4", "ct2-hightpu-4t", 4),
+      32: TpuTopologySpec("4x8", "ct2-hightpu-4t", 8),
     },
   ),
   "v3": TpuSpec(
     "tpu-v3-podslice",
-    8,
+    4,
     {
-      8: TpuTopologySpec("2x2", "ct3p-hightpu-4t", 2),
-      32: TpuTopologySpec("4x4", "ct3p-hightpu-4t", 8),
+      4: TpuTopologySpec("2x2", "ct3-hightpu-4t", 1),
+      16: TpuTopologySpec("4x4", "ct3p-hightpu-4t", 4),
+      32: TpuTopologySpec("4x8", "ct3p-hightpu-4t", 8),
     },
   ),
   "v5litepod": TpuSpec(
@@ -104,16 +111,16 @@ TPUS: dict[str, TpuSpec] = {
     "tpu-v5p-slice",
     8,
     {
-      8: TpuTopologySpec("2x2", "ct5p-hightpu-4t", 2),
-      16: TpuTopologySpec("2x4", "ct5p-hightpu-4t", 4),
+      8: TpuTopologySpec("2x2x2", "ct5p-hightpu-4t", 2),
+      16: TpuTopologySpec("2x2x4", "ct5p-hightpu-4t", 4),
     },
   ),
   "v6e": TpuSpec(
     "tpu-v6e-slice",
     8,
     {
-      8: TpuTopologySpec("2x2", "ct6e-standard-4t", 2),
-      16: TpuTopologySpec("2x4", "ct6e-standard-4t", 4),
+      8: TpuTopologySpec("2x4", "ct6e-standard-4t", 2),
+      16: TpuTopologySpec("4x4", "ct6e-standard-4t", 4),
     },
   ),
 }
@@ -123,7 +130,9 @@ TPUS: dict[str, TpuSpec] = {
 
 _MULTI_GPU_RE = re.compile(r"^(.+?)x(\d+)$")  # "a100x4"
 _TPU_CHIPS_RE = re.compile(r"^(v\d+\w*)-(\d+)$")  # "v3-8"
-_TPU_TOPO_RE = re.compile(r"^(v\d+\w*)-(\d+x\d+)$")  # "v5litepod-2x2"
+_TPU_TOPO_RE = re.compile(
+  r"^(v\d+\w*)-(\d+x\d+(?:x\d+)?)$"
+)  # "v5litepod-2x2", "v5p-2x2x2"
 
 
 def parse_accelerator(accel_str: str) -> Accelerator:
@@ -162,7 +171,7 @@ def parse_accelerator(accel_str: str) -> Accelerator:
   if s in TPUS:
     return _make_tpu(s, TPUS[s].default_chips)
 
-  # TPU with topology string: "v5litepod-2x2"
+  # TPU with topology string: "v5litepod-2x2", "v5p-2x2x2"
   m = _TPU_TOPO_RE.match(s)
   if m and m.group(1) in TPUS:
     name = m.group(1)
@@ -170,6 +179,11 @@ def parse_accelerator(accel_str: str) -> Accelerator:
     for chips, topo_spec in TPUS[name].topologies.items():
       if topo_spec.topology == topo_str:
         return _make_tpu(name, chips)
+    valid = [ts.topology for ts in TPUS[name].topologies.values()]
+    raise ValueError(
+      f"Topology '{topo_str}' not supported for '{name}'. "
+      f"Supported: {', '.join(valid)}."
+    )
 
   # TPU with chip count: "v3-8", "v5litepod-4"
   m = _TPU_CHIPS_RE.match(s)

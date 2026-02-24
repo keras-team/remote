@@ -160,6 +160,16 @@ def _create_gpu_node_pool(cluster, gpu: GpuConfig, zone, project_id):
 def _create_tpu_node_pool(cluster, tpu: TpuConfig, zone, project_id):
   """Create a TPU GKE node pool."""
   pool_name = f"tpu-{tpu.name}-pool"
+  # Single-host TPU slices (1 node) must not specify placement_policy;
+  # multi-host slices require COMPACT placement with an explicit topology.
+  placement = (
+    gcp.container.NodePoolPlacementPolicyArgs(
+      type="COMPACT",
+      tpu_topology=tpu.topology,
+    )
+    if tpu.num_nodes > 1
+    else None
+  )
   gcp.container.NodePool(
     pool_name,
     name=pool_name,
@@ -172,8 +182,5 @@ def _create_tpu_node_pool(cluster, tpu: TpuConfig, zone, project_id):
       oauth_scopes=_BASE_OAUTH_SCOPES,
       labels={RESOURCE_NAME_PREFIX: "true"},
     ),
-    placement_policy=gcp.container.NodePoolPlacementPolicyArgs(
-      type="COMPACT",
-      tpu_topology=tpu.topology,
-    ),
+    placement_policy=placement,
   )
