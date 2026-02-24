@@ -167,6 +167,13 @@ class TestWaitForJob(absltest.TestCase):
       mock.patch("keras_remote.backend.gke_client._load_kube_config")
     )
 
+    stream_patcher = mock.patch(
+      "keras_remote.backend.gke_client._start_log_streaming"
+    )
+    self.mock_start_streaming = stream_patcher.start()
+    self.mock_start_streaming.return_value = MagicMock()
+    self.addCleanup(stream_patcher.stop)
+
   def _make_mock_job(self):
     job = MagicMock()
     job.metadata.name = "keras-remote-job-abc"
@@ -194,6 +201,7 @@ class TestWaitForJob(absltest.TestCase):
     ):
       result = wait_for_job(self._make_mock_job())
     self.assertEqual(result, "success")
+    self.mock_start_streaming.assert_not_called()
 
   def test_first_poll_failure(self):
     mock_batch = MagicMock()
@@ -263,6 +271,78 @@ class TestWaitForJob(absltest.TestCase):
       result = wait_for_job(self._make_mock_job(), poll_interval=5)
     self.assertEqual(result, "success")
     mock_sleep.assert_called_with(5)
+
+  def test_starts_streaming_when_pod_running(self):
+    mock_batch = MagicMock()
+    running = MagicMock()
+    running.status.succeeded = None
+    running.status.failed = None
+    succeeded = MagicMock()
+    succeeded.status.succeeded = 1
+    succeeded.status.failed = None
+    mock_batch.read_namespaced_job_status.side_effect = [running, succeeded]
+
+    running_pod = MagicMock()
+    running_pod.status.phase = "Running"
+    running_pod.metadata.name = "keras-remote-job-abc-pod"
+
+    mock_core = MagicMock()
+    mock_core.list_namespaced_pod.return_value.items = [running_pod]
+
+    mock_thread = MagicMock()
+    self.mock_start_streaming.return_value = mock_thread
+
+    with (
+      mock.patch(
+        "keras_remote.backend.gke_client.client.BatchV1Api",
+        return_value=mock_batch,
+      ),
+      mock.patch(
+        "keras_remote.backend.gke_client.client.CoreV1Api",
+        return_value=mock_core,
+      ),
+      mock.patch("keras_remote.backend.gke_client.time.sleep"),
+    ):
+      result = wait_for_job(self._make_mock_job())
+
+    self.assertEqual(result, "success")
+    self.mock_start_streaming.assert_called_once_with(
+      mock_core, "keras-remote-job-abc-pod", "default"
+    )
+    mock_thread.join.assert_called_once_with(timeout=5)
+
+  def test_no_streaming_when_pod_pending(self):
+    mock_batch = MagicMock()
+    running = MagicMock()
+    running.status.succeeded = None
+    running.status.failed = None
+    succeeded = MagicMock()
+    succeeded.status.succeeded = 1
+    succeeded.status.failed = None
+    mock_batch.read_namespaced_job_status.side_effect = [running, succeeded]
+
+    pending_pod = MagicMock()
+    pending_pod.status.phase = "Pending"
+    pending_pod.status.conditions = None
+
+    mock_core = MagicMock()
+    mock_core.list_namespaced_pod.return_value.items = [pending_pod]
+
+    with (
+      mock.patch(
+        "keras_remote.backend.gke_client.client.BatchV1Api",
+        return_value=mock_batch,
+      ),
+      mock.patch(
+        "keras_remote.backend.gke_client.client.CoreV1Api",
+        return_value=mock_core,
+      ),
+      mock.patch("keras_remote.backend.gke_client.time.sleep"),
+    ):
+      result = wait_for_job(self._make_mock_job())
+
+    self.assertEqual(result, "success")
+    self.mock_start_streaming.assert_not_called()
 
 
 class TestLoadKubeConfig(absltest.TestCase):
