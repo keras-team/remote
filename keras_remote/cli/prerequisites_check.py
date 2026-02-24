@@ -41,6 +41,25 @@ def check_docker():
     )
 
 
+def check_gke_auth_plugin():
+  """Verify gke-gcloud-auth-plugin is installed."""
+  if not shutil.which("gke-gcloud-auth-plugin"):
+    warning("gke-gcloud-auth-plugin not found.")
+    if click.confirm(
+      "Install it via `gcloud components install gke-gcloud-auth-plugin`?",
+      default=True,
+    ):
+      subprocess.run(
+        ["gcloud", "components", "install", "gke-gcloud-auth-plugin"],
+        check=True,
+      )
+    else:
+      raise click.ClickException(
+        "gke-gcloud-auth-plugin is required. "
+        "Install with: gcloud components install gke-gcloud-auth-plugin"
+      )
+
+
 def check_gcloud_auth():
   """Check if gcloud Application Default Credentials are configured."""
   result = subprocess.run(
@@ -61,5 +80,6 @@ def check_all():
   check_gcloud()
   check_pulumi()
   check_kubectl()
+  check_gke_auth_plugin()
   check_docker()
   check_gcloud_auth()

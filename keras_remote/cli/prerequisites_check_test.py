@@ -9,6 +9,7 @@ from keras_remote.cli.prerequisites_check import (
   check_docker,
   check_gcloud,
   check_gcloud_auth,
+  check_gke_auth_plugin,
   check_kubectl,
   check_pulumi,
 )
@@ -69,6 +70,40 @@ class TestToolChecks(parameterized.TestCase):
       self.assertRaisesRegex(click.ClickException, error_match),
     ):
       check_fn()
+
+
+class TestCheckGkeAuthPlugin(absltest.TestCase):
+  def test_present(self):
+    with mock.patch(
+      "shutil.which", return_value="/usr/bin/gke-gcloud-auth-plugin"
+    ):
+      check_gke_auth_plugin()
+
+  def test_missing_user_accepts_install(self):
+    with (
+      mock.patch("shutil.which", return_value=None),
+      mock.patch("keras_remote.cli.prerequisites_check.warning"),
+      mock.patch("click.confirm", return_value=True),
+      mock.patch(
+        "keras_remote.cli.prerequisites_check.subprocess.run",
+      ) as mock_run,
+    ):
+      check_gke_auth_plugin()
+      mock_run.assert_called_once_with(
+        ["gcloud", "components", "install", "gke-gcloud-auth-plugin"],
+        check=True,
+      )
+
+  def test_missing_user_declines_install(self):
+    with (
+      mock.patch("shutil.which", return_value=None),
+      mock.patch("keras_remote.cli.prerequisites_check.warning"),
+      mock.patch("click.confirm", return_value=False),
+      self.assertRaisesRegex(
+        click.ClickException, "gke-gcloud-auth-plugin is required"
+      ),
+    ):
+      check_gke_auth_plugin()
 
 
 class TestCheckGcloudAuth(absltest.TestCase):
