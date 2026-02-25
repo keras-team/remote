@@ -218,9 +218,12 @@ def _build_container(ctx: JobContext) -> None:
     ctx.image_uri = ctx.container_image
     logging.info("Using custom container: %s", ctx.image_uri)
   else:
+    import sys
+
     logging.info("Building container image...")
+    py_version = f"{sys.version_info.major}.{sys.version_info.minor}"
     ctx.image_uri = container_builder.get_or_build_container(
-      base_image="python:3.12-slim",
+      base_image=f"python:{py_version}-slim",
       requirements_path=ctx.requirements_path,
       accelerator_type=ctx.accelerator,
       project=ctx.project,
