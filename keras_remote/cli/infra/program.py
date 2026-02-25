@@ -63,7 +63,7 @@ def create_program(config):
       enabled_apis.append(svc)
 
     # 2. Artifact Registry docker repository
-    gcp.artifactregistry.Repository(
+    repo = gcp.artifactregistry.Repository(
       "keras-remote-repo",
       repository_id="keras-remote",
       location=ar_location,
@@ -116,46 +116,56 @@ def create_program(config):
     )
 
     # 5. Accelerator node pool (conditional)
+    accel_pool = None
     if isinstance(accelerator, GpuConfig):
-      _create_gpu_node_pool(cluster, accelerator, zone, project_id)
+      accel_pool = _create_gpu_node_pool(cluster, accelerator, zone, project_id)
     elif isinstance(accelerator, TpuConfig):
-      _create_tpu_node_pool(cluster, accelerator, zone, project_id)
+      accel_pool = _create_tpu_node_pool(cluster, accelerator, zone, project_id)
 
     # 6. Stack exports
+    # Exports that reference resource outputs (e.g. cluster.name,
+    # repo.name, pool.name) create Pulumi dependencies — the export
+    # only resolves when the underlying resource is successfully created.
     pulumi.export("project", project_id)
     pulumi.export("zone", zone)
     pulumi.export("cluster_name", cluster.name)
     pulumi.export("cluster_endpoint", cluster.endpoint)
     pulumi.export(
       "ar_registry",
-      f"{ar_location}-docker.pkg.dev/{project_id}/keras-remote",
+      repo.name.apply(
+        lambda _: f"{ar_location}-docker.pkg.dev/{project_id}/keras-remote"
+      ),
     )
 
     # 7. Accelerator node pool exports
     if isinstance(accelerator, GpuConfig):
       pulumi.export(
         "accelerator",
-        {
-          "type": "GPU",
-          "name": accelerator.name,
-          "count": accelerator.count,
-          "machine_type": accelerator.machine_type,
-          "node_pool": "gpu-pool",
-          "node_count": 1,
-        },
+        accel_pool.name.apply(
+          lambda _: {
+            "type": "GPU",
+            "name": accelerator.name,
+            "count": accelerator.count,
+            "machine_type": accelerator.machine_type,
+            "node_pool": "gpu-pool",
+            "node_count": 1,
+          }
+        ),
       )
     elif isinstance(accelerator, TpuConfig):
       pulumi.export(
         "accelerator",
-        {
-          "type": "TPU",
-          "name": accelerator.name,
-          "chips": accelerator.chips,
-          "topology": accelerator.topology,
-          "machine_type": accelerator.machine_type,
-          "node_pool": f"tpu-{accelerator.name}-pool",
-          "node_count": accelerator.num_nodes,
-        },
+        accel_pool.name.apply(
+          lambda _: {
+            "type": "TPU",
+            "name": accelerator.name,
+            "chips": accelerator.chips,
+            "topology": accelerator.topology,
+            "machine_type": accelerator.machine_type,
+            "node_pool": f"tpu-{accelerator.name}-pool",
+            "node_count": accelerator.num_nodes,
+          }
+        ),
       )
     else:
       pulumi.export("accelerator", None)
@@ -165,7 +175,7 @@ def create_program(config):
 
 def _create_gpu_node_pool(cluster, gpu: GpuConfig, zone, project_id):
   """Create a GPU-accelerated GKE node pool."""
-  gcp.container.NodePool(
+  return gcp.container.NodePool(
     "gpu-pool",
     name="gpu-pool",
     cluster=cluster.name,
@@ -199,7 +209,7 @@ def _create_tpu_node_pool(cluster, tpu: TpuConfig, zone, project_id):
     if tpu.num_nodes > 1
     else None
   )
-  gcp.container.NodePool(
+  return gcp.container.NodePool(
     pool_name,
     name=pool_name,
     cluster=cluster.name,
