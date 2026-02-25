@@ -8,7 +8,6 @@ import pulumi.automation as auto
 from keras_remote.cli.config import InfraConfig
 from keras_remote.cli.constants import DEFAULT_CLUSTER_NAME, DEFAULT_ZONE
 from keras_remote.cli.infra.post_deploy import (
-  configure_docker_auth,
   configure_kubectl,
   install_gpu_drivers,
   install_lws,
@@ -24,7 +23,6 @@ from keras_remote.cli.output import (
 )
 from keras_remote.cli.prerequisites_check import check_all
 from keras_remote.cli.prompts import prompt_accelerator, resolve_project
-from keras_remote.constants import zone_to_ar_location
 from keras_remote.core import accelerators
 from keras_remote.core.accelerators import GpuConfig
 
@@ -113,11 +111,9 @@ def up(project, zone, accelerator, cluster_name, yes):
     )
 
   # Post-deploy steps
-  ar_location = zone_to_ar_location(zone)
   console.print("\n[bold]Running post-deploy configuration...[/bold]\n")
 
   steps = [
-    ("Docker authentication", lambda: configure_docker_auth(ar_location)),
     (
       "kubectl configuration",
       lambda: configure_kubectl(

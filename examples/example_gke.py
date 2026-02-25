@@ -35,7 +35,8 @@ Supported accelerators:
 """
 
 import os
-import subprocess
+
+os.environ["KERAS_BACKEND"] = "jax"
 
 import keras
 import numpy as np
@@ -135,31 +136,6 @@ def main():
 if __name__ == "__main__":
   # Prerequisites:
   # 1. Set KERAS_REMOTE_PROJECT environment variable to your GCP project ID
-  # 2. Configure kubectl: gcloud container clusters get-credentials <cluster> --zone <zone>
-  # 3. Ensure your GKE cluster has GPU nodes with the required accelerator type
-  if not os.environ.get("KERAS_REMOTE_PROJECT"):
-    print("ERROR: KERAS_REMOTE_PROJECT environment variable not set")
-    print("Please set it to your GCP project ID:")
-    print("  export KERAS_REMOTE_PROJECT=your-project-id")
-    exit(1)
-
-  # Verify kubectl is configured
-  try:
-    result = subprocess.run(
-      ["kubectl", "cluster-info"], capture_output=True, text=True, timeout=10
-    )
-    if result.returncode != 0:
-      print("ERROR: kubectl is not configured or cluster is not accessible")
-      print("Please configure kubectl:")
-      print(
-        "  gcloud container clusters get-credentials <cluster-name> --zone <zone>"
-      )
-      exit(1)
-  except FileNotFoundError:
-    print("ERROR: kubectl not found. Please install kubectl.")
-    exit(1)
-  except subprocess.TimeoutExpired:
-    print("ERROR: kubectl timed out. Check your cluster connectivity.")
-    exit(1)
-
+  #    (if `project` param is not provided in the decorator)
+  # 2. Ensure your GKE cluster has GPU nodes with the required accelerator type
   main()

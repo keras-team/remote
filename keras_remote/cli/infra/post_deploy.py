@@ -1,7 +1,7 @@
 """Post-deploy steps that cannot be managed by Pulumi.
 
-These operations configure local machine state (Docker auth, kubectl)
-or apply Kubernetes manifests that depend on the cluster being ready.
+These operations configure local machine state (kubectl) or apply
+Kubernetes manifests that depend on the cluster being ready.
 """
 
 import os
@@ -11,24 +11,6 @@ from keras_remote.cli.constants import (
   LWS_INSTALL_URL,
   NVIDIA_DRIVER_DAEMONSET_URL,
 )
-
-
-def configure_docker_auth(ar_location):
-  """Configure Docker to authenticate with Artifact Registry.
-
-  Args:
-      ar_location: Multi-region location (e.g., "us", "europe", "asia").
-  """
-  subprocess.run(
-    [
-      "gcloud",
-      "auth",
-      "configure-docker",
-      f"{ar_location}-docker.pkg.dev",
-      "--quiet",
-    ],
-    check=True,
-  )
 
 
 def configure_kubectl(cluster_name, zone, project):

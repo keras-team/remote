@@ -16,6 +16,7 @@ keras_remote/
 ├── cli/            # CLI for infrastructure provisioning (Pulumi-based)
 │   ├── commands/   # up, down, status, config
 │   └── infra/      # Pulumi programs and stack management
+├── credentials.py  # Credential verification & auto-setup (shared by core & CLI)
 └── constants.py    # Zone/region utilities
 ```
 
@@ -24,6 +25,7 @@ keras_remote/
 ```python
 @keras_remote.run() called
   → JobContext.from_params()        # Resolve config from args/env vars
+  → ensure_credentials()            # Verify/auto-configure gcloud, ADC, kubeconfig
   → _prepare_artifacts()            # Serialize function (cloudpickle), zip working dir
   → _build_container()              # Build or retrieve cached Docker image
   → _upload_artifacts()             # Upload payload.pkl, context.zip to GCS
@@ -35,23 +37,24 @@ keras_remote/
 
 ## Key Modules
 
-| Module                       | Responsibility                                                                |
-| ---------------------------- | ----------------------------------------------------------------------------- |
-| `core/core.py`               | `@run()` decorator, backend routing, env var capture                          |
-| `core/accelerators.py`       | Accelerator registry (`GPUS`, `TPUS`), parser (`parse_accelerator`)           |
-| `backend/execution.py`       | `JobContext` dataclass, `BackendClient` protocol, `execute_remote()` pipeline |
-| `backend/gke_client.py`      | K8s Job creation, status polling, pod log retrieval                           |
-| `backend/pathways_client.py` | LeaderWorkerSet creation for multi-host TPUs                                  |
-| `infra/container_builder.py` | Content-hashed Docker image building via Cloud Build                          |
-| `utils/packager.py`          | `save_payload()` (cloudpickle), `zip_working_dir()`                           |
-| `utils/storage.py`           | GCS upload/download/cleanup for job artifacts                                 |
-| `runner/remote_runner.py`    | Runs inside container: deserialize, execute, upload result                    |
-| `cli/main.py`                | CLI entry point (`keras-remote` command)                                      |
+| Module                       | Responsibility                                                                   |
+| ---------------------------- | -------------------------------------------------------------------------------- |
+| `core/core.py`               | `@run()` decorator, backend routing, env var capture                             |
+| `core/accelerators.py`       | Accelerator registry (`GPUS`, `TPUS`), parser (`parse_accelerator`)              |
+| `credentials.py`             | Credential verification & auto-setup (gcloud, ADC, kubeconfig)                   |
+| `backend/execution.py`       | `JobContext` dataclass, `BaseK8sBackend` base class, `execute_remote()` pipeline |
+| `backend/gke_client.py`      | K8s Job creation, status polling, pod log retrieval                              |
+| `backend/pathways_client.py` | LeaderWorkerSet creation for multi-host TPUs                                     |
+| `infra/container_builder.py` | Content-hashed Docker image building via Cloud Build                             |
+| `utils/packager.py`          | `save_payload()` (cloudpickle), `zip_working_dir()`                              |
+| `utils/storage.py`           | GCS upload/download/cleanup for job artifacts                                    |
+| `runner/remote_runner.py`    | Runs inside container: deserialize, execute, upload result                       |
+| `cli/main.py`                | CLI entry point (`keras-remote` command)                                         |
 
 ## Key Abstractions
 
 - **`JobContext`** (`backend/execution.py`): Mutable dataclass carrying all job state through the pipeline — inputs, generated IDs, artifact paths, image URI.
-- **`BackendClient`** protocol (`backend/execution.py`): Interface with `submit_job`, `wait_for_job`, `cleanup_job`. Implemented by `GKEBackend` and `PathwaysBackend`.
+- **`BaseK8sBackend`** (`backend/execution.py`): Base class with `submit_job`, `wait_for_job`, `cleanup_job`. Subclassed by `GKEBackend` and `PathwaysBackend`.
 - **`GpuConfig` / `TpuConfig`** (`core/accelerators.py`): Frozen dataclasses for accelerator metadata. Single source of truth used by runtime, container builder, and CLI.
 - **`InfraConfig`** (`cli/config.py`): CLI provisioning configuration (project, zone, cluster, accelerator).
 
@@ -62,7 +65,6 @@ keras_remote/
 - **Formatter/linter**: `ruff` (2-space indent, 80-char line length target, E501 ignored)
 - **Rules**: B, E, F, N, PYI, T20, TID, SIM, W, I, NPY
 - **Dataclasses**: Frozen for immutable configs, mutable for state objects
-- **Protocols**: Used for backend abstraction (not ABCs)
 
 ### Environment Variables
 

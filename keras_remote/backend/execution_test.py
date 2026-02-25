@@ -151,6 +151,7 @@ class TestExecuteRemote(absltest.TestCase):
 
   def test_success_flow(self):
     with (
+      mock.patch("keras_remote.backend.execution.ensure_credentials"),
       mock.patch("keras_remote.backend.execution._build_container"),
       mock.patch("keras_remote.backend.execution._upload_artifacts"),
       mock.patch(
@@ -174,6 +175,7 @@ class TestExecuteRemote(absltest.TestCase):
 
   def test_cleanup_on_wait_failure(self):
     with (
+      mock.patch("keras_remote.backend.execution.ensure_credentials"),
       mock.patch("keras_remote.backend.execution._build_container"),
       mock.patch("keras_remote.backend.execution._upload_artifacts"),
       mock.patch(
