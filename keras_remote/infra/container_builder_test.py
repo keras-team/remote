@@ -29,8 +29,8 @@ class TestHashRequirements(parameterized.TestCase):
     req = tmp_path / "requirements.txt"
     req.write_text("numpy==1.26\n")
 
-    h1 = _hash_requirements(str(req), "l4", "python:3.12-slim")
-    h2 = _hash_requirements(str(req), "l4", "python:3.12-slim")
+    h1 = _hash_requirements(str(req), "gpu", "python:3.12-slim")
+    h2 = _hash_requirements(str(req), "gpu", "python:3.12-slim")
     self.assertEqual(h1, h2)
 
   def test_different_requirements_different_hash(self):
@@ -40,17 +40,17 @@ class TestHashRequirements(parameterized.TestCase):
     req2 = tmp_path / "r2.txt"
     req2.write_text("scipy==1.12\n")
 
-    h1 = _hash_requirements(str(req1), "l4", "python:3.12-slim")
-    h2 = _hash_requirements(str(req2), "l4", "python:3.12-slim")
+    h1 = _hash_requirements(str(req1), "gpu", "python:3.12-slim")
+    h2 = _hash_requirements(str(req2), "gpu", "python:3.12-slim")
     self.assertNotEqual(h1, h2)
 
-  def test_different_accelerator_different_hash(self):
+  def test_different_category_different_hash(self):
     tmp_path = _make_temp_path(self)
     req = tmp_path / "requirements.txt"
     req.write_text("numpy\n")
 
-    h1 = _hash_requirements(str(req), "l4", "python:3.12-slim")
-    h2 = _hash_requirements(str(req), "v3-4", "python:3.12-slim")
+    h1 = _hash_requirements(str(req), "gpu", "python:3.12-slim")
+    h2 = _hash_requirements(str(req), "tpu", "python:3.12-slim")
     self.assertNotEqual(h1, h2)
 
   def test_different_base_image_different_hash(self):
@@ -58,8 +58,8 @@ class TestHashRequirements(parameterized.TestCase):
     req = tmp_path / "requirements.txt"
     req.write_text("numpy\n")
 
-    h1 = _hash_requirements(str(req), "l4", "python:3.12-slim")
-    h2 = _hash_requirements(str(req), "l4", "python:3.11-slim")
+    h1 = _hash_requirements(str(req), "gpu", "python:3.12-slim")
+    h2 = _hash_requirements(str(req), "gpu", "python:3.11-slim")
     self.assertNotEqual(h1, h2)
 
   @parameterized.named_parameters(
@@ -78,7 +78,7 @@ class TestHashRequirements(parameterized.TestCase):
     tmp_path = _make_temp_path(self)
     req = tmp_path / "r.txt"
     req.write_text("keras\n")
-    h = _hash_requirements(str(req), "l4", "python:3.12-slim")
+    h = _hash_requirements(str(req), "gpu", "python:3.12-slim")
     self.assertRegex(h, r"^[0-9a-f]{64}$")
 
 
@@ -86,28 +86,28 @@ class TestGenerateDockerfile(parameterized.TestCase):
   @parameterized.named_parameters(
     dict(
       testcase_name="cpu",
-      accelerator_type="cpu",
+      category="cpu",
       expected=["pip install jax"],
       not_expected=["cuda", "tpu"],
     ),
     dict(
       testcase_name="gpu",
-      accelerator_type="l4",
+      category="gpu",
       expected=["jax[cuda12]"],
       not_expected=[],
     ),
     dict(
       testcase_name="tpu",
-      accelerator_type="v3-4",
+      category="tpu",
       expected=["jax[tpu]", "libtpu_releases"],
       not_expected=[],
     ),
   )
-  def test_jax_install(self, accelerator_type, expected, not_expected):
+  def test_jax_install(self, category, expected, not_expected):
     content = _generate_dockerfile(
       base_image="python:3.12-slim",
       requirements_path=None,
-      accelerator_type=accelerator_type,
+      category=category,
     )
     for s in expected:
       self.assertIn(s, content)
@@ -122,7 +122,7 @@ class TestGenerateDockerfile(parameterized.TestCase):
     content = _generate_dockerfile(
       base_image="python:3.12-slim",
       requirements_path=str(req),
-      accelerator_type="cpu",
+      category="cpu",
     )
     self.assertIn("COPY requirements.txt", content)
     self.assertIn("pip install -r", content)
@@ -131,7 +131,7 @@ class TestGenerateDockerfile(parameterized.TestCase):
     content = _generate_dockerfile(
       base_image="python:3.12-slim",
       requirements_path=None,
-      accelerator_type="cpu",
+      category="cpu",
     )
     self.assertNotIn("COPY requirements.txt", content)
 
@@ -149,7 +149,7 @@ class TestGenerateDockerfile(parameterized.TestCase):
     content = _generate_dockerfile(
       base_image="python:3.12-slim",
       requirements_path=None,
-      accelerator_type="cpu",
+      category="cpu",
     )
     self.assertIn(expected_substring, content)
 
@@ -157,7 +157,7 @@ class TestGenerateDockerfile(parameterized.TestCase):
     content = _generate_dockerfile(
       base_image="python:3.11-bullseye",
       requirements_path=None,
-      accelerator_type="cpu",
+      category="cpu",
     )
     self.assertIn("FROM python:3.11-bullseye", content)
 
@@ -170,7 +170,7 @@ class TestImageExists(parameterized.TestCase):
       return_value=mock_client,
     ):
       result = _image_exists(
-        "us-docker.pkg.dev/my-proj/keras-remote/base:l4-abc123",
+        "us-docker.pkg.dev/my-proj/keras-remote/base:gpu-abc123",
         "my-proj",
       )
     self.assertTrue(result)
@@ -194,7 +194,7 @@ class TestImageExists(parameterized.TestCase):
       return_value=mock_client,
     ):
       result = _image_exists(
-        "us-docker.pkg.dev/my-proj/keras-remote/base:l4-abc123",
+        "us-docker.pkg.dev/my-proj/keras-remote/base:gpu-abc123",
         "my-proj",
       )
     self.assertFalse(result)
@@ -206,7 +206,7 @@ class TestImageExists(parameterized.TestCase):
       return_value=mock_client,
     ):
       _image_exists(
-        "us-docker.pkg.dev/my-proj/keras-remote/base:v3-4-abc123def456",
+        "us-docker.pkg.dev/my-proj/keras-remote/base:tpu-abc123def456",
         "my-proj",
       )
     call_args = mock_client.get_tag.call_args
@@ -215,7 +215,7 @@ class TestImageExists(parameterized.TestCase):
       request.name,
       "projects/my-proj/locations/us"
       "/repositories/keras-remote"
-      "/packages/base/tags/v3-4-abc123def456",
+      "/packages/base/tags/tpu-abc123def456",
     )
 
 
@@ -249,7 +249,7 @@ class TestGetOrBuildContainer(absltest.TestCase):
       ),
       mock.patch(
         "keras_remote.infra.container_builder._build_and_push",
-        return_value="us-docker.pkg.dev/proj/keras-remote/base:l4-bbbbbbbbbbbb",
+        return_value="us-docker.pkg.dev/proj/keras-remote/base:gpu-bbbbbbbbbbbb",
       ) as mock_build,
     ):
       result = get_or_build_container(
@@ -262,7 +262,7 @@ class TestGetOrBuildContainer(absltest.TestCase):
 
     mock_build.assert_called_once()
     self.assertEqual(
-      result, "us-docker.pkg.dev/proj/keras-remote/base:l4-bbbbbbbbbbbb"
+      result, "us-docker.pkg.dev/proj/keras-remote/base:gpu-bbbbbbbbbbbb"
     )
 
   def _get_image_uri(self, accelerator_type, project, zone):
@@ -285,7 +285,7 @@ class TestGetOrBuildContainer(absltest.TestCase):
       result.startswith("europe-docker.pkg.dev/my-proj/keras-remote/base:")
     )
     tag = result.split(":")[-1]
-    self.assertRegex(tag, r"^v3-4-[0-9a-f]{12}$")
+    self.assertRegex(tag, r"^tpu-[0-9a-f]{12}$")
 
   def test_image_uri_format_gpu_us(self):
     result = self._get_image_uri("a100-80gb", "proj", "us-central1-a")
@@ -294,7 +294,7 @@ class TestGetOrBuildContainer(absltest.TestCase):
       result.startswith("us-docker.pkg.dev/proj/keras-remote/base:")
     )
     tag = result.split(":")[-1]
-    self.assertRegex(tag, r"^a100-80gb-[0-9a-f]{12}$")
+    self.assertRegex(tag, r"^gpu-[0-9a-f]{12}$")
 
 
 if __name__ == "__main__":

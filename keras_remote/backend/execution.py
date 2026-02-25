@@ -101,6 +101,10 @@ class BaseK8sBackend:
     self.cluster = cluster
     self.namespace = namespace
 
+  def validate_preflight(self, ctx: JobContext) -> None:
+    """Perform preflight checks before building container or uploading artifacts."""
+    pass
+
   def submit_job(self, ctx: JobContext) -> Any:
     """Submit a job to the backend. Returns backend-specific job handle."""
     raise NotImplementedError
@@ -116,6 +120,16 @@ class BaseK8sBackend:
 
 class GKEBackend(BaseK8sBackend):
   """Backend adapter for standard GKE Jobs."""
+
+  def validate_preflight(self, ctx: JobContext) -> None:
+    """Check if the required node pool exists for the accelerator."""
+    gke_client.validate_preflight(
+      accelerator=ctx.accelerator,
+      project=ctx.project,
+      cluster=self.cluster,
+      zone=ctx.zone,
+      namespace=self.namespace,
+    )
 
   def submit_job(self, ctx: JobContext) -> Any:
     """Submit job to GKE cluster."""
@@ -141,6 +155,17 @@ class GKEBackend(BaseK8sBackend):
 
 class PathwaysBackend(BaseK8sBackend):
   """Backend adapter for ML Pathways using LeaderWorkerSet."""
+
+  def validate_preflight(self, ctx: JobContext) -> None:
+    """Preflight checks for Pathways (currently same as GKE)."""
+    # Pathways also runs on GKE nodes with specific labels
+    gke_client.validate_preflight(
+      accelerator=ctx.accelerator,
+      project=ctx.project,
+      cluster=self.cluster,
+      zone=ctx.zone,
+      namespace=self.namespace,
+    )
 
   def submit_job(self, ctx: JobContext) -> Any:
     """Submit LWS job to GKE cluster."""
@@ -288,6 +313,9 @@ def execute_remote(ctx: JobContext, backend: BaseK8sBackend) -> Any:
     zone=ctx.zone,
     cluster=backend.cluster,
   )
+
+  # Preflight check
+  backend.validate_preflight(ctx)
 
   with tempfile.TemporaryDirectory() as tmpdir:
     # Phase 1: Package artifacts

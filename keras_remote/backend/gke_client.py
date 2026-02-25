@@ -179,6 +179,48 @@ def cleanup_job(job_name, namespace="default"):
       logging.warning("Failed to delete job %s: %s", job_name, e.reason)
 
 
+def validate_preflight(
+  accelerator, project, cluster, zone, namespace="default"
+):
+  """Check if the required node pool exists for the accelerator.
+
+  Args:
+      accelerator: Accelerator string (e.g., 'l4', 'v3-8')
+      project: GCP project ID
+      cluster: GKE cluster name
+      zone: GCP zone
+      namespace: Kubernetes namespace
+
+  Raises:
+      RuntimeError: If no nodes match the required accelerator selector.
+  """
+  _load_kube_config()
+  accel_config = _parse_accelerator(accelerator)
+  node_selector = accel_config.get("node_selector")
+
+  if not node_selector:
+    return  # CPU or no selector required
+
+  core_v1 = client.CoreV1Api()
+  try:
+    # Construct label selector string: "key1=val1,key2=val2"
+    label_selector = ",".join([f"{k}={v}" for k, v in node_selector.items()])
+    nodes = core_v1.list_node(label_selector=label_selector)
+
+    if not nodes.items:
+      selector_str = ", ".join([f"{k}: {v}" for k, v in node_selector.items()])
+      raise RuntimeError(
+        f"Preflight check failed: No nodes match the accelerator selector: {selector_str}. "
+        "Check that your GKE cluster has a node pool with the correct accelerator type. "
+        "See all supported accelerator symbols here: \n"
+        "https://github.com/keras-team/remote#supported-accelerators"
+      )
+  except ApiException as e:
+    # If we can't list nodes due to permissions, log a warning but proceed
+    # to avoid blocking users with restricted kubeconfig.
+    logging.warning("Preflight check: Failed to query nodes: %s", e.reason)
+
+
 def _parse_accelerator(accelerator):
   """Convert accelerator string to GKE pod spec fields."""
   parsed = accelerators.parse_accelerator(accelerator)
@@ -374,7 +416,15 @@ def _check_pod_scheduling(core_v1, job_name, namespace):
               "didn't match Pod's node affinity/selector" in msg
               or "node selector" in msg.lower()
             ):
+              selector = pod.spec.node_selector
+              selector_str = (
+                ", ".join([f"{k}: {v}" for k, v in selector.items()])
+                if selector
+                else "None"
+              )
               raise RuntimeError(
-                "No nodes match the GPU selector. Check that your node pool "
-                "has the correct GPU type label."
+                f"No nodes match the accelerator selector: {selector_str}. "
+                "Check that your node pool has the correct accelerator type label. "
+                "See all supported accelerator symbols here: \n"
+                "https://github.com/keras-team/remote#supported-accelerators"
               )
