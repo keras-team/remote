@@ -96,12 +96,29 @@ def _make_config(accelerator=None):
   return config
 
 
+def _resolve_apply(fn):
+  """Simulate Pulumi Output.apply() by invoking the callback immediately."""
+  return fn(None)
+
+
 def _run_program_and_get_exports(config):
   """Run the Pulumi program and return a dict of exported key -> value."""
   with (
     mock.patch.object(program, "pulumi") as pulumi_mock,
-    mock.patch.object(program, "gcp"),
+    mock.patch.object(program, "gcp") as gcp_mock,
   ):
+    # Make NodePool(...) return a mock whose .name.apply(fn) resolves with
+    # the name= kwarg, matching real Pulumi behaviour.
+    def _make_node_pool(*args, **kwargs):
+      pool_mock = mock.MagicMock()
+      pool_name = kwargs.get("name", args[0] if args else None)
+      pool_mock.name.apply.side_effect = lambda fn: fn(pool_name)
+      return pool_mock
+
+    gcp_mock.container.NodePool.side_effect = _make_node_pool
+    gcp_mock.artifactregistry.Repository.return_value.name.apply.side_effect = (
+      _resolve_apply
+    )
     program_fn = program.create_program(config)
     program_fn()
     return {
@@ -144,6 +161,75 @@ class TestAcceleratorExports(absltest.TestCase):
 
     self.assertIn("accelerator", exports)
     self.assertIsNone(exports["accelerator"])
+
+
+class TestExportsDependOnResources(parameterized.TestCase):
+  """Verify exports are derived from resource outputs, not static values.
+
+  If an export were a plain dict/string instead of a resource output
+  .apply(), it would resolve even when the resource fails to create,
+  causing 'keras-remote status' to show stale accelerator info.
+  """
+
+  @parameterized.named_parameters(
+    dict(
+      testcase_name="gpu",
+      accelerator=GpuConfig("l4", 1, "nvidia-l4", "g2-standard-4"),
+    ),
+    dict(
+      testcase_name="tpu",
+      accelerator=TpuConfig(
+        "v5p", 8, "2x2x2", "tpu-v5p-slice", "ct5p-hightpu-4t", 2
+      ),
+    ),
+  )
+  def test_accelerator_export_depends_on_node_pool(self, accelerator):
+    """The accelerator export must be produced via NodePool.name.apply()."""
+    with (
+      mock.patch.object(program, "pulumi") as pulumi_mock,
+      mock.patch.object(program, "gcp") as gcp_mock,
+    ):
+      program.create_program(_make_config(accelerator))()
+
+      # The export value should be the return value of pool.name.apply().
+      node_pool_mock = gcp_mock.container.NodePool.return_value
+      node_pool_mock.name.apply.assert_called_once()
+      exported = {
+        c.args[0]: c.args[1] for c in pulumi_mock.export.call_args_list
+      }
+      self.assertIs(
+        exported["accelerator"], node_pool_mock.name.apply.return_value
+      )
+
+  def test_ar_registry_export_depends_on_repository(self):
+    """The ar_registry export must be produced via Repository.name.apply()."""
+    with (
+      mock.patch.object(program, "pulumi") as pulumi_mock,
+      mock.patch.object(program, "gcp") as gcp_mock,
+    ):
+      program.create_program(_make_config(None))()
+
+      repo_mock = gcp_mock.artifactregistry.Repository.return_value
+      repo_mock.name.apply.assert_called_once()
+      exported = {
+        c.args[0]: c.args[1] for c in pulumi_mock.export.call_args_list
+      }
+      self.assertIs(exported["ar_registry"], repo_mock.name.apply.return_value)
+
+  def test_cpu_only_accelerator_export_is_none(self):
+    """CPU-only config should export accelerator as None (no dependency)."""
+    with (
+      mock.patch.object(program, "pulumi") as pulumi_mock,
+      mock.patch.object(program, "gcp") as gcp_mock,
+    ):
+      program.create_program(_make_config(None))()
+
+      # No node pool created, so NodePool should not be called.
+      gcp_mock.container.NodePool.assert_not_called()
+      exported = {
+        c.args[0]: c.args[1] for c in pulumi_mock.export.call_args_list
+      }
+      self.assertIsNone(exported["accelerator"])
 
 
 if __name__ == "__main__":
