@@ -356,9 +356,10 @@ class TestLoadKubeConfig(absltest.TestCase):
 
 
 class TestCheckPodScheduling(parameterized.TestCase):
-  def _make_pending_pod(self, message):
+  def _make_pending_pod(self, message, node_selector=None):
     pod = MagicMock()
     pod.status.phase = "Pending"
+    pod.spec.node_selector = node_selector
     condition = MagicMock()
     condition.type = "PodScheduled"
     condition.status = "False"
@@ -371,16 +372,20 @@ class TestCheckPodScheduling(parameterized.TestCase):
       testcase_name="insufficient_gpu",
       condition_message="Insufficient nvidia.com/gpu",
       error_match="No GPU nodes available",
+      node_selector=None,
     ),
     dict(
       testcase_name="node_selector_mismatch",
       condition_message="didn't match Pod's node affinity/selector",
-      error_match="No nodes match",
+      error_match="No nodes match the accelerator selector: cloud.google.com/gke-accelerator: nvidia-l4",
+      node_selector={"cloud.google.com/gke-accelerator": "nvidia-l4"},
     ),
   )
-  def test_scheduling_failure_raises(self, condition_message, error_match):
+  def test_scheduling_failure_raises(
+    self, condition_message, error_match, node_selector
+  ):
     mock_core = MagicMock()
-    pod = self._make_pending_pod(condition_message)
+    pod = self._make_pending_pod(condition_message, node_selector=node_selector)
     mock_core.list_namespaced_pod.return_value.items = [pod]
 
     with self.assertRaisesRegex(RuntimeError, error_match):

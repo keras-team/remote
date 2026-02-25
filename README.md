@@ -228,6 +228,9 @@ See [examples/Dockerfile.prebuilt](examples/Dockerfile.prebuilt) for a template.
 
 ## Supported Accelerators
 
+Note: each accelerator and topology requires
+[setting up its own NodePool](#quick-start) as a prerequisite.
+
 ### TPUs
 
 | Type           | Configurations                              |

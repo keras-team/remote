@@ -42,15 +42,15 @@ def get_or_build_container(
       Container image URI in Artifact Registry
   """
   ar_location = zone_to_ar_location(zone or get_default_zone())
+  category = accelerators.get_category(accelerator_type)
 
-  # Generate deterministic hash from requirements + base image
+  # Generate deterministic hash from requirements + base image + category
   requirements_hash = _hash_requirements(
-    requirements_path, accelerator_type, base_image
+    requirements_path, category, base_image
   )
 
-  # Sanitize accelerator type for image name
-  sanitized_accel = accelerator_type.replace(":", "-").replace("/", "-")
-  image_tag = f"{sanitized_accel}-{requirements_hash[:12]}"
+  # Use category for image name (e.g., 'tpu-hash', 'gpu-hash')
+  image_tag = f"{category}-{requirements_hash[:12]}"
 
   # Use Artifact Registry
   registry = f"{ar_location}-docker.pkg.dev/{project}/keras-remote"
@@ -72,25 +72,25 @@ def get_or_build_container(
   return _build_and_push(
     base_image,
     requirements_path,
-    accelerator_type,
+    category,
     project,
     image_uri,
     ar_location,
   )
 
 
-def _hash_requirements(requirements_path, accelerator_type, base_image):
-  """Create deterministic hash from requirements + accelerator + remote_runner + base image.
+def _hash_requirements(requirements_path, category, base_image):
+  """Create deterministic hash from requirements + category + remote_runner + base image.
 
   Args:
       requirements_path: Path to requirements.txt (or None)
-      accelerator_type: TPU/GPU type
+      category: Accelerator category ('cpu', 'gpu', 'tpu')
       base_image: Base Docker image (e.g., 'python:3.12-slim')
 
   Returns:
       SHA256 hex digest
   """
-  content = f"base_image={base_image}\naccelerator={accelerator_type}\n"
+  content = f"base_image={base_image}\ncategory={category}\n"
 
   if requirements_path and os.path.exists(requirements_path):
     with open(requirements_path, "r") as f:
@@ -150,7 +150,7 @@ def _image_exists(image_uri, project):
 def _build_and_push(
   base_image,
   requirements_path,
-  accelerator_type,
+  category,
   project,
   image_uri,
   ar_location="us",
@@ -160,7 +160,7 @@ def _build_and_push(
   Args:
       base_image: Base Docker image
       requirements_path: Path to requirements.txt (or None)
-      accelerator_type: TPU/GPU type
+      category: Accelerator category ('cpu', 'gpu', 'tpu')
       project: GCP project ID
       image_uri: Target image URI
       ar_location: Artifact Registry multi-region (e.g., 'us')
@@ -173,7 +173,7 @@ def _build_and_push(
     dockerfile_content = _generate_dockerfile(
       base_image=base_image,
       requirements_path=requirements_path,
-      accelerator_type=accelerator_type,
+      category=category,
     )
 
     dockerfile_path = os.path.join(tmpdir, "Dockerfile")
@@ -255,19 +255,18 @@ def _build_and_push(
       raise RuntimeError(f"Build failed with status: {result.status}")
 
 
-def _generate_dockerfile(base_image, requirements_path, accelerator_type):
+def _generate_dockerfile(base_image, requirements_path, category):
   """Generate Dockerfile content based on configuration.
 
   Args:
       base_image: Base Docker image
       requirements_path: Path to requirements.txt (or None)
-      accelerator_type: TPU/GPU type
+      category: Accelerator category ('cpu', 'gpu', 'tpu')
 
   Returns:
       Dockerfile content as string
   """
-  # Determine JAX installation command based on accelerator
-  category = accelerators.get_category(accelerator_type)
+  # Determine JAX installation command based on accelerator category
   if category == "cpu":
     jax_install = "RUN python3 -m pip install jax"
   elif category == "tpu":
