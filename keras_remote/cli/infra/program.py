@@ -142,12 +142,12 @@ def create_program(config):
       pulumi.export(
         "accelerator",
         accel_pool.name.apply(
-          lambda _: {
+          lambda pool_name: {
             "type": "GPU",
             "name": accelerator.name,
             "count": accelerator.count,
             "machine_type": accelerator.machine_type,
-            "node_pool": "gpu-pool",
+            "node_pool": pool_name,
             "node_count": 1,
           }
         ),
@@ -156,13 +156,13 @@ def create_program(config):
       pulumi.export(
         "accelerator",
         accel_pool.name.apply(
-          lambda _: {
+          lambda pool_name: {
             "type": "TPU",
             "name": accelerator.name,
             "chips": accelerator.chips,
             "topology": accelerator.topology,
             "machine_type": accelerator.machine_type,
-            "node_pool": f"tpu-{accelerator.name}-pool",
+            "node_pool": pool_name,
             "node_count": accelerator.num_nodes,
           }
         ),

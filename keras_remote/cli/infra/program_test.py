@@ -107,10 +107,15 @@ def _run_program_and_get_exports(config):
     mock.patch.object(program, "pulumi") as pulumi_mock,
     mock.patch.object(program, "gcp") as gcp_mock,
   ):
-    # Make .name.apply(fn) call fn(None) so exports resolve to plain values.
-    gcp_mock.container.NodePool.return_value.name.apply.side_effect = (
-      _resolve_apply
-    )
+    # Make NodePool(...) return a mock whose .name.apply(fn) resolves with
+    # the name= kwarg, matching real Pulumi behaviour.
+    def _make_node_pool(*args, **kwargs):
+      pool_mock = mock.MagicMock()
+      pool_name = kwargs.get("name", args[0] if args else None)
+      pool_mock.name.apply.side_effect = lambda fn: fn(pool_name)
+      return pool_mock
+
+    gcp_mock.container.NodePool.side_effect = _make_node_pool
     gcp_mock.artifactregistry.Repository.return_value.name.apply.side_effect = (
       _resolve_apply
     )
