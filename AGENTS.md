@@ -66,12 +66,22 @@ keras_remote/
 - **Rules**: B, E, F, N, PYI, T20, TID, SIM, W, I, NPY
 - **Dataclasses**: Frozen for immutable configs, mutable for state objects
 
-### Environment Variables
+### Environment Variables & Resource Name Resolution
 
-- `KERAS_REMOTE_PROJECT` (required): GCP project ID
-- `KERAS_REMOTE_ZONE` (optional): GCP zone, defaults to `us-central1-a`
-- `KERAS_REMOTE_CLUSTER` (optional): GKE cluster name
-- `KERAS_REMOTE_GKE_NAMESPACE` (optional): K8s namespace, defaults to `default`
+Every customizable resource name must follow the same resolution model across all usage paths:
+
+- **`@run()` decorator**: explicit parameter → env var → error or default
+- **CLI commands**: `--flag` (with `envvar=`) → env var → interactive prompt or default
+- **`config show`**: displays current value and source for every configurable name
+
+| Env Var | `@run()` param | CLI flag | `config show` | Default |
+| --- | --- | --- | --- | --- |
+| `KERAS_REMOTE_PROJECT` | `project=` | `--project` | Yes | *(required)* |
+| `KERAS_REMOTE_ZONE` | `zone=` | `--zone` | Yes | `us-central1-a` |
+| `KERAS_REMOTE_CLUSTER` | `cluster=` | `--cluster-name` | Yes | `keras-remote-cluster` |
+| `KERAS_REMOTE_GKE_NAMESPACE` | `namespace=` | *(runtime only)* | Yes | `default` |
+
+When adding a new configurable resource name, ensure it is wired into **all three paths** (decorator, CLI flags on every relevant command, and `config show`). The `GOOGLE_CLOUD_PROJECT` env var is also accepted as a fallback for project ID (after `KERAS_REMOTE_PROJECT`).
 
 ### Testing
 

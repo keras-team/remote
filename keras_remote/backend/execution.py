@@ -73,10 +73,13 @@ class JobContext:
     if not zone:
       zone = get_default_zone()
     if not project:
-      project = os.environ.get("KERAS_REMOTE_PROJECT")
+      project = os.environ.get("KERAS_REMOTE_PROJECT") or os.environ.get(
+        "GOOGLE_CLOUD_PROJECT"
+      )
       if not project:
         raise ValueError(
-          "project must be specified or set KERAS_REMOTE_PROJECT environment variable"
+          "project must be specified or set KERAS_REMOTE_PROJECT"
+          " (or GOOGLE_CLOUD_PROJECT) environment variable"
         )
 
     return cls(

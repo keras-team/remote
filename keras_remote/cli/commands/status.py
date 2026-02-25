@@ -4,7 +4,7 @@ import click
 from pulumi.automation import CommandError
 
 from keras_remote.cli.config import InfraConfig
-from keras_remote.cli.constants import DEFAULT_ZONE
+from keras_remote.cli.constants import DEFAULT_CLUSTER_NAME, DEFAULT_ZONE
 from keras_remote.cli.infra.program import create_program
 from keras_remote.cli.infra.stack_manager import get_stack
 from keras_remote.cli.output import (
@@ -30,7 +30,13 @@ from keras_remote.cli.prompts import resolve_project
   default=None,
   help=(f"GCP zone [env: KERAS_REMOTE_ZONE, default: {DEFAULT_ZONE}]"),
 )
-def status(project, zone):
+@click.option(
+  "--cluster-name",
+  envvar="KERAS_REMOTE_CLUSTER",
+  default=None,
+  help="GKE cluster name [default: keras-remote-cluster]",
+)
+def status(project, zone, cluster_name):
   """Show current keras-remote infrastructure state."""
   banner("keras-remote Status")
 
@@ -38,8 +44,9 @@ def status(project, zone):
 
   project = project or resolve_project()
   zone = zone or DEFAULT_ZONE
+  cluster_name = cluster_name or DEFAULT_CLUSTER_NAME
 
-  config = InfraConfig(project=project, zone=zone)
+  config = InfraConfig(project=project, zone=zone, cluster_name=cluster_name)
 
   try:
     program = create_program(config)
