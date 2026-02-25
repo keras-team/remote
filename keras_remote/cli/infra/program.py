@@ -116,11 +116,15 @@ def create_program(config):
     )
 
     # 5. Accelerator node pool (conditional)
-    accel_pool = None
+    accelerator_pool = None
     if isinstance(accelerator, GpuConfig):
-      accel_pool = _create_gpu_node_pool(cluster, accelerator, zone, project_id)
+      accelerator_pool = _create_gpu_node_pool(
+        cluster, accelerator, zone, project_id
+      )
     elif isinstance(accelerator, TpuConfig):
-      accel_pool = _create_tpu_node_pool(cluster, accelerator, zone, project_id)
+      accelerator_pool = _create_tpu_node_pool(
+        cluster, accelerator, zone, project_id
+      )
 
     # 6. Stack exports
     # Exports that reference resource outputs (e.g. cluster.name,
@@ -141,7 +145,7 @@ def create_program(config):
     if isinstance(accelerator, GpuConfig):
       pulumi.export(
         "accelerator",
-        accel_pool.name.apply(
+        accelerator_pool.name.apply(
           lambda pool_name: {
             "type": "GPU",
             "name": accelerator.name,
@@ -155,7 +159,7 @@ def create_program(config):
     elif isinstance(accelerator, TpuConfig):
       pulumi.export(
         "accelerator",
-        accel_pool.name.apply(
+        accelerator_pool.name.apply(
           lambda pool_name: {
             "type": "TPU",
             "name": accelerator.name,
