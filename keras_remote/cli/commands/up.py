@@ -47,7 +47,8 @@ from keras_remote.core.accelerators import GpuConfig
   "v5litepod, v5p, v6e, v3",
 )
 @click.option(
-  "--cluster-name",
+  "--cluster",
+  "cluster_name",
   envvar="KERAS_REMOTE_CLUSTER",
   default=None,
   help="GKE cluster name [default: keras-remote-cluster]",

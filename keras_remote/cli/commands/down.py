@@ -26,7 +26,8 @@ from keras_remote.cli.prompts import resolve_project
   help=(f"GCP zone [env: KERAS_REMOTE_ZONE, default: {DEFAULT_ZONE}]"),
 )
 @click.option(
-  "--cluster-name",
+  "--cluster",
+  "cluster_name",
   envvar="KERAS_REMOTE_CLUSTER",
   default=None,
   help="GKE cluster name [default: keras-remote-cluster]",
