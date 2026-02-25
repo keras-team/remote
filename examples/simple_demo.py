@@ -1,5 +1,4 @@
 import os
-import socket
 
 os.environ["KERAS_BACKEND"] = "jax"
 
@@ -7,13 +6,11 @@ import jax
 import keras
 import numpy as np
 
-from keras_remote import core as keras_remote
+import keras_remote
 
 
-@keras_remote.run(accelerator="v2-8")
+@keras_remote.run(accelerator="cpu")
 def train_keras_jax_model():
-  host = socket.gethostname()
-  print(f"Running on host: {host}")
   print(f"Keras version: {keras.__version__}")
   print(f"Keras backend: {keras.config.backend()}")
   print(f"JAX version: {jax.__version__}")
@@ -54,13 +51,13 @@ def train_keras_jax_model():
   )
 
   print("Starting model.fit...")
-  model.fit(x_train, y_train, epochs=1, batch_size=32, verbose=2)
+  history = model.fit(x_train, y_train, epochs=1, batch_size=32, verbose=2)
   print("Model.fit finished.")
 
-  return f"Keras JAX training complete on {host}"
+  return history.history["loss"][-1]
 
 
 if __name__ == "__main__":
   print("Starting Keras JAX demo...")
-  result = train_keras_jax_model()
-  print(f"Demo result: {result}")
+  loss = train_keras_jax_model()
+  print(f"Final training loss: {loss}")
