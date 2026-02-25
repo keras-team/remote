@@ -14,14 +14,13 @@ from keras_remote.cli.prerequisites_check import (
   check_pulumi,
 )
 
+_MODULE = "keras_remote.cli.prerequisites_check"
+
 
 class TestToolChecks(parameterized.TestCase):
+  """Tests for CLI-only tool checks (pulumi, kubectl, docker)."""
+
   @parameterized.named_parameters(
-    dict(
-      testcase_name="gcloud",
-      check_fn=check_gcloud,
-      error_match="gcloud CLI not found",
-    ),
     dict(
       testcase_name="pulumi",
       check_fn=check_pulumi,
@@ -43,11 +42,6 @@ class TestToolChecks(parameterized.TestCase):
       check_fn()
 
   @parameterized.named_parameters(
-    dict(
-      testcase_name="gcloud",
-      check_fn=check_gcloud,
-      error_match="gcloud CLI not found",
-    ),
     dict(
       testcase_name="pulumi",
       check_fn=check_pulumi,
@@ -72,70 +66,56 @@ class TestToolChecks(parameterized.TestCase):
       check_fn()
 
 
-class TestCheckGkeAuthPlugin(absltest.TestCase):
-  def test_present(self):
-    with mock.patch(
-      "shutil.which", return_value="/usr/bin/gke-gcloud-auth-plugin"
-    ):
-      check_gke_auth_plugin()
+class TestDelegatedChecks(absltest.TestCase):
+  """Tests for checks that delegate to keras_remote.credentials."""
 
-  def test_missing_user_accepts_install(self):
+  def test_check_gcloud_delegates(self):
+    with mock.patch(f"{_MODULE}.credentials.ensure_gcloud"):
+      check_gcloud()
+
+  def test_check_gcloud_converts_error(self):
     with (
-      mock.patch("shutil.which", return_value=None),
-      mock.patch("keras_remote.cli.prerequisites_check.warning"),
-      mock.patch("click.confirm", return_value=True),
       mock.patch(
-        "keras_remote.cli.prerequisites_check.subprocess.run",
-      ) as mock_run,
+        f"{_MODULE}.credentials.ensure_gcloud",
+        side_effect=RuntimeError("gcloud CLI not found"),
+      ),
+      self.assertRaisesRegex(click.ClickException, "gcloud CLI not found"),
     ):
-      check_gke_auth_plugin()
-      mock_run.assert_called_once_with(
-        ["gcloud", "components", "install", "gke-gcloud-auth-plugin"],
-        check=True,
-      )
+      check_gcloud()
 
-  def test_missing_user_declines_install(self):
+  def test_check_gke_auth_plugin_delegates(self):
+    with mock.patch(f"{_MODULE}.credentials.ensure_gke_auth_plugin"):
+      check_gke_auth_plugin()
+
+  def test_check_gke_auth_plugin_converts_error(self):
     with (
-      mock.patch("shutil.which", return_value=None),
-      mock.patch("keras_remote.cli.prerequisites_check.warning"),
-      mock.patch("click.confirm", return_value=False),
+      mock.patch(
+        f"{_MODULE}.credentials.ensure_gke_auth_plugin",
+        side_effect=RuntimeError("Failed to install gke-gcloud-auth-plugin"),
+      ),
       self.assertRaisesRegex(
-        click.ClickException, "gke-gcloud-auth-plugin is required"
+        click.ClickException,
+        "Failed to install gke-gcloud-auth-plugin",
       ),
     ):
       check_gke_auth_plugin()
 
-
-class TestCheckGcloudAuth(absltest.TestCase):
-  def test_token_success(self):
-    """When print-access-token succeeds, no login is triggered."""
-    with mock.patch(
-      "keras_remote.cli.prerequisites_check.subprocess.run",
-    ) as mock_run:
-      mock_run.return_value.returncode = 0
+  def test_check_gcloud_auth_delegates(self):
+    with mock.patch(f"{_MODULE}.credentials.ensure_adc"):
       check_gcloud_auth()
-      # Only called once (the token check), not a second time for login
-      self.assertEqual(mock_run.call_count, 1)
 
-  def test_token_failure_triggers_login(self):
-    """When print-access-token fails, gcloud auth login is run."""
+  def test_check_gcloud_auth_converts_error(self):
     with (
       mock.patch(
-        "keras_remote.cli.prerequisites_check.subprocess.run",
-      ) as mock_run,
-      mock.patch("keras_remote.cli.prerequisites_check.warning"),
-      mock.patch("click.echo"),
+        f"{_MODULE}.credentials.ensure_adc",
+        side_effect=RuntimeError("Failed to configure Application Default"),
+      ),
+      self.assertRaisesRegex(
+        click.ClickException,
+        "Failed to configure Application Default",
+      ),
     ):
-      token_result = mock.MagicMock()
-      token_result.returncode = 1
-      mock_run.return_value = token_result
-
       check_gcloud_auth()
-
-      self.assertEqual(mock_run.call_count, 2)
-      # Second call should be the login command
-      login_call = mock_run.call_args_list[1]
-      self.assertIn("login", login_call[0][0])
 
 
 if __name__ == "__main__":

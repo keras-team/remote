@@ -9,7 +9,7 @@ import os
 import tempfile
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional, Protocol
+from typing import Any, Callable, Optional
 
 import cloudpickle
 from absl import logging
@@ -17,6 +17,7 @@ from google.api_core import exceptions as google_exceptions
 
 from keras_remote.backend import gke_client, pathways_client
 from keras_remote.constants import get_default_zone, zone_to_region
+from keras_remote.credentials import ensure_credentials
 from keras_remote.infra import container_builder
 from keras_remote.utils import packager, storage
 
@@ -90,28 +91,24 @@ class JobContext:
     )
 
 
-class BackendClient(Protocol):
-  """Protocol defining the interface for backend clients."""
-
-  def submit_job(self, ctx: JobContext) -> Any:
-    """Submit a job to the backend. Returns backend-specific job handle."""
-    ...
-
-  def wait_for_job(self, job: Any, ctx: JobContext) -> None:
-    """Wait for job completion. Raises RuntimeError if job fails."""
-    ...
-
-  def cleanup_job(self, job: Any, ctx: JobContext) -> None:
-    """Optional cleanup after job completion."""
-    ...
-
-
 class BaseK8sBackend:
   """Base class for Kubernetes-based backends."""
 
   def __init__(self, cluster: Optional[str] = None, namespace: str = "default"):
     self.cluster = cluster
     self.namespace = namespace
+
+  def submit_job(self, ctx: JobContext) -> Any:
+    """Submit a job to the backend. Returns backend-specific job handle."""
+    raise NotImplementedError
+
+  def wait_for_job(self, job: Any, ctx: JobContext) -> None:
+    """Wait for job completion. Raises RuntimeError if job fails."""
+    raise NotImplementedError
+
+  def cleanup_job(self, job: Any, ctx: JobContext) -> None:
+    """Optional cleanup after job completion."""
+    raise NotImplementedError
 
 
 class GKEBackend(BaseK8sBackend):
@@ -264,7 +261,7 @@ def _cleanup_and_return(ctx: JobContext, result_payload: dict) -> Any:
     raise result_payload["exception"]
 
 
-def execute_remote(ctx: JobContext, backend: BackendClient) -> Any:
+def execute_remote(ctx: JobContext, backend: BaseK8sBackend) -> Any:
   """Execute a function remotely using the specified backend.
 
   This is the unified executor that handles all common phases
@@ -272,7 +269,7 @@ def execute_remote(ctx: JobContext, backend: BackendClient) -> Any:
 
   Args:
       ctx: Job context with function and configuration
-      backend: Backend client implementing BackendClient protocol
+      backend: Backend instance (GKEBackend or PathwaysBackend)
 
   Returns:
       The result of the remote function execution
@@ -280,6 +277,12 @@ def execute_remote(ctx: JobContext, backend: BackendClient) -> Any:
   Raises:
       Exception: Re-raised from remote execution if it failed
   """
+  ensure_credentials(
+    project=ctx.project,
+    zone=ctx.zone,
+    cluster=backend.cluster,
+  )
+
   with tempfile.TemporaryDirectory() as tmpdir:
     # Phase 1: Package artifacts
     _prepare_artifacts(ctx, tmpdir)
