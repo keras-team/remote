@@ -219,6 +219,7 @@ def _build_container(ctx: JobContext) -> None:
     logging.info("Using custom container: %s", ctx.image_uri)
   else:
     import sys
+
     logging.info("Building container image...")
     py_version = f"{sys.version_info.major}.{sys.version_info.minor}"
     ctx.image_uri = container_builder.get_or_build_container(
