@@ -25,7 +25,7 @@ keras_remote/
 ```python
 @keras_remote.run() called
   → JobContext.from_params()        # Resolve config from args/env vars
-  → ensure_credentials()            # Verify/auto-configure gcloud, ADC, kubeconfig, Docker auth
+  → ensure_credentials()            # Verify/auto-configure gcloud, ADC, kubeconfig
   → _prepare_artifacts()            # Serialize function (cloudpickle), zip working dir
   → _build_container()              # Build or retrieve cached Docker image
   → _upload_artifacts()             # Upload payload.pkl, context.zip to GCS
@@ -41,7 +41,7 @@ keras_remote/
 | ---------------------------- | -------------------------------------------------------------------------------- |
 | `core/core.py`               | `@run()` decorator, backend routing, env var capture                             |
 | `core/accelerators.py`       | Accelerator registry (`GPUS`, `TPUS`), parser (`parse_accelerator`)              |
-| `credentials.py`             | Credential verification & auto-setup (gcloud, ADC, kubeconfig, Docker auth)      |
+| `credentials.py`             | Credential verification & auto-setup (gcloud, ADC, kubeconfig)                   |
 | `backend/execution.py`       | `JobContext` dataclass, `BaseK8sBackend` base class, `execute_remote()` pipeline |
 | `backend/gke_client.py`      | K8s Job creation, status polling, pod log retrieval                              |
 | `backend/pathways_client.py` | LeaderWorkerSet creation for multi-host TPUs                                     |

@@ -4,6 +4,7 @@ import os
 
 ZONE_ENV_VAR = "KERAS_REMOTE_ZONE"
 DEFAULT_ZONE = "us-central1-a"
+DEFAULT_CLUSTER_NAME = "keras-remote-cluster"
 DEFAULT_REGION = DEFAULT_ZONE.rsplit("-", 1)[0]  # "us-central1"
 
 

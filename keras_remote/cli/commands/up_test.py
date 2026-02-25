@@ -27,9 +27,6 @@ _BASE_PATCHES = {
     "keras_remote.cli.commands.up.create_program",
   ),
   "get_stack": mock.patch("keras_remote.cli.commands.up.get_stack"),
-  "configure_docker_auth": mock.patch(
-    "keras_remote.cli.commands.up.configure_docker_auth",
-  ),
   "configure_kubectl": mock.patch(
     "keras_remote.cli.commands.up.configure_kubectl",
   ),
@@ -68,7 +65,6 @@ class UpCommandResilienceTest(absltest.TestCase):
     self.assertIn("Setup Complete", result.output)
     self.assertNotIn("Warnings", result.output)
     self.mocks["install_lws"].assert_called_once()
-    self.mocks["configure_docker_auth"].assert_called_once()
     self.mocks["configure_kubectl"].assert_called_once()
     self.mocks[
       "install_gpu_drivers"
@@ -83,26 +79,10 @@ class UpCommandResilienceTest(absltest.TestCase):
     result = self.runner.invoke(up, _CLI_ARGS)
 
     self.assertEqual(result.exit_code, 0, result.output)
-    self.mocks["configure_docker_auth"].assert_called_once()
     self.mocks["configure_kubectl"].assert_called_once()
     self.mocks["install_lws"].assert_called_once()
     self.assertIn("Setup Completed With Warnings", result.output)
     self.assertIn("Pulumi provisioning encountered errors", result.output)
-
-  def test_post_deploy_failure_does_not_block_others(self):
-    """One post-deploy step failing doesn't prevent the others from running."""
-    self.mocks[
-      "configure_docker_auth"
-    ].side_effect = subprocess.CalledProcessError(1, "gcloud")
-
-    result = self.runner.invoke(up, _CLI_ARGS)
-
-    self.assertEqual(result.exit_code, 0, result.output)
-    # Subsequent steps still called despite Docker auth failure.
-    self.mocks["configure_kubectl"].assert_called_once()
-    self.mocks["install_lws"].assert_called_once()
-    self.assertIn("Setup Completed With Warnings", result.output)
-    self.assertIn("Docker authentication", result.output)
 
   def test_multiple_post_deploy_failures(self):
     """Multiple post-deploy failures are all reported."""

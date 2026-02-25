@@ -7,6 +7,7 @@ from keras_remote.backend.execution import (
   PathwaysBackend,
   execute_remote,
 )
+from keras_remote.constants import DEFAULT_CLUSTER_NAME
 from keras_remote.core import accelerators
 
 
@@ -117,7 +118,7 @@ def _execute_on_gke(
   """Execute function on GKE cluster with GPU/TPU nodes."""
   # Get GKE-specific defaults
   if not cluster:
-    cluster = os.environ.get("KERAS_REMOTE_CLUSTER")
+    cluster = os.environ.get("KERAS_REMOTE_CLUSTER", DEFAULT_CLUSTER_NAME)
   if not namespace:
     namespace = os.environ.get("KERAS_REMOTE_GKE_NAMESPACE", "default")
 
@@ -141,7 +142,7 @@ def _execute_on_pathways(
 ):
   """Execute function on GKE cluster via ML Pathways."""
   if not cluster:
-    cluster = os.environ.get("KERAS_REMOTE_CLUSTER")
+    cluster = os.environ.get("KERAS_REMOTE_CLUSTER", DEFAULT_CLUSTER_NAME)
   if not namespace:
     namespace = os.environ.get("KERAS_REMOTE_GKE_NAMESPACE", "default")
 

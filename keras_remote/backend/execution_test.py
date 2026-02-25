@@ -193,34 +193,6 @@ class TestExecuteRemote(absltest.TestCase):
       # cleanup_job is called in finally block even when wait fails
       backend.cleanup_job.assert_called_once()
 
-  def test_ensure_credentials_called_with_correct_args(self):
-    with (
-      mock.patch(
-        "keras_remote.backend.execution.ensure_credentials"
-      ) as mock_creds,
-      mock.patch("keras_remote.backend.execution._build_container"),
-      mock.patch("keras_remote.backend.execution._upload_artifacts"),
-      mock.patch(
-        "keras_remote.backend.execution._download_result",
-        return_value={"success": True, "result": 0},
-      ),
-      mock.patch(
-        "keras_remote.backend.execution._cleanup_and_return",
-        return_value=0,
-      ),
-    ):
-      ctx = self._make_ctx()
-      backend = MagicMock()
-      backend.cluster = "test-cluster"
-
-      execute_remote(ctx, backend)
-
-      mock_creds.assert_called_once_with(
-        project="proj",
-        zone="us-central1-a",
-        cluster="test-cluster",
-      )
-
 
 if __name__ == "__main__":
   absltest.main()

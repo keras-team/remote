@@ -6,7 +6,6 @@ import click
 from absl.testing import absltest, parameterized
 
 from keras_remote.cli.prerequisites_check import (
-  check_docker,
   check_gcloud,
   check_gcloud_auth,
   check_gke_auth_plugin,
@@ -18,7 +17,7 @@ _MODULE = "keras_remote.cli.prerequisites_check"
 
 
 class TestToolChecks(parameterized.TestCase):
-  """Tests for CLI-only tool checks (pulumi, kubectl, docker)."""
+  """Tests for CLI-only tool checks (pulumi, kubectl)."""
 
   @parameterized.named_parameters(
     dict(
@@ -30,11 +29,6 @@ class TestToolChecks(parameterized.TestCase):
       testcase_name="kubectl",
       check_fn=check_kubectl,
       error_match="kubectl not found",
-    ),
-    dict(
-      testcase_name="docker",
-      check_fn=check_docker,
-      error_match="Docker not found",
     ),
   )
   def test_present(self, check_fn, error_match):
@@ -51,11 +45,6 @@ class TestToolChecks(parameterized.TestCase):
       testcase_name="kubectl",
       check_fn=check_kubectl,
       error_match="kubectl not found",
-    ),
-    dict(
-      testcase_name="docker",
-      check_fn=check_docker,
-      error_match="Docker not found",
     ),
   )
   def test_missing(self, check_fn, error_match):

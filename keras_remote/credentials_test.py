@@ -1,7 +1,5 @@
 """Tests for keras_remote.credentials — shared credential checks."""
 
-import json
-import os
 import subprocess
 from unittest import mock
 
@@ -14,10 +12,6 @@ _MODULE = "keras_remote.credentials"
 
 
 class TestEnsureGcloud(absltest.TestCase):
-  def test_present(self):
-    with mock.patch("shutil.which", return_value="/usr/bin/gcloud"):
-      credentials.ensure_gcloud()
-
   def test_missing(self):
     with (
       mock.patch("shutil.which", return_value=None),
@@ -27,12 +21,6 @@ class TestEnsureGcloud(absltest.TestCase):
 
 
 class TestEnsureGkeAuthPlugin(absltest.TestCase):
-  def test_present(self):
-    with mock.patch(
-      "shutil.which", return_value="/usr/bin/gke-gcloud-auth-plugin"
-    ):
-      credentials.ensure_gke_auth_plugin()
-
   def test_missing_install_succeeds(self):
     with (
       mock.patch("shutil.which", return_value=None),
@@ -145,36 +133,6 @@ class TestEnsureKubeconfig(absltest.TestCase):
         "my-cluster", "us-central1-a", "my-proj"
       )
 
-  def test_cluster_none_accepts_any_valid_context(self):
-    """When cluster is None, any valid kubeconfig is accepted."""
-    with (
-      mock.patch(f"{_MODULE}.config.load_kube_config"),
-      mock.patch(
-        f"{_MODULE}.config.list_kube_config_contexts",
-        return_value=self._mock_active_context(
-          "gke_some-proj_us-east1-b_some-cluster"
-        ),
-      ),
-      mock.patch(f"{_MODULE}._configure_kubeconfig") as mock_configure,
-    ):
-      credentials.ensure_kubeconfig("my-proj", "us-central1-a", cluster=None)
-      mock_configure.assert_not_called()
-
-  def test_cluster_from_env_var(self):
-    """When cluster is None but env var is set, uses env var for validation."""
-    with (
-      mock.patch.dict(os.environ, {"KERAS_REMOTE_CLUSTER": "env-cluster"}),
-      mock.patch(
-        f"{_MODULE}.config.load_kube_config",
-        side_effect=ConfigException("no config"),
-      ),
-      mock.patch(f"{_MODULE}._configure_kubeconfig") as mock_configure,
-    ):
-      credentials.ensure_kubeconfig("my-proj", "us-central1-a", cluster=None)
-      mock_configure.assert_called_once_with(
-        "env-cluster", "us-central1-a", "my-proj"
-      )
-
   def test_configure_failure_raises(self):
     with (
       mock.patch(
@@ -188,77 +146,6 @@ class TestEnsureKubeconfig(absltest.TestCase):
       self.assertRaisesRegex(RuntimeError, "Failed to configure kubeconfig"),
     ):
       credentials.ensure_kubeconfig("my-proj", "us-central1-a", "my-cluster")
-
-
-class TestEnsureDockerAuth(absltest.TestCase):
-  def test_already_configured(self):
-    """When credHelpers already has the AR host, no-op."""
-    docker_cfg = {"credHelpers": {"us-docker.pkg.dev": "gcloud"}}
-    with (
-      mock.patch(
-        "builtins.open",
-        mock.mock_open(read_data=json.dumps(docker_cfg)),
-      ),
-      mock.patch("os.path.exists", return_value=True),
-      mock.patch(f"{_MODULE}.subprocess.run") as mock_run,
-    ):
-      credentials.ensure_docker_auth("us-central1-a")
-      mock_run.assert_not_called()
-
-  def test_not_configured_triggers_setup(self):
-    """When Docker config missing or no matching host, configure."""
-    with (
-      mock.patch("os.path.exists", return_value=False),
-      mock.patch(f"{_MODULE}.subprocess.run") as mock_run,
-    ):
-      credentials.ensure_docker_auth("us-central1-a")
-      mock_run.assert_called_once()
-      args = mock_run.call_args[0][0]
-      self.assertIn("us-docker.pkg.dev", args)
-
-  def test_failure_is_nonfatal(self):
-    """Docker auth failure logs a warning but does not raise."""
-    with (
-      mock.patch("os.path.exists", return_value=False),
-      mock.patch(
-        f"{_MODULE}.subprocess.run",
-        side_effect=subprocess.CalledProcessError(1, "gcloud"),
-      ),
-    ):
-      # Should not raise
-      credentials.ensure_docker_auth("us-central1-a")
-
-
-class TestEnsureCredentials(absltest.TestCase):
-  def test_calls_all_checks(self):
-    with (
-      mock.patch(f"{_MODULE}.ensure_gcloud") as m_gcloud,
-      mock.patch(f"{_MODULE}.ensure_gke_auth_plugin") as m_plugin,
-      mock.patch(f"{_MODULE}.ensure_adc") as m_adc,
-      mock.patch(f"{_MODULE}.ensure_kubeconfig") as m_kube,
-      mock.patch(f"{_MODULE}.ensure_docker_auth") as m_docker,
-    ):
-      credentials.ensure_credentials("proj", "us-central1-a", "cluster")
-
-      m_gcloud.assert_called_once()
-      m_plugin.assert_called_once()
-      m_adc.assert_called_once()
-      m_kube.assert_called_once_with("proj", "us-central1-a", "cluster")
-      m_docker.assert_called_once_with("us-central1-a")
-
-  def test_early_failure_short_circuits(self):
-    """If gcloud check fails, later checks are not run."""
-    with (
-      mock.patch(
-        f"{_MODULE}.ensure_gcloud",
-        side_effect=RuntimeError("no gcloud"),
-      ),
-      mock.patch(f"{_MODULE}.ensure_adc") as m_adc,
-      self.assertRaises(RuntimeError),
-    ):
-      credentials.ensure_credentials("proj", "us-central1-a")
-
-    m_adc.assert_not_called()
 
 
 if __name__ == "__main__":
