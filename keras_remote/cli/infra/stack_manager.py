@@ -5,11 +5,13 @@ import os
 import click
 import pulumi.automation as auto
 
+from keras_remote.cli.config import NodePoolConfig
 from keras_remote.cli.constants import (
   PULUMI_ROOT,
   RESOURCE_NAME_PREFIX,
   STATE_DIR,
 )
+from keras_remote.core import accelerators
 
 
 def get_stack(program_fn, config):
@@ -56,3 +58,52 @@ def get_stack(program_fn, config):
   stack.set_config("gcp:zone", auto.ConfigValue(value=config.zone))
 
   return stack
+
+
+def get_current_node_pools(stack) -> list[NodePoolConfig]:
+  """Read the current node pool list from Pulumi stack exports.
+
+  Handles both the new ``accelerators`` key (list) and the legacy
+  ``accelerator`` key (single dict or None).
+
+  Args:
+      stack: A ``pulumi.automation.Stack`` whose outputs have been
+          populated (e.g. after ``stack.refresh()``).
+
+  Returns:
+      A list of :class:`NodePoolConfig` objects.
+  """
+  outputs = stack.outputs()
+
+  # New format: list of accelerator dicts.
+  if "accelerators" in outputs:
+    accel_list = outputs["accelerators"].value
+    if not accel_list:
+      return []
+    return [_export_to_node_pool(entry) for entry in accel_list]
+
+  # Legacy format: single dict or None.
+  if "accelerator" in outputs:
+    accel = outputs["accelerator"].value
+    if accel is None:
+      return []
+    return [_export_to_node_pool(accel)]
+
+  return []
+
+
+def _export_to_node_pool(entry: dict) -> NodePoolConfig:
+  """Convert a stack export dict back to a NodePoolConfig."""
+  pool_name = entry["node_pool"]
+  if entry["type"] == "GPU":
+    accel_str = (
+      f"{entry['name']}x{entry['count']}"
+      if entry["count"] > 1
+      else entry["name"]
+    )
+  else:  # TPU
+    accel_str = f"{entry['name']}-{entry['topology']}"
+  accel = accelerators.parse_accelerator(accel_str)
+  if accel is None:
+    raise ValueError(f"Unexpected CPU accelerator in node pool export: {entry}")
+  return NodePoolConfig(name=pool_name, accelerator=accel)

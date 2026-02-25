@@ -5,6 +5,7 @@ runtime (gke_client, container_builder) and the CLI (up, prompts, program).
 """
 
 import re
+import uuid
 from dataclasses import dataclass
 from typing import Union
 
@@ -206,6 +207,20 @@ def get_category(accel_str: str) -> str:
   if isinstance(result, GpuConfig):
     return "gpu"
   return "tpu"
+
+
+def generate_pool_name(accel: GpuConfig | TpuConfig) -> str:
+  """Generate a unique GKE node pool name for an accelerator config.
+
+  Format: ``gpu-{name}-{hex4}`` or ``tpu-{name}-{hex4}`` where *hex4*
+  is a random 4-character hexadecimal suffix.
+  """
+  suffix = uuid.uuid4().hex[:4]
+  if isinstance(accel, GpuConfig):
+    return f"gpu-{accel.name}-{suffix}"
+  if isinstance(accel, TpuConfig):
+    return f"tpu-{accel.name}-{suffix}"
+  raise TypeError(f"Expected GpuConfig or TpuConfig, got {type(accel)}")
 
 
 def _make_gpu(name: str, count: int) -> GpuConfig:
