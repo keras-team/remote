@@ -100,6 +100,26 @@ Every feature has a maintenance cost.
 
 ---
 
+## Keep resource name resolution consistent across all usage paths.
+
+Every configurable resource name (project, zone, cluster, namespace, etc.) must be resolvable through the same set of paths:
+
+1. **Explicit parameter** to `@run()` (highest priority)
+2. **Environment variable** (`KERAS_REMOTE_*`)
+3. **CLI flag** (with Click's `envvar=` for automatic env var binding)
+4. **Interactive prompt or sensible default** (lowest priority)
+
+When adding a new configurable name:
+
+- Add a parameter to `@run()` with env var fallback
+- Add a `--flag` with `envvar=` to **every relevant CLI command** (not just `up` — also `down`, `status`, etc.)
+- Add a row to `config show` so users can verify their configuration
+- Ensure the env var fallback order is identical everywhere the name is resolved
+
+This prevents confusing situations where a user sets an env var that works in one path but is silently ignored in another.
+
+---
+
 ## Don't neglect error messages, docstrings, and documentation.
 
 - **Catch user errors early.** Validate GCP project existence and quota before starting a long build.

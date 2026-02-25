@@ -83,8 +83,32 @@ class TestJobContext(absltest.TestCase):
     self.assertEqual(ctx.zone, "asia-east1-c")
     self.assertEqual(ctx.project, "env-proj")
 
+  def test_from_params_falls_back_to_google_cloud_project(self):
+    env = {
+      k: v
+      for k, v in os.environ.items()
+      if k not in ("KERAS_REMOTE_PROJECT", "GOOGLE_CLOUD_PROJECT")
+    }
+    env["GOOGLE_CLOUD_PROJECT"] = "gc-proj"
+    with mock.patch.dict(os.environ, env, clear=True):
+      ctx = JobContext.from_params(
+        func=self._make_func(),
+        args=(),
+        kwargs={},
+        accelerator="cpu",
+        container_image=None,
+        zone="us-central1-a",
+        project=None,
+        env_vars={},
+      )
+    self.assertEqual(ctx.project, "gc-proj")
+
   def test_from_params_no_project_raises(self):
-    env = {k: v for k, v in os.environ.items() if k != "KERAS_REMOTE_PROJECT"}
+    env = {
+      k: v
+      for k, v in os.environ.items()
+      if k not in ("KERAS_REMOTE_PROJECT", "GOOGLE_CLOUD_PROJECT")
+    }
     with (
       mock.patch.dict(os.environ, env, clear=True),
       self.assertRaisesRegex(ValueError, "project must be specified"),

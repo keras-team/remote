@@ -4,7 +4,7 @@ import click
 import pulumi.automation as auto
 
 from keras_remote.cli.config import InfraConfig
-from keras_remote.cli.constants import DEFAULT_ZONE
+from keras_remote.cli.constants import DEFAULT_CLUSTER_NAME, DEFAULT_ZONE
 from keras_remote.cli.infra.program import create_program
 from keras_remote.cli.infra.stack_manager import get_stack
 from keras_remote.cli.output import banner, console, success, warning
@@ -25,8 +25,15 @@ from keras_remote.cli.prompts import resolve_project
   default=None,
   help=(f"GCP zone [env: KERAS_REMOTE_ZONE, default: {DEFAULT_ZONE}]"),
 )
+@click.option(
+  "--cluster",
+  "cluster_name",
+  envvar="KERAS_REMOTE_CLUSTER",
+  default=None,
+  help="GKE cluster name [default: keras-remote-cluster]",
+)
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
-def down(project, zone, yes):
+def down(project, zone, cluster_name, yes):
   """Tear down keras-remote GCP infrastructure."""
   banner("keras-remote Cleanup")
 
@@ -34,6 +41,7 @@ def down(project, zone, yes):
 
   project = project or resolve_project(allow_create=False)
   zone = zone or DEFAULT_ZONE
+  cluster_name = cluster_name or DEFAULT_CLUSTER_NAME
 
   # Warning
   console.print()
@@ -51,7 +59,7 @@ def down(project, zone, yes):
 
   console.print()
 
-  config = InfraConfig(project=project, zone=zone)
+  config = InfraConfig(project=project, zone=zone, cluster_name=cluster_name)
 
   # Pulumi destroy
   try:
