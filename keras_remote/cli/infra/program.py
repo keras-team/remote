@@ -112,6 +112,27 @@ def create_program(config):
         channel="UNSPECIFIED",
       ),
       deletion_protection=False,
+      cluster_autoscaling=gcp.container.ClusterClusterAutoscalingArgs(
+        enabled=True,
+        autoscaling_profile="OPTIMIZE_UTILIZATION",
+        auto_provisioning_defaults=gcp.container.ClusterClusterAutoscalingAutoProvisioningDefaultsArgs(
+          oauth_scopes=_BASE_OAUTH_SCOPES,
+          management=gcp.container.ClusterClusterAutoscalingAutoProvisioningDefaultsManagementArgs(
+            auto_upgrade=True,
+            auto_repair=True,
+          ),
+        ),
+        resource_limits=[
+          gcp.container.ClusterClusterAutoscalingResourceLimitArgs(
+            resource_type="cpu",
+            maximum=1000,
+          ),
+          gcp.container.ClusterClusterAutoscalingResourceLimitArgs(
+            resource_type="memory",
+            maximum=64000,
+          ),
+        ],
+      ),
       opts=pulumi.ResourceOptions(depends_on=enabled_apis),
     )
 
@@ -185,7 +206,15 @@ def _create_gpu_node_pool(cluster, gpu: GpuConfig, zone, project_id):
     cluster=cluster.name,
     location=zone,
     project=project_id,
-    node_count=1,
+    initial_node_count=0,
+    autoscaling=gcp.container.NodePoolAutoscalingArgs(
+      min_node_count=0,
+      max_node_count=1,
+    ),
+    management=gcp.container.NodePoolManagementArgs(
+      auto_repair=True,
+      auto_upgrade=True,
+    ),
     node_config=gcp.container.NodePoolNodeConfigArgs(
       machine_type=gpu.machine_type,
       oauth_scopes=_BASE_OAUTH_SCOPES,
@@ -196,6 +225,7 @@ def _create_gpu_node_pool(cluster, gpu: GpuConfig, zone, project_id):
         ),
       ],
       labels={RESOURCE_NAME_PREFIX: "true"},
+      max_run_duration="86400s",  # 24 hours
     ),
   )
 
@@ -219,11 +249,20 @@ def _create_tpu_node_pool(cluster, tpu: TpuConfig, zone, project_id):
     cluster=cluster.name,
     location=zone,
     project=project_id,
-    node_count=tpu.num_nodes,
+    initial_node_count=0,
+    autoscaling=gcp.container.NodePoolAutoscalingArgs(
+      min_node_count=0,
+      max_node_count=tpu.num_nodes,
+    ),
+    management=gcp.container.NodePoolManagementArgs(
+      auto_repair=True,
+      auto_upgrade=True,
+    ),
     node_config=gcp.container.NodePoolNodeConfigArgs(
       machine_type=tpu.machine_type,
       oauth_scopes=_BASE_OAUTH_SCOPES,
       labels={RESOURCE_NAME_PREFIX: "true"},
+      max_run_duration="86400s",  # 24 hours
     ),
     placement_policy=placement,
   )
