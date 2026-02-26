@@ -1,12 +1,15 @@
 """Pulumi Automation API wrapper for keras-remote."""
 
 import os
-import shutil
 
 import click
 import pulumi.automation as auto
 
-from keras_remote.cli.constants import RESOURCE_NAME_PREFIX, STATE_DIR
+from keras_remote.cli.constants import (
+  PULUMI_ROOT,
+  RESOURCE_NAME_PREFIX,
+  STATE_DIR,
+)
 
 
 def get_stack(program_fn, config):
@@ -22,9 +25,11 @@ def get_stack(program_fn, config):
   os.makedirs(STATE_DIR, exist_ok=True)
 
   # Auto-install the Pulumi CLI if not already present.
-  if not shutil.which("pulumi"):
+  try:
+    pulumi_cmd = auto.PulumiCommand(root=PULUMI_ROOT)
+  except Exception:  # noqa: BLE001
     click.echo("Pulumi CLI not found. Installing...")
-  pulumi_cmd = auto.PulumiCommand.install()
+    pulumi_cmd = auto.PulumiCommand.install(root=PULUMI_ROOT)
 
   # Use project ID as stack name so each GCP project gets its own stack
   stack_name = config.project
