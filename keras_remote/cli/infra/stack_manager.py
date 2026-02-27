@@ -102,4 +102,6 @@ def _export_to_node_pool(entry: dict) -> NodePoolConfig:
     accelerator = accelerators.make_tpu(entry["name"], entry["chips"])
   else:
     raise ValueError(f"Unknown accelerator type in node pool export: {entry}")
-  return NodePoolConfig(name=pool_name, accelerator=accelerator)
+  # Default to True for backward compatibility with pre-autoscale exports.
+  autoscale = entry.get("autoscale", True)
+  return NodePoolConfig(name=pool_name, accelerator=accelerator, autoscale=autoscale)

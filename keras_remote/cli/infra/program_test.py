@@ -46,7 +46,12 @@ class TestCreateTpuNodePool(parameterized.TestCase):
     cluster.name = "test-cluster"
 
     program._create_tpu_node_pool(
-      cluster, tpu, "us-central2-b", "my-project", f"tpu-{tpu.name}-abcd"
+      cluster,
+      tpu,
+      "us-central2-b",
+      "my-project",
+      f"tpu-{tpu.name}-abcd",
+      autoscale=False,
     )
 
     call_kwargs = gcp_mock.container.NodePool.call_args
@@ -70,7 +75,12 @@ class TestCreateTpuNodePool(parameterized.TestCase):
     cluster.name = "test-cluster"
 
     program._create_tpu_node_pool(
-      cluster, tpu, "us-central2-b", "my-project", "tpu-v5p-abcd"
+      cluster,
+      tpu,
+      "us-central2-b",
+      "my-project",
+      "tpu-v5p-abcd",
+      autoscale=False,
     )
 
     call_kwargs = gcp_mock.container.NodePool.call_args
@@ -86,11 +96,57 @@ class TestCreateTpuNodePool(parameterized.TestCase):
     cluster.name = "test-cluster"
 
     program._create_tpu_node_pool(
-      cluster, tpu, "us-central2-b", "my-project", "tpu-v5p-f1a2"
+      cluster,
+      tpu,
+      "us-central2-b",
+      "my-project",
+      "tpu-v5p-f1a2",
+      autoscale=False,
     )
 
     positional_args = gcp_mock.container.NodePool.call_args[0]
     self.assertEqual(positional_args[0], "tpu-v5p-f1a2")
+
+  @mock.patch.object(program, "gcp")
+  def test_autoscale_enabled_uses_autoscaling_args(self, gcp_mock):
+    tpu = TpuConfig("v5p", 16, "2x2x4", "tpu-v5p-slice", "ct5p-hightpu-4t", 4)
+    cluster = mock.MagicMock()
+    cluster.name = "test-cluster"
+
+    program._create_tpu_node_pool(
+      cluster,
+      tpu,
+      "us-central2-b",
+      "my-project",
+      "tpu-v5p-abcd",
+      autoscale=True,
+    )
+
+    call_kwargs = gcp_mock.container.NodePool.call_args.kwargs
+    self.assertNotIn("node_count", call_kwargs)
+    gcp_mock.container.NodePoolAutoscalingArgs.assert_called_once_with(
+      min_node_count=0,
+      max_node_count=4,
+    )
+
+  @mock.patch.object(program, "gcp")
+  def test_autoscale_disabled_uses_fixed_node_count(self, gcp_mock):
+    tpu = TpuConfig("v5p", 16, "2x2x4", "tpu-v5p-slice", "ct5p-hightpu-4t", 4)
+    cluster = mock.MagicMock()
+    cluster.name = "test-cluster"
+
+    program._create_tpu_node_pool(
+      cluster,
+      tpu,
+      "us-central2-b",
+      "my-project",
+      "tpu-v5p-abcd",
+      autoscale=False,
+    )
+
+    call_kwargs = gcp_mock.container.NodePool.call_args.kwargs
+    self.assertEqual(call_kwargs["node_count"], 4)
+    gcp_mock.container.NodePoolAutoscalingArgs.assert_not_called()
 
 
 class TestCreateGpuNodePool(absltest.TestCase):
@@ -101,11 +157,57 @@ class TestCreateGpuNodePool(absltest.TestCase):
     cluster.name = "test-cluster"
 
     program._create_gpu_node_pool(
-      cluster, gpu, "us-central1-a", "my-project", "gpu-l4-a3f2"
+      cluster,
+      gpu,
+      "us-central1-a",
+      "my-project",
+      "gpu-l4-a3f2",
+      autoscale=False,
     )
 
     positional_args = gcp_mock.container.NodePool.call_args[0]
     self.assertEqual(positional_args[0], "gpu-l4-a3f2")
+
+  @mock.patch.object(program, "gcp")
+  def test_autoscale_enabled_uses_autoscaling_args(self, gcp_mock):
+    gpu = GpuConfig("l4", 1, "nvidia-l4", "g2-standard-4")
+    cluster = mock.MagicMock()
+    cluster.name = "test-cluster"
+
+    program._create_gpu_node_pool(
+      cluster,
+      gpu,
+      "us-central1-a",
+      "my-project",
+      "gpu-l4-a3f2",
+      autoscale=True,
+    )
+
+    call_kwargs = gcp_mock.container.NodePool.call_args.kwargs
+    self.assertNotIn("node_count", call_kwargs)
+    gcp_mock.container.NodePoolAutoscalingArgs.assert_called_once_with(
+      min_node_count=0,
+      max_node_count=1,
+    )
+
+  @mock.patch.object(program, "gcp")
+  def test_autoscale_disabled_uses_fixed_node_count(self, gcp_mock):
+    gpu = GpuConfig("l4", 1, "nvidia-l4", "g2-standard-4")
+    cluster = mock.MagicMock()
+    cluster.name = "test-cluster"
+
+    program._create_gpu_node_pool(
+      cluster,
+      gpu,
+      "us-central1-a",
+      "my-project",
+      "gpu-l4-a3f2",
+      autoscale=False,
+    )
+
+    call_kwargs = gcp_mock.container.NodePool.call_args.kwargs
+    self.assertEqual(call_kwargs["node_count"], 1)
+    gcp_mock.container.NodePoolAutoscalingArgs.assert_not_called()
 
 
 def _make_config(node_pools=None):
@@ -164,6 +266,15 @@ class TestAcceleratorExports(absltest.TestCase):
     self.assertEqual(accel["machine_type"], "g2-standard-4")
     self.assertEqual(accel["node_pool"], "gpu-l4-a3f2")
     self.assertEqual(accel["node_count"], 1)
+    self.assertTrue(accel["autoscale"])
+
+  def test_gpu_exports_autoscale_disabled(self):
+    gpu = GpuConfig("l4", 1, "nvidia-l4", "g2-standard-4")
+    node_pools = [NodePoolConfig("gpu-l4-a3f2", gpu, autoscale=False)]
+    exports = _run_program_and_get_exports(_make_config(node_pools))
+
+    accel = exports["accelerators"][0]
+    self.assertFalse(accel["autoscale"])
 
   def test_tpu_exports(self):
     tpu = TpuConfig("v5p", 8, "2x2x2", "tpu-v5p-slice", "ct5p-hightpu-4t", 2)
@@ -181,6 +292,15 @@ class TestAcceleratorExports(absltest.TestCase):
     self.assertEqual(accel["machine_type"], "ct5p-hightpu-4t")
     self.assertEqual(accel["node_pool"], "tpu-v5p-b7e1")
     self.assertEqual(accel["node_count"], 2)
+    self.assertTrue(accel["autoscale"])
+
+  def test_tpu_exports_autoscale_disabled(self):
+    tpu = TpuConfig("v5p", 8, "2x2x2", "tpu-v5p-slice", "ct5p-hightpu-4t", 2)
+    node_pools = [NodePoolConfig("tpu-v5p-b7e1", tpu, autoscale=False)]
+    exports = _run_program_and_get_exports(_make_config(node_pools))
+
+    accel = exports["accelerators"][0]
+    self.assertFalse(accel["autoscale"])
 
   def test_cpu_only_exports_empty_list(self):
     exports = _run_program_and_get_exports(_make_config([]))

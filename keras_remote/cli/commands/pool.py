@@ -111,8 +111,14 @@ def _apply_pool_update(project, zone, cluster_name, node_pools):
   help="Accelerator spec: t4, l4, a100, a100-80gb, h100, "
   "v5litepod, v5p, v6e, v3 (with optional count/topology)",
 )
+@click.option(
+  "--no-autoscale",
+  is_flag=True,
+  default=False,
+  help="Disable autoscaling (keep fixed node count instead of scaling to zero)",
+)
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
-def pool_add(project, zone, cluster_name, accelerator, yes):
+def pool_add(project, zone, cluster_name, accelerator, no_autoscale, yes):
   """Add an accelerator node pool to the cluster."""
   banner("keras-remote Pool Add")
 
@@ -129,7 +135,9 @@ def pool_add(project, zone, cluster_name, accelerator, yes):
     )
 
   new_pool_name = generate_pool_name(accel_config)
-  new_pool = NodePoolConfig(new_pool_name, accel_config)
+  new_pool = NodePoolConfig(
+    new_pool_name, accel_config, autoscale=not no_autoscale
+  )
 
   project, zone, cluster_name, existing_pools = _load_pools(
     project, zone, cluster_name
@@ -215,3 +223,87 @@ def pool_list(project, zone, cluster_name):
     return
 
   infrastructure_state(outputs)
+
+
+@pool.command("autoscale")
+@_common_options
+@click.argument("pool_name")
+@click.option(
+  "--enable/--disable", required=True, help="Enable or disable autoscaling"
+)
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
+def pool_autoscale(project, zone, cluster_name, pool_name, enable, yes):
+  """Enable or disable autoscaling on an existing node pool."""
+  banner("keras-remote Pool Autoscale")
+
+  check_all()
+  project, zone, cluster_name = _resolve_common(project, zone, cluster_name)
+
+  # Load existing state.
+  base_config = InfraConfig(
+    project=project, zone=zone, cluster_name=cluster_name
+  )
+  program = create_program(base_config)
+  stack = get_stack(program, base_config)
+
+  console.print("\nRefreshing state...\n")
+  try:
+    stack.refresh(on_output=print)
+  except auto.errors.CommandError as e:
+    warning(f"Failed to refresh stack state: {e}")
+
+  existing_pools = get_current_node_pools(stack)
+
+  # Find the target pool.
+  target = None
+  for p in existing_pools:
+    if p.name == pool_name:
+      target = p
+      break
+
+  if target is None:
+    existing_names = [p.name for p in existing_pools]
+    raise click.ClickException(
+      f"Node pool '{pool_name}' not found. "
+      f"Existing pools: {', '.join(existing_names) or '(none)'}"
+    )
+
+  if target.autoscale == enable:
+    state = "enabled" if enable else "disabled"
+    console.print(
+      f"\nAutoscaling is already {state} on pool [bold]{pool_name}[/bold]."
+    )
+    return
+
+  action = "Enabling" if enable else "Disabling"
+  console.print(f"\n{action} autoscaling on pool [bold]{pool_name}[/bold]\n")
+
+  if not yes:
+    click.confirm("Proceed?", abort=True)
+
+  # Update the pool's autoscale setting.
+  target.autoscale = enable
+
+  # Run Pulumi with the updated pool list.
+  config = InfraConfig(
+    project=project,
+    zone=zone,
+    cluster_name=cluster_name,
+    node_pools=existing_pools,
+  )
+  program = create_program(config)
+  stack = get_stack(program, config)
+
+  console.print("\n[bold]Updating infrastructure...[/bold]\n")
+  try:
+    result = stack.up(on_output=print)
+    console.print()
+    success(f"Pulumi update complete. {result.summary.resource_changes}")
+  except auto.errors.CommandError as e:
+    console.print()
+    warning(f"Pulumi update encountered an issue: {e}")
+
+  state = "enabled" if enable else "disabled"
+  console.print()
+  banner(f"Autoscaling {state}")
+  console.print()

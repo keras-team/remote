@@ -43,6 +43,7 @@ _GPU_LABELS = {
   "machine_type": "Machine Type",
   "node_pool": "Node Pool",
   "node_count": "Node Count",
+  "autoscale": "Autoscaling",
 }
 
 _TPU_LABELS = {
@@ -52,6 +53,7 @@ _TPU_LABELS = {
   "machine_type": "Machine Type",
   "node_pool": "Node Pool",
   "node_count": "Node Count",
+  "autoscale": "Autoscaling",
 }
 
 
@@ -114,7 +116,10 @@ def _render_accelerator(table, accel, index=None):
   labels = _GPU_LABELS if accel_type == "GPU" else _TPU_LABELS
   for key, label in labels.items():
     if key in accel and key != "node_pool":
-      table.add_row(f"    {label}", str(accel[key]))
+      value = accel[key]
+      if key == "autoscale":
+        value = "Enabled" if value else "Disabled"
+      table.add_row(f"    {label}", str(value))
 
 
 def config_summary(config):

@@ -13,6 +13,7 @@ class NodePoolConfig:
 
   name: str  # GKE node pool name, e.g. "gpu-l4-a3f2"
   accelerator: Union[GpuConfig, TpuConfig]
+  autoscale: bool = True  # Scale to zero when idle by default.
 
 
 @dataclass

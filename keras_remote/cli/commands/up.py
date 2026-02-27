@@ -13,7 +13,10 @@ from keras_remote.cli.infra.post_deploy import (
   install_lws,
 )
 from keras_remote.cli.infra.program import create_program
-from keras_remote.cli.infra.stack_manager import get_stack
+from keras_remote.cli.infra.stack_manager import (
+  get_current_node_pools,
+  get_stack,
+)
 from keras_remote.cli.output import (
   banner,
   config_summary,
@@ -22,7 +25,11 @@ from keras_remote.cli.output import (
   warning,
 )
 from keras_remote.cli.prerequisites_check import check_all
-from keras_remote.cli.prompts import prompt_accelerator, resolve_project
+from keras_remote.cli.prompts import (
+  prompt_accelerator,
+  prompt_autoscale,
+  resolve_project,
+)
 from keras_remote.core import accelerators
 from keras_remote.core.accelerators import GpuConfig, generate_pool_name
 
@@ -53,8 +60,14 @@ from keras_remote.core.accelerators import GpuConfig, generate_pool_name
   default=None,
   help="GKE cluster name [default: keras-remote-cluster]",
 )
+@click.option(
+  "--no-autoscale",
+  is_flag=True,
+  default=False,
+  help="Disable autoscaling (keep fixed node count instead of scaling to zero)",
+)
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
-def up(project, zone, accelerator, cluster_name, yes):
+def up(project, zone, accelerator, cluster_name, no_autoscale, yes):
   """Provision GCP infrastructure for keras-remote."""
   banner("keras-remote Setup")
 
@@ -67,6 +80,7 @@ def up(project, zone, accelerator, cluster_name, yes):
   cluster_name = cluster_name or DEFAULT_CLUSTER_NAME
 
   # Resolve accelerator (interactive if not provided)
+  autoscale = not no_autoscale
   if accelerator and accelerator.strip().lower() == "cpu":
     accel_config = None
   elif accelerator:
@@ -76,12 +90,28 @@ def up(project, zone, accelerator, cluster_name, yes):
       raise click.BadParameter(str(e), param_hint="--accelerator") from e
   else:
     accel_config = prompt_accelerator()
+    if accel_config is not None:
+      autoscale = prompt_autoscale()
 
-  # Build node pool list
-  node_pools = []
+  # Load existing pools from the stack (empty on first run).
+  base_config = InfraConfig(
+    project=project, zone=zone, cluster_name=cluster_name
+  )
+  base_program = create_program(base_config)
+  base_stack = get_stack(base_program, base_config)
+  try:
+    base_stack.refresh(on_output=print)
+    existing_pools = get_current_node_pools(base_stack)
+  except auto.errors.CommandError:
+    existing_pools = []
+
+  # Merge: existing pools + new pool (if any).
+  node_pools = list(existing_pools)
   if accel_config is not None:
     node_pools.append(
-      NodePoolConfig(generate_pool_name(accel_config), accel_config)
+      NodePoolConfig(
+        generate_pool_name(accel_config), accel_config, autoscale=autoscale
+      )
     )
 
   config = InfraConfig(

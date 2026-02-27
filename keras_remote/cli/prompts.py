@@ -136,6 +136,18 @@ def _link_billing_account(project_id):
   success("Billing account linked")
 
 
+def prompt_autoscale():
+  """Prompt for autoscaling preference.
+
+  Returns:
+      True to enable autoscaling, False to disable.
+  """
+  return click.confirm(
+    "\nEnable autoscaling? (scales to zero when idle)",
+    default=True,
+  )
+
+
 def prompt_accelerator():
   """Interactive accelerator selection menu.
 

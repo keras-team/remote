@@ -89,6 +89,23 @@ class PoolAddTest(absltest.TestCase):
     self.assertEqual(result.exit_code, 0, result.output)
     self.assertIn("Total pools after add: 2", result.output)
 
+  def test_add_default_autoscale(self):
+    result = self.runner.invoke(pool, _ADD_ARGS)
+
+    self.assertEqual(result.exit_code, 0, result.output)
+    # The final create_program call should have autoscale=True on the new pool.
+    config_arg = self.mocks["create_program"].call_args_list[-1][0][0]
+    new_pool = [p for p in config_arg.node_pools if p.name == "gpu-l4-abcd"][0]
+    self.assertTrue(new_pool.autoscale)
+
+  def test_add_no_autoscale(self):
+    result = self.runner.invoke(pool, _ADD_ARGS + ["--no-autoscale"])
+
+    self.assertEqual(result.exit_code, 0, result.output)
+    config_arg = self.mocks["create_program"].call_args_list[-1][0][0]
+    new_pool = [p for p in config_arg.node_pools if p.name == "gpu-l4-abcd"][0]
+    self.assertFalse(new_pool.autoscale)
+
   def test_add_cpu_rejected(self):
     result = self.runner.invoke(
       pool,
@@ -104,6 +121,111 @@ class PoolAddTest(absltest.TestCase):
 
     self.assertNotEqual(result.exit_code, 0)
     self.assertIn("Cannot add a CPU node pool", result.output)
+
+
+class PoolAutoscaleTest(absltest.TestCase):
+  def setUp(self):
+    super().setUp()
+    self.runner = CliRunner()
+    self.mocks = _start_patches(self)
+    mock_stack = mock.MagicMock()
+    mock_stack.up.return_value.summary.resource_changes = {"update": 1}
+    self.mocks["get_stack"].return_value = mock_stack
+
+  def test_enable_autoscale(self):
+    existing = NodePoolConfig(
+      "gpu-l4-abcd",
+      GpuConfig("l4", 1, "nvidia-l4", "g2-standard-4"),
+      autoscale=False,
+    )
+    self.mocks["get_current_node_pools"].return_value = [existing]
+
+    result = self.runner.invoke(
+      pool,
+      [
+        "autoscale",
+        "--project",
+        "test-project",
+        "gpu-l4-abcd",
+        "--enable",
+        "--yes",
+      ],
+    )
+
+    self.assertEqual(result.exit_code, 0, result.output)
+    self.assertIn("Enabling autoscaling", result.output)
+    config_arg = self.mocks["create_program"].call_args_list[-1][0][0]
+    pool_cfg = config_arg.node_pools[0]
+    self.assertTrue(pool_cfg.autoscale)
+
+  def test_disable_autoscale(self):
+    existing = NodePoolConfig(
+      "gpu-l4-abcd",
+      GpuConfig("l4", 1, "nvidia-l4", "g2-standard-4"),
+      autoscale=True,
+    )
+    self.mocks["get_current_node_pools"].return_value = [existing]
+
+    result = self.runner.invoke(
+      pool,
+      [
+        "autoscale",
+        "--project",
+        "test-project",
+        "gpu-l4-abcd",
+        "--disable",
+        "--yes",
+      ],
+    )
+
+    self.assertEqual(result.exit_code, 0, result.output)
+    self.assertIn("Disabling autoscaling", result.output)
+    config_arg = self.mocks["create_program"].call_args_list[-1][0][0]
+    pool_cfg = config_arg.node_pools[0]
+    self.assertFalse(pool_cfg.autoscale)
+
+  def test_autoscale_already_enabled(self):
+    existing = NodePoolConfig(
+      "gpu-l4-abcd",
+      GpuConfig("l4", 1, "nvidia-l4", "g2-standard-4"),
+      autoscale=True,
+    )
+    self.mocks["get_current_node_pools"].return_value = [existing]
+
+    result = self.runner.invoke(
+      pool,
+      [
+        "autoscale",
+        "--project",
+        "test-project",
+        "gpu-l4-abcd",
+        "--enable",
+        "--yes",
+      ],
+    )
+
+    self.assertEqual(result.exit_code, 0, result.output)
+    self.assertIn("already enabled", result.output)
+    # Pulumi should NOT be called since no change is needed.
+    self.mocks["get_stack"].return_value.up.assert_not_called()
+
+  def test_autoscale_pool_not_found(self):
+    self.mocks["get_current_node_pools"].return_value = []
+
+    result = self.runner.invoke(
+      pool,
+      [
+        "autoscale",
+        "--project",
+        "test-project",
+        "gpu-l4-xxxx",
+        "--enable",
+        "--yes",
+      ],
+    )
+
+    self.assertNotEqual(result.exit_code, 0)
+    self.assertIn("not found", result.output)
 
 
 class PoolRemoveTest(absltest.TestCase):

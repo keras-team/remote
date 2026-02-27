@@ -122,11 +122,11 @@ def create_program(config):
       pool_name = np.name
       if isinstance(accel, GpuConfig):
         pool = _create_gpu_node_pool(
-          cluster, accel, zone, project_id, pool_name
+          cluster, accel, zone, project_id, pool_name, np.autoscale
         )
       elif isinstance(accel, TpuConfig):
         pool = _create_tpu_node_pool(
-          cluster, accel, zone, project_id, pool_name
+          cluster, accel, zone, project_id, pool_name, np.autoscale
         )
       else:
         continue
@@ -155,18 +155,19 @@ def create_program(config):
       for accel, pool in pool_entries:
         if isinstance(accel, GpuConfig):
           entry = pool.name.apply(
-            lambda pn, a=accel: {
+            lambda pn, a=accel, auto=np.autoscale: {
               "type": "GPU",
               "name": a.name,
               "count": a.count,
               "machine_type": a.machine_type,
               "node_pool": pn,
               "node_count": 1,
+              "autoscale": auto,
             }
           )
         else:  # TpuConfig
           entry = pool.name.apply(
-            lambda pn, a=accel: {
+            lambda pn, a=accel, auto=np.autoscale: {
               "type": "TPU",
               "name": a.name,
               "chips": a.chips,
@@ -174,6 +175,7 @@ def create_program(config):
               "machine_type": a.machine_type,
               "node_pool": pn,
               "node_count": a.num_nodes,
+              "autoscale": auto,
             }
           )
         export_outputs.append(entry)
@@ -182,15 +184,26 @@ def create_program(config):
   return pulumi_program
 
 
-def _create_gpu_node_pool(cluster, gpu: GpuConfig, zone, project_id, pool_name):
+def _create_gpu_node_pool(
+  cluster, gpu: GpuConfig, zone, project_id, pool_name, autoscale: bool
+):
   """Create a GPU-accelerated GKE node pool."""
+  scaling_kwargs = {}
+  if autoscale:
+    scaling_kwargs["autoscaling"] = gcp.container.NodePoolAutoscalingArgs(
+      min_node_count=0,
+      max_node_count=1,
+    )
+  else:
+    scaling_kwargs["node_count"] = 1
+
   return gcp.container.NodePool(
     pool_name,
     name=pool_name,
     cluster=cluster.name,
     location=zone,
     project=project_id,
-    node_count=1,
+    **scaling_kwargs,
     node_config=gcp.container.NodePoolNodeConfigArgs(
       machine_type=gpu.machine_type,
       oauth_scopes=_BASE_OAUTH_SCOPES,
@@ -205,7 +218,9 @@ def _create_gpu_node_pool(cluster, gpu: GpuConfig, zone, project_id, pool_name):
   )
 
 
-def _create_tpu_node_pool(cluster, tpu: TpuConfig, zone, project_id, pool_name):
+def _create_tpu_node_pool(
+  cluster, tpu: TpuConfig, zone, project_id, pool_name, autoscale: bool
+):
   """Create a TPU GKE node pool."""
   # Single-host TPU slices (1 node) must not specify placement_policy;
   # multi-host slices require COMPACT placement with an explicit topology.
@@ -217,13 +232,23 @@ def _create_tpu_node_pool(cluster, tpu: TpuConfig, zone, project_id, pool_name):
     if tpu.num_nodes > 1
     else None
   )
+
+  scaling_kwargs = {}
+  if autoscale:
+    scaling_kwargs["autoscaling"] = gcp.container.NodePoolAutoscalingArgs(
+      min_node_count=0,
+      max_node_count=tpu.num_nodes,
+    )
+  else:
+    scaling_kwargs["node_count"] = tpu.num_nodes
+
   return gcp.container.NodePool(
     pool_name,
     name=pool_name,
     cluster=cluster.name,
     location=zone,
     project=project_id,
-    node_count=tpu.num_nodes,
+    **scaling_kwargs,
     node_config=gcp.container.NodePoolNodeConfigArgs(
       machine_type=tpu.machine_type,
       oauth_scopes=_BASE_OAUTH_SCOPES,
