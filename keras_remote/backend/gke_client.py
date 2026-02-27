@@ -209,11 +209,9 @@ def validate_preflight(
 
     if not nodes.items:
       selector_str = ", ".join([f"{k}: {v}" for k, v in node_selector.items()])
-      raise RuntimeError(
-        f"Preflight check failed: No nodes match the accelerator selector: {selector_str}. "
-        "Check that your GKE cluster has a node pool with the correct accelerator type. "
-        "See all supported accelerator symbols here: \n"
-        "https://github.com/keras-team/remote#supported-accelerators"
+      logging.info(
+        f"Preflight check: No currently running nodes match selector: {selector_str}. "
+        "Proceeding under the assumption that the cluster will auto-provision (scale-to-zero)."
       )
   except ApiException as e:
     # If we can't list nodes due to permissions, log a warning but proceed
@@ -408,9 +406,9 @@ def _check_pod_scheduling(core_v1, job_name, namespace):
           if condition.type == "PodScheduled" and condition.status == "False":
             msg = condition.message or ""
             if "Insufficient nvidia.com/gpu" in msg:
-              raise RuntimeError(
-                "No GPU nodes available. Ensure your GKE cluster has a "
-                "node pool with the required GPU type and available capacity."
+              logging.info(
+                f"Pod {pod.metadata.name} is Pending: Insufficient nvidia.com/gpu. "
+                "Waiting for GKE Cluster Autoscaler to provision a new node... (scale-to-zero)"
               )
             elif (
               "didn't match Pod's node affinity/selector" in msg
@@ -422,9 +420,8 @@ def _check_pod_scheduling(core_v1, job_name, namespace):
                 if selector
                 else "None"
               )
-              raise RuntimeError(
-                f"No nodes match the accelerator selector: {selector_str}. "
-                "Check that your node pool has the correct accelerator type label. "
-                "See all supported accelerator symbols here: \n"
-                "https://github.com/keras-team/remote#supported-accelerators"
+              logging.info(
+                f"Pod {pod.metadata.name} is Pending: No currently running nodes "
+                f"match accelerator selector '{selector_str}'. "
+                "Waiting for GKE Cluster Autoscaler to provision a new node... (scale-to-zero)"
               )
