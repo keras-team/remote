@@ -371,25 +371,30 @@ class TestCheckPodScheduling(parameterized.TestCase):
     dict(
       testcase_name="insufficient_gpu",
       condition_message="Insufficient nvidia.com/gpu",
-      error_match="No GPU nodes available",
+      log_match="Insufficient nvidia.com/gpu",
       node_selector=None,
     ),
     dict(
       testcase_name="node_selector_mismatch",
       condition_message="didn't match Pod's node affinity/selector",
-      error_match="No nodes match the accelerator selector: cloud.google.com/gke-accelerator: nvidia-l4",
+      log_match="match accelerator selector 'cloud.google.com/gke-accelerator: nvidia-l4'",
       node_selector={"cloud.google.com/gke-accelerator": "nvidia-l4"},
     ),
   )
-  def test_scheduling_failure_raises(
-    self, condition_message, error_match, node_selector
+  @mock.patch("keras_remote.backend.gke_client.logging.info")
+  def test_scheduling_failure_logs(
+    self, mock_info, condition_message, log_match, node_selector
   ):
     mock_core = MagicMock()
     pod = self._make_pending_pod(condition_message, node_selector=node_selector)
     mock_core.list_namespaced_pod.return_value.items = [pod]
 
-    with self.assertRaisesRegex(RuntimeError, error_match):
-      _check_pod_scheduling(mock_core, "job-1", "default")
+    _check_pod_scheduling(mock_core, "job-1", "default")
+
+    # Verify it was called with something that contains log_match
+    self.assertTrue(mock_info.called)
+    call_arg = mock_info.call_args[0][0]
+    self.assertIn(log_match, call_arg)
 
   def test_running_pod_no_error(self):
     mock_core = MagicMock()
