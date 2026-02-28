@@ -14,7 +14,7 @@ from keras_remote.core.accelerators import GpuConfig, TpuConfig
 # OAuth scopes required by all node pools (including accelerator pools).
 _BASE_OAUTH_SCOPES = [
   # Read/write access to GCS for storing checkpoints, datasets, and logs.
-  "https://www.googleapis.com/auth/devstorage.full_control",
+  "https://www.googleapis.com/auth/devstorage.read_write",
   # Write application logs to Cloud Logging.
   "https://www.googleapis.com/auth/logging.write",
   # Export metrics to Cloud Monitoring.
