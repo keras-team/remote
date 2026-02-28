@@ -153,24 +153,24 @@ def parse_accelerator(accel_str: str) -> Accelerator:
 
   # Direct GPU name: "l4", "a100-80gb"
   if s in GPUS:
-    return _make_gpu(s, 1)
+    return make_gpu(s, 1)
 
   # GPU alias: "nvidia-l4"
   if s in _GPU_ALIASES:
-    return _make_gpu(_GPU_ALIASES[s], 1)
+    return make_gpu(_GPU_ALIASES[s], 1)
 
   # Multi-GPU: "a100x4", "l4x2"
   m = _MULTI_GPU_RE.match(s)
   if m:
     name = m.group(1)
     if name in GPUS:
-      return _make_gpu(name, int(m.group(2)))
+      return make_gpu(name, int(m.group(2)))
     if name in _GPU_ALIASES:
-      return _make_gpu(_GPU_ALIASES[name], int(m.group(2)))
+      return make_gpu(_GPU_ALIASES[name], int(m.group(2)))
 
   # Direct TPU name (bare): "v5litepod" → default chips
   if s in TPUS:
-    return _make_tpu(s, TPUS[s].default_chips)
+    return make_tpu(s, TPUS[s].default_chips)
 
   # TPU with topology string: "v5litepod-2x2", "v5p-2x2x2"
   m = _TPU_TOPO_RE.match(s)
@@ -179,7 +179,7 @@ def parse_accelerator(accel_str: str) -> Accelerator:
     topo_str = m.group(2)
     for chips, topo_spec in TPUS[name].topologies.items():
       if topo_spec.topology == topo_str:
-        return _make_tpu(name, chips)
+        return make_tpu(name, chips)
     valid = [ts.topology for ts in TPUS[name].topologies.values()]
     raise ValueError(
       f"Topology '{topo_str}' not supported for '{name}'. "
@@ -189,7 +189,7 @@ def parse_accelerator(accel_str: str) -> Accelerator:
   # TPU with chip count: "v3-8", "v5litepod-4"
   m = _TPU_CHIPS_RE.match(s)
   if m and m.group(1) in TPUS:
-    return _make_tpu(m.group(1), int(m.group(2)))
+    return make_tpu(m.group(1), int(m.group(2)))
 
   raise ValueError(
     f"Unknown accelerator: '{accel_str}'. "
@@ -223,7 +223,7 @@ def generate_pool_name(accel: GpuConfig | TpuConfig) -> str:
   raise TypeError(f"Expected GpuConfig or TpuConfig, got {type(accel)}")
 
 
-def _make_gpu(name: str, count: int) -> GpuConfig:
+def make_gpu(name: str, count: int) -> GpuConfig:
   spec = GPUS[name]
   if count not in spec.counts:
     raise ValueError(
@@ -238,7 +238,7 @@ def _make_gpu(name: str, count: int) -> GpuConfig:
   )
 
 
-def _make_tpu(name: str, chips: int) -> TpuConfig:
+def make_tpu(name: str, chips: int) -> TpuConfig:
   spec = TPUS[name]
   if chips not in spec.topologies:
     raise ValueError(

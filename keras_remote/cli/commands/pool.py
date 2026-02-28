@@ -61,6 +61,48 @@ def pool():
   """Manage accelerator node pools."""
 
 
+def _load_pools(project, zone, cluster_name):
+  """Check prerequisites, refresh stack state, and return existing pools."""
+  check_all()
+  project, zone, cluster_name = _resolve_common(project, zone, cluster_name)
+
+  base_config = InfraConfig(
+    project=project, zone=zone, cluster_name=cluster_name
+  )
+  program = create_program(base_config)
+  stack = get_stack(program, base_config)
+
+  console.print("\nRefreshing state...\n")
+  try:
+    stack.refresh(on_output=print)
+  except auto.errors.CommandError as e:
+    warning(f"Failed to refresh stack state: {e}")
+
+  existing_pools = get_current_node_pools(stack)
+  return project, zone, cluster_name, existing_pools
+
+
+def _apply_pool_update(project, zone, cluster_name, node_pools):
+  """Run a Pulumi update with the given node pool list."""
+  config = InfraConfig(
+    project=project,
+    zone=zone,
+    cluster_name=cluster_name,
+    node_pools=node_pools,
+  )
+  program = create_program(config)
+  stack = get_stack(program, config)
+
+  console.print("\n[bold]Updating infrastructure...[/bold]\n")
+  try:
+    result = stack.up(on_output=print)
+    console.print()
+    success(f"Pulumi update complete. {result.summary.resource_changes}")
+  except auto.errors.CommandError as e:
+    console.print()
+    warning(f"Pulumi update encountered an issue: {e}")
+
+
 @pool.command("add")
 @_common_options
 @click.option(
@@ -74,10 +116,7 @@ def pool_add(project, zone, cluster_name, accelerator, yes):
   """Add an accelerator node pool to the cluster."""
   banner("keras-remote Pool Add")
 
-  check_all()
-  project, zone, cluster_name = _resolve_common(project, zone, cluster_name)
-
-  # Parse the accelerator spec.
+  # Parse the accelerator spec first to fail fast on bad input.
   try:
     accel_config = accelerators.parse_accelerator(accelerator)
   except ValueError as e:
@@ -92,22 +131,9 @@ def pool_add(project, zone, cluster_name, accelerator, yes):
   new_pool_name = generate_pool_name(accel_config)
   new_pool = NodePoolConfig(new_pool_name, accel_config)
 
-  # Load existing state.
-  base_config = InfraConfig(
-    project=project, zone=zone, cluster_name=cluster_name
+  project, zone, cluster_name, existing_pools = _load_pools(
+    project, zone, cluster_name
   )
-  program = create_program(base_config)
-  stack = get_stack(program, base_config)
-
-  console.print("\nRefreshing state...\n")
-  try:
-    stack.refresh(on_output=print)
-  except auto.errors.CommandError as e:
-    warning(f"Failed to refresh stack state: {e}")
-
-  existing_pools = get_current_node_pools(stack)
-
-  # Build the combined pool list.
   all_pools = existing_pools + [new_pool]
 
   console.print(f"\nAdding pool [bold]{new_pool_name}[/bold] ({accelerator})")
@@ -116,24 +142,7 @@ def pool_add(project, zone, cluster_name, accelerator, yes):
   if not yes:
     click.confirm("Proceed?", abort=True)
 
-  # Run Pulumi with the updated pool list.
-  config = InfraConfig(
-    project=project,
-    zone=zone,
-    cluster_name=cluster_name,
-    node_pools=all_pools,
-  )
-  program = create_program(config)
-  stack = get_stack(program, config)
-
-  console.print("\n[bold]Provisioning...[/bold]\n")
-  try:
-    result = stack.up(on_output=print)
-    console.print()
-    success(f"Pulumi update complete. {result.summary.resource_changes}")
-  except auto.errors.CommandError as e:
-    console.print()
-    warning(f"Pulumi update encountered an issue: {e}")
+  _apply_pool_update(project, zone, cluster_name, all_pools)
 
   console.print()
   banner("Pool Added")
@@ -148,25 +157,10 @@ def pool_remove(project, zone, cluster_name, pool_name, yes):
   """Remove an accelerator node pool from the cluster."""
   banner("keras-remote Pool Remove")
 
-  check_all()
-  project, zone, cluster_name = _resolve_common(project, zone, cluster_name)
-
-  # Load existing state.
-  base_config = InfraConfig(
-    project=project, zone=zone, cluster_name=cluster_name
+  project, zone, cluster_name, existing_pools = _load_pools(
+    project, zone, cluster_name
   )
-  program = create_program(base_config)
-  stack = get_stack(program, base_config)
 
-  console.print("\nRefreshing state...\n")
-  try:
-    stack.refresh(on_output=print)
-  except auto.errors.CommandError as e:
-    warning(f"Failed to refresh stack state: {e}")
-
-  existing_pools = get_current_node_pools(stack)
-
-  # Find the pool to remove.
   remaining = [p for p in existing_pools if p.name != pool_name]
   if len(remaining) == len(existing_pools):
     existing_names = [p.name for p in existing_pools]
@@ -181,24 +175,7 @@ def pool_remove(project, zone, cluster_name, pool_name, yes):
   if not yes:
     click.confirm("Proceed?", abort=True)
 
-  # Run Pulumi with the reduced pool list.
-  config = InfraConfig(
-    project=project,
-    zone=zone,
-    cluster_name=cluster_name,
-    node_pools=remaining,
-  )
-  program = create_program(config)
-  stack = get_stack(program, config)
-
-  console.print("\n[bold]Updating infrastructure...[/bold]\n")
-  try:
-    result = stack.up(on_output=print)
-    console.print()
-    success(f"Pulumi update complete. {result.summary.resource_changes}")
-  except auto.errors.CommandError as e:
-    console.print()
-    warning(f"Pulumi update encountered an issue: {e}")
+  _apply_pool_update(project, zone, cluster_name, remaining)
 
   console.print()
   banner("Pool Removed")

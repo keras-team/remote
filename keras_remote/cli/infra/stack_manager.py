@@ -95,15 +95,11 @@ def get_current_node_pools(stack) -> list[NodePoolConfig]:
 def _export_to_node_pool(entry: dict) -> NodePoolConfig:
   """Convert a stack export dict back to a NodePoolConfig."""
   pool_name = entry["node_pool"]
+  accelerator: accelerators.GpuConfig | accelerators.TpuConfig
   if entry["type"] == "GPU":
-    accel_str = (
-      f"{entry['name']}x{entry['count']}"
-      if entry["count"] > 1
-      else entry["name"]
-    )
-  else:  # TPU
-    accel_str = f"{entry['name']}-{entry['topology']}"
-  accel = accelerators.parse_accelerator(accel_str)
-  if accel is None:
-    raise ValueError(f"Unexpected CPU accelerator in node pool export: {entry}")
-  return NodePoolConfig(name=pool_name, accelerator=accel)
+    accelerator = accelerators.make_gpu(entry["name"], entry["count"])
+  elif entry["type"] == "TPU":
+    accelerator = accelerators.make_tpu(entry["name"], entry["chips"])
+  else:
+    raise ValueError(f"Unknown accelerator type in node pool export: {entry}")
+  return NodePoolConfig(name=pool_name, accelerator=accelerator)
