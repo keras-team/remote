@@ -68,11 +68,13 @@ class TestCreateTpuNodePool(parameterized.TestCase):
 
     program._create_tpu_node_pool(cluster, tpu, "us-central2-b", "my-project")
 
-    call_kwargs = gcp_mock.container.NodePool.call_args
-    node_count = call_kwargs.kwargs.get(
-      "node_count", call_kwargs[1].get("node_count")
+    # Due to scale-to-zero, initial_node_count is 0 and max is stored in autoscaling
+    call_kwargs = gcp_mock.container.NodePool.call_args.kwargs
+    self.assertEqual(call_kwargs.get("initial_node_count"), 0)
+    autoscaling_kwargs = (
+      gcp_mock.container.NodePoolAutoscalingArgs.call_args.kwargs
     )
-    self.assertEqual(node_count, 4)
+    self.assertEqual(autoscaling_kwargs.get("max_node_count"), 4)
 
   @mock.patch.object(program, "gcp")
   def test_pool_name_includes_tpu_name(self, gcp_mock):
@@ -230,6 +232,93 @@ class TestExportsDependOnResources(parameterized.TestCase):
         c.args[0]: c.args[1] for c in pulumi_mock.export.call_args_list
       }
       self.assertIsNone(exported["accelerator"])
+
+
+class TestClusterAutoscalingAndNAP(absltest.TestCase):
+  """Verify cluster autoscaling and NAP are enabled correctly."""
+
+  def test_cluster_autoscaling_config(self):
+    """The cluster should have OPTIMIZE_UTILIZATION and NAP enabled."""
+    with (
+      mock.patch.object(program, "pulumi"),
+      mock.patch.object(program, "gcp") as gcp_mock,
+    ):
+      program.create_program(_make_config(None))()
+
+      gcp_mock.container.ClusterClusterAutoscalingArgs.assert_called_once()
+      call_args = (
+        gcp_mock.container.ClusterClusterAutoscalingArgs.call_args.kwargs
+      )
+      self.assertTrue(call_args.get("enabled"))
+      self.assertEqual(
+        call_args.get("autoscaling_profile"), "OPTIMIZE_UTILIZATION"
+      )
+
+      gcp_mock.container.ClusterClusterAutoscalingAutoProvisioningDefaultsArgs.assert_called_once()
+      gcp_mock.container.ClusterClusterAutoscalingAutoProvisioningDefaultsManagementArgs.assert_called_once_with(
+        auto_upgrade=True, auto_repair=True
+      )
+
+      gcp_mock.container.ClusterClusterAutoscalingResourceLimitArgs.assert_any_call(
+        resource_type="cpu", maximum=1000
+      )
+      gcp_mock.container.ClusterClusterAutoscalingResourceLimitArgs.assert_any_call(
+        resource_type="memory", maximum=64000
+      )
+
+
+class TestScaleToZeroNodePools(parameterized.TestCase):
+  """Verify accelerator node pools can scale to zero and have maxRunDuration."""
+
+  @parameterized.named_parameters(
+    dict(
+      testcase_name="gpu",
+      accelerator=GpuConfig("l4", 1, "nvidia-l4", "g2-standard-4"),
+      expected_max_count=1,
+    ),
+    dict(
+      testcase_name="tpu_v5p",
+      accelerator=TpuConfig(
+        "v5p", 16, "2x2x4", "tpu-v5p-slice", "ct5p-hightpu-4t", 4
+      ),
+      expected_max_count=4,  # 16 chips / 4 per VM
+    ),
+  )
+  @mock.patch.object(program, "gcp")
+  def test_node_pool_scale_to_zero(
+    self, gcp_mock, accelerator, expected_max_count
+  ):
+    cluster = mock.MagicMock()
+    cluster.name = "test-cluster"
+
+    if isinstance(accelerator, GpuConfig):
+      program._create_gpu_node_pool(
+        cluster, accelerator, "us-central2-b", "my-project"
+      )
+    else:
+      program._create_tpu_node_pool(
+        cluster, accelerator, "us-central2-b", "my-project"
+      )
+
+    call_kwargs = gcp_mock.container.NodePool.call_args.kwargs
+    self.assertEqual(call_kwargs.get("initial_node_count"), 0)
+
+    autoscaling_kwargs = (
+      gcp_mock.container.NodePoolAutoscalingArgs.call_args.kwargs
+    )
+    self.assertEqual(autoscaling_kwargs.get("min_node_count"), 0)
+    self.assertEqual(
+      autoscaling_kwargs.get("max_node_count"), expected_max_count
+    )
+
+    mgmt_kwargs = gcp_mock.container.NodePoolManagementArgs.call_args.kwargs
+    self.assertTrue(mgmt_kwargs.get("auto_repair"))
+    self.assertTrue(mgmt_kwargs.get("auto_upgrade"))
+
+    node_config_kwargs = (
+      gcp_mock.container.NodePoolNodeConfigArgs.call_args.kwargs
+    )
+    self.assertEqual(node_config_kwargs.get("max_run_duration"), "86400s")
 
 
 if __name__ == "__main__":
