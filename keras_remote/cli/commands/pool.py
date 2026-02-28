@@ -236,23 +236,9 @@ def pool_autoscale(project, zone, cluster_name, pool_name, enable, yes):
   """Enable or disable autoscaling on an existing node pool."""
   banner("keras-remote Pool Autoscale")
 
-  check_all()
-  project, zone, cluster_name = _resolve_common(project, zone, cluster_name)
-
-  # Load existing state.
-  base_config = InfraConfig(
-    project=project, zone=zone, cluster_name=cluster_name
+  project, zone, cluster_name, existing_pools = _load_pools(
+    project, zone, cluster_name
   )
-  program = create_program(base_config)
-  stack = get_stack(program, base_config)
-
-  console.print("\nRefreshing state...\n")
-  try:
-    stack.refresh(on_output=print)
-  except auto.errors.CommandError as e:
-    warning(f"Failed to refresh stack state: {e}")
-
-  existing_pools = get_current_node_pools(stack)
 
   # Find the target pool.
   target = None
@@ -281,27 +267,8 @@ def pool_autoscale(project, zone, cluster_name, pool_name, enable, yes):
   if not yes:
     click.confirm("Proceed?", abort=True)
 
-  # Update the pool's autoscale setting.
   target.autoscale = enable
-
-  # Run Pulumi with the updated pool list.
-  config = InfraConfig(
-    project=project,
-    zone=zone,
-    cluster_name=cluster_name,
-    node_pools=existing_pools,
-  )
-  program = create_program(config)
-  stack = get_stack(program, config)
-
-  console.print("\n[bold]Updating infrastructure...[/bold]\n")
-  try:
-    result = stack.up(on_output=print)
-    console.print()
-    success(f"Pulumi update complete. {result.summary.resource_changes}")
-  except auto.errors.CommandError as e:
-    console.print()
-    warning(f"Pulumi update encountered an issue: {e}")
+  _apply_pool_update(project, zone, cluster_name, existing_pools)
 
   state = "enabled" if enable else "disabled"
   console.print()
