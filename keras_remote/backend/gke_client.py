@@ -2,6 +2,8 @@
 
 import time
 from contextlib import suppress
+import subprocess
+import json
 
 from absl import logging
 from kubernetes import client, config
@@ -394,6 +396,25 @@ def _print_pod_logs(core_v1, job_name, namespace):
         logging.info("Pod %s logs:\n%s", pod.metadata.name, logs)
 
 
+def _validate_node_pool_exists(selector: dict) -> bool:
+  """Use gcloud to verify that a GKE NodePool matches the pod node selector."""
+  try:
+    # Requires gcloud CLI and valid credentials.
+    out = subprocess.check_output([
+        "gcloud", "container", "node-pools", "list",
+        "--format", "json"], text=True, stderr=subprocess.DEVNULL)
+    pools = json.loads(out)
+    for pool in pools:
+      config = pool.get("config", {})
+      labels = config.get("labels", {})
+      # Check if all keys/values in the selector exist in this pool's labels
+      if all(labels.get(k) == str(v) for k, v in selector.items()):
+        return True
+    return False
+  except Exception:
+    # If gcloud is missing or unauthenticated, degrade gracefully and assume pool exists
+    return True
+
 def _check_pod_scheduling(core_v1, job_name, namespace):
   """Check for pod scheduling issues and raise helpful errors."""
   with suppress(ApiException):
@@ -406,22 +427,30 @@ def _check_pod_scheduling(core_v1, job_name, namespace):
           if condition.type == "PodScheduled" and condition.status == "False":
             msg = condition.message or ""
             if "Insufficient nvidia.com/gpu" in msg:
+              selector = pod.spec.node_selector or {}
+              if not _validate_node_pool_exists(selector):
+                  selector_str = ", ".join([f"{k}: {v}" for k, v in selector.items()]) if selector else "None"
+                  raise RuntimeError(f"No GKE node pool exists with selector '{selector_str}'. "
+                                     "Please use 'keras-remote pool add' to configure this accelerator.")
               logging.info(
                 f"Pod {pod.metadata.name} is Pending: Insufficient nvidia.com/gpu. "
-                "Waiting for GKE Cluster Autoscaler to provision a new node... (scale-to-zero)"
+                "Waiting for GKE Cluster Autoscaler to provision a new node... (scale-to-zero)\n"
+                "  Note: If this hangs indefinitely, ensure your GCP project has adequate quota."
               )
             elif (
               "didn't match Pod's node affinity/selector" in msg
               or "node selector" in msg.lower()
             ):
-              selector = pod.spec.node_selector
-              selector_str = (
-                ", ".join([f"{k}: {v}" for k, v in selector.items()])
-                if selector
-                else "None"
-              )
+              selector = pod.spec.node_selector or {}
+              selector_str = ", ".join([f"{k}: {v}" for k, v in selector.items()]) if selector else "None"
+              
+              if not _validate_node_pool_exists(selector):
+                  raise RuntimeError(f"No GKE node pool exists with selector '{selector_str}'. "
+                                     "Please use 'keras-remote pool add' to configure this accelerator.")
+              
               logging.info(
                 f"Pod {pod.metadata.name} is Pending: No currently running nodes "
                 f"match accelerator selector '{selector_str}'. "
-                "Waiting for GKE Cluster Autoscaler to provision a new node... (scale-to-zero)"
+                "Waiting for GKE Cluster Autoscaler to provision a new node... (scale-to-zero)\n"
+                "  Note: If this hangs indefinitely, ensure your GCP project has adequate quota."
               )

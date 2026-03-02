@@ -249,9 +249,9 @@ def _create_tpu_node_pool(cluster, tpu: TpuConfig, zone, project_id):
     cluster=cluster.name,
     location=zone,
     project=project_id,
-    initial_node_count=0,
+    initial_node_count=tpu.num_nodes if tpu.num_nodes > 1 else 0,
     autoscaling=gcp.container.NodePoolAutoscalingArgs(
-      min_node_count=0,
+      min_node_count=tpu.num_nodes if tpu.num_nodes > 1 else 0,
       max_node_count=tpu.num_nodes,
     ),
     management=gcp.container.NodePoolManagementArgs(
