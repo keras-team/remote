@@ -340,11 +340,11 @@ class TestScaleToZeroNodePools(parameterized.TestCase):
 
     if isinstance(accelerator, GpuConfig):
       program._create_gpu_node_pool(
-        cluster, accelerator, "us-central2-b", "my-project"
+        cluster, accelerator, "us-central2-b", "my-project", "test-pool"
       )
     else:
       program._create_tpu_node_pool(
-        cluster, accelerator, "us-central2-b", "my-project"
+        cluster, accelerator, "us-central2-b", "my-project", "test-pool"
       )
 
     is_multi_host = getattr(accelerator, "num_nodes", 1) > 1
