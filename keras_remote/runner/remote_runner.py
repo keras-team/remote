@@ -146,30 +146,29 @@ def resolve_volumes(volume_refs, storage_client):
 
 def resolve_data_refs(args, kwargs, storage_client):
   """Recursively resolve data ref dicts in args/kwargs to local paths."""
-  counter = [0]
+  counter = 0
 
   def _resolve(obj):
-    if (
-      isinstance(obj, dict)
-      and obj.get("__data_ref__")
-      and obj.get("mount_path") is None
-    ):
-      local_dir = os.path.join(DATA_DIR, str(counter[0]))
-      counter[0] += 1
+    nonlocal counter
+    # Data ref that needs downloading (no mount_path means not volume-mounted)
+    if isinstance(obj, dict) and obj.get("__data_ref__"):
+      # Volume-mounted data refs are handled by Kubernetes, skip download
+      if obj.get("mount_path") is not None:
+        return obj
+      local_dir = os.path.join(DATA_DIR, str(counter))
+      counter += 1
       _download_data(obj, local_dir, storage_client)
-      # Return directory path for dirs, file path for single files
+      # Return file path for single files, directory path otherwise
       if not obj["is_dir"]:
-        files = os.listdir(local_dir)
-        files = [f for f in files if f != ".cache_marker"]
+        files = [f for f in os.listdir(local_dir) if f != ".cache_marker"]
         if len(files) == 1:
           return os.path.join(local_dir, files[0])
       return local_dir
-    elif isinstance(obj, list):
-      return [_resolve(item) for item in obj]
-    elif isinstance(obj, tuple):
-      return tuple(_resolve(item) for item in obj)
-    elif isinstance(obj, dict) and not obj.get("__data_ref__"):
+    # Recurse into containers to find nested data refs
+    if isinstance(obj, dict):
       return {k: _resolve(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+      return type(obj)(_resolve(item) for item in obj)
     return obj
 
   resolved_args = tuple(_resolve(a) for a in args)
