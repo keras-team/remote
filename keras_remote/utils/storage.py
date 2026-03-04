@@ -106,3 +106,94 @@ def cleanup_artifacts(bucket_name, job_id, project=None):
       bucket_name,
       job_id,
     )
+
+
+def upload_data(bucket_name, data, project=None, namespace_prefix="default"):
+  """Upload a Data object to GCS with content-based caching.
+
+  For GCS Data: returns the original URI (no upload).
+  For local Data: computes content hash, uploads on cache miss.
+
+  Args:
+      bucket_name: GCS bucket name.
+      data: Data object to upload.
+      project: GCP project ID (auto-detected if None).
+      namespace_prefix: Namespace GCS prefix. Defaults to "default".
+
+  Returns:
+      GCS URI where the data is available.
+  """
+  if data.is_gcs:
+    logging.info("Data already on GCS: %s", data.path)
+    return data.path
+
+  content_hash = data.content_hash()
+  cache_prefix = f"{namespace_prefix}/data-cache/{content_hash}"
+
+  project = project or _get_project()
+  client = storage.Client(project=project)
+  bucket = client.bucket(bucket_name)
+
+  # O(1) cache hit check via sentinel blob
+  marker_blob = bucket.blob(f"{cache_prefix}/.cache_marker")
+  if marker_blob.exists():
+    gcs_uri = f"gs://{bucket_name}/{cache_prefix}"
+    logging.info(
+      "Data cache hit (hash=%s...): %s",
+      content_hash[:12],
+      gcs_uri,
+    )
+    return gcs_uri
+
+  # Size warning for large local data
+  total_size = _compute_total_size(data.path)
+  if total_size > 10 * 1024**3:  # 10 GB
+    size_gb = total_size / (1024**3)
+    logging.warning(
+      "Data at '%s' is %.1f GB. For large datasets, consider using "
+      'a direct GCS URI (Data("gs://...")) with framework-native '
+      "I/O (tf.data, grain) for better performance.",
+      data._raw_path,
+      size_gb,
+    )
+
+  # Cache miss — upload
+  logging.info(
+    "Uploading data (hash=%s...) to gs://%s/%s/",
+    content_hash[:12],
+    bucket_name,
+    cache_prefix,
+  )
+
+  if data.is_dir:
+    _upload_directory(bucket, data.path, cache_prefix)
+  else:
+    filename = os.path.basename(data.path)
+    blob = bucket.blob(f"{cache_prefix}/{filename}")
+    blob.upload_from_filename(data.path)
+
+  # Write sentinel last — signals upload-complete
+  marker_blob.upload_from_string("")
+  logging.info("Data uploaded to gs://%s/%s/", bucket_name, cache_prefix)
+  return f"gs://{bucket_name}/{cache_prefix}"
+
+
+def _compute_total_size(path):
+  """Compute total size in bytes of a file or directory."""
+  if os.path.isfile(path):
+    return os.path.getsize(path)
+  total = 0
+  for root, _dirs, files in os.walk(path):
+    for fname in files:
+      total += os.path.getsize(os.path.join(root, fname))
+  return total
+
+
+def _upload_directory(bucket, local_dir, gcs_prefix):
+  """Upload a local directory to GCS preserving structure."""
+  for root, _dirs, files in os.walk(local_dir):
+    for fname in files:
+      local_path = os.path.join(root, fname)
+      rel_path = os.path.relpath(local_path, local_dir)
+      blob = bucket.blob(f"{gcs_prefix}/{rel_path}")
+      blob.upload_from_filename(local_path)

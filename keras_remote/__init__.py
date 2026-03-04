@@ -6,3 +6,4 @@ os.environ.setdefault("GLOG_minloglevel", "3")
 os.environ.setdefault("GRPC_ENABLE_FORK_SUPPORT", "0")
 
 from keras_remote.core.core import run as run
+from keras_remote.data import Data as Data

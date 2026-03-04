@@ -1,17 +1,30 @@
 """Tests for keras_remote.utils.storage — Cloud Storage operations."""
 
 import os
+import pathlib
+import tempfile
 from unittest import mock
 from unittest.mock import MagicMock
 
 from absl.testing import absltest, parameterized
 
+from keras_remote.data import Data
 from keras_remote.utils.storage import (
+  _compute_total_size,
   _get_project,
+  _upload_directory,
   cleanup_artifacts,
   download_result,
   upload_artifacts,
+  upload_data,
 )
+
+
+def _make_temp_path(test_case):
+  """Create a temp directory that is cleaned up after the test."""
+  td = tempfile.TemporaryDirectory()
+  test_case.addCleanup(td.cleanup)
+  return pathlib.Path(td.name)
 
 
 class _GcsTestBase(absltest.TestCase):
@@ -128,6 +141,163 @@ class TestGetProject(parameterized.TestCase):
       env["GOOGLE_CLOUD_PROJECT"] = gc_project
     with mock.patch.dict(os.environ, env, clear=True):
       self.assertEqual(_get_project(), expected)
+
+
+class TestUploadData(_GcsTestBase):
+  def test_gcs_data_returns_uri_no_upload(self):
+    d = Data("gs://my-bucket/datasets/cifar10/")
+
+    result = upload_data("jobs-bucket", d, project="proj")
+
+    self.assertEqual(result, "gs://my-bucket/datasets/cifar10/")
+    # No blob operations should occur
+    self.mock_gcs.bucket.assert_not_called()
+
+  def test_cache_hit_skips_upload(self):
+    tmp = _make_temp_path(self)
+    f = tmp / "data.csv"
+    f.write_text("training data")
+    d = Data(str(f))
+
+    mock_bucket = self.mock_gcs.bucket.return_value
+    marker_blob = MagicMock()
+    marker_blob.exists.return_value = True
+    mock_bucket.blob.return_value = marker_blob
+
+    result = upload_data("jobs-bucket", d, project="proj")
+
+    self.assertIn("gs://jobs-bucket/default/data-cache/", result)
+    # Only the marker check should happen, no upload
+    marker_blob.upload_from_filename.assert_not_called()
+
+  def test_cache_miss_uploads_file_and_marker(self):
+    tmp = _make_temp_path(self)
+    f = tmp / "data.csv"
+    f.write_text("training data")
+    d = Data(str(f))
+    content_hash = d.content_hash()
+
+    mock_bucket = self.mock_gcs.bucket.return_value
+    blobs = {}
+
+    def track_blob(name):
+      b = MagicMock()
+      blobs[name] = b
+      if name.endswith(".cache_marker"):
+        b.exists.return_value = False
+      return b
+
+    mock_bucket.blob.side_effect = track_blob
+
+    result = upload_data("jobs-bucket", d, project="proj")
+
+    expected_prefix = f"default/data-cache/{content_hash}"
+    self.assertEqual(result, f"gs://jobs-bucket/{expected_prefix}")
+    # File blob uploaded
+    file_blob_name = f"{expected_prefix}/data.csv"
+    self.assertIn(file_blob_name, blobs)
+    blobs[file_blob_name].upload_from_filename.assert_called_once()
+    # Marker written last
+    marker_name = f"{expected_prefix}/.cache_marker"
+    self.assertIn(marker_name, blobs)
+    blobs[marker_name].upload_from_string.assert_called_once_with("")
+
+  def test_cache_miss_uploads_directory(self):
+    tmp = _make_temp_path(self)
+    d_dir = tmp / "dataset"
+    d_dir.mkdir()
+    (d_dir / "train.csv").write_text("train")
+    (d_dir / "val.csv").write_text("val")
+    d = Data(str(d_dir))
+
+    mock_bucket = self.mock_gcs.bucket.return_value
+    blobs = {}
+
+    def track_blob(name):
+      b = MagicMock()
+      blobs[name] = b
+      if name.endswith(".cache_marker"):
+        b.exists.return_value = False
+      return b
+
+    mock_bucket.blob.side_effect = track_blob
+
+    result = upload_data("jobs-bucket", d, project="proj")
+
+    self.assertIn("gs://jobs-bucket/default/data-cache/", result)
+    # Both files + marker should have blobs
+    blob_names = list(blobs.keys())
+    csv_blobs = [n for n in blob_names if n.endswith(".csv")]
+    self.assertEqual(len(csv_blobs), 2)
+
+  def test_custom_namespace(self):
+    tmp = _make_temp_path(self)
+    f = tmp / "data.csv"
+    f.write_text("data")
+    d = Data(str(f))
+
+    mock_bucket = self.mock_gcs.bucket.return_value
+    marker_blob = MagicMock()
+    marker_blob.exists.return_value = True
+    mock_bucket.blob.return_value = marker_blob
+
+    result = upload_data(
+      "jobs-bucket",
+      d,
+      project="proj",
+      namespace_prefix="team-nlp",
+    )
+
+    self.assertIn("team-nlp/data-cache/", result)
+
+
+class TestComputeTotalSize(absltest.TestCase):
+  def test_single_file(self):
+    tmp = _make_temp_path(self)
+    f = tmp / "data.bin"
+    f.write_bytes(b"x" * 100)
+    self.assertEqual(_compute_total_size(str(f)), 100)
+
+  def test_directory(self):
+    tmp = _make_temp_path(self)
+    d = tmp / "dir"
+    d.mkdir()
+    (d / "a.txt").write_bytes(b"x" * 50)
+    (d / "b.txt").write_bytes(b"y" * 30)
+    self.assertEqual(_compute_total_size(str(d)), 80)
+
+  def test_empty_directory(self):
+    tmp = _make_temp_path(self)
+    d = tmp / "empty"
+    d.mkdir()
+    self.assertEqual(_compute_total_size(str(d)), 0)
+
+
+class TestUploadDirectory(_GcsTestBase):
+  def test_preserves_structure(self):
+    tmp = _make_temp_path(self)
+    d = tmp / "dataset"
+    sub = d / "sub"
+    sub.mkdir(parents=True)
+    (d / "a.csv").write_text("a")
+    (sub / "b.csv").write_text("b")
+
+    mock_bucket = MagicMock()
+    uploaded = {}
+
+    def track_blob(name):
+      b = MagicMock()
+      uploaded[name] = b
+      return b
+
+    mock_bucket.blob.side_effect = track_blob
+
+    _upload_directory(mock_bucket, str(d), "prefix/hash")
+
+    self.assertIn("prefix/hash/a.csv", uploaded)
+    self.assertIn("prefix/hash/sub/b.csv", uploaded)
+    for blob in uploaded.values():
+      blob.upload_from_filename.assert_called_once()
 
 
 if __name__ == "__main__":
