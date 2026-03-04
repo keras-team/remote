@@ -18,6 +18,7 @@ from google.cloud import storage
 
 # Base temp directory for remote execution artifacts
 TEMP_DIR = tempfile.gettempdir()
+DATA_DIR = os.path.join(TEMP_DIR, "data")
 
 
 def main():
@@ -87,6 +88,12 @@ def run_gcs_mode():
       logging.info("Setting %d environment variables", len(env_vars))
       os.environ.update(env_vars)
 
+    # Resolve Data references
+    volumes = payload.get("volumes", [])
+    if volumes:
+      resolve_volumes(volumes, storage_client)
+    args, kwargs = resolve_data_refs(args, kwargs, storage_client)
+
     # Execute function and capture result
     logging.info("Executing %s()", func.__name__)
     result = None
@@ -127,6 +134,71 @@ def run_gcs_mode():
     logging.fatal("%s", e)
     traceback.print_exc()
     sys.exit(1)
+
+
+def resolve_volumes(volume_refs, storage_client):
+  """Download volume data to their specified mount paths."""
+  for ref in volume_refs:
+    mount_path = ref["mount_path"]
+    logging.info("Resolving volume: %s -> %s", ref["gcs_uri"], mount_path)
+    _download_data(ref, mount_path, storage_client)
+
+
+def resolve_data_refs(args, kwargs, storage_client):
+  """Recursively resolve data ref dicts in args/kwargs to local paths."""
+  counter = [0]
+
+  def _resolve(obj):
+    if (
+      isinstance(obj, dict)
+      and obj.get("__data_ref__")
+      and obj.get("mount_path") is None
+    ):
+      local_dir = os.path.join(DATA_DIR, str(counter[0]))
+      counter[0] += 1
+      _download_data(obj, local_dir, storage_client)
+      # Return directory path for dirs, file path for single files
+      if not obj["is_dir"]:
+        files = os.listdir(local_dir)
+        files = [f for f in files if f != ".cache_marker"]
+        if len(files) == 1:
+          return os.path.join(local_dir, files[0])
+      return local_dir
+    elif isinstance(obj, list):
+      return [_resolve(item) for item in obj]
+    elif isinstance(obj, tuple):
+      return tuple(_resolve(item) for item in obj)
+    elif isinstance(obj, dict) and not obj.get("__data_ref__"):
+      return {k: _resolve(v) for k, v in obj.items()}
+    return obj
+
+  resolved_args = tuple(_resolve(a) for a in args)
+  resolved_kwargs = {k: _resolve(v) for k, v in kwargs.items()}
+  return resolved_args, resolved_kwargs
+
+
+def _download_data(ref, target_dir, storage_client):
+  """Download data from a GCS URI to a local directory."""
+  os.makedirs(target_dir, exist_ok=True)
+  gcs_uri = ref["gcs_uri"]
+
+  parts = gcs_uri.replace("gs://", "").split("/", 1)
+  bucket_name = parts[0]
+  prefix = parts[1].rstrip("/") if len(parts) > 1 else ""
+  bucket = storage_client.bucket(bucket_name)
+
+  blobs = bucket.list_blobs(prefix=prefix + "/")
+  count = 0
+  for blob in blobs:
+    if blob.name.endswith("/") or blob.name.endswith(".cache_marker"):
+      continue
+    rel_path = blob.name[len(prefix) + 1 :]
+    local_path = os.path.join(target_dir, rel_path)
+    os.makedirs(os.path.dirname(local_path), exist_ok=True)
+    blob.download_to_filename(local_path)
+    count += 1
+
+  logging.info("Downloaded %d files from %s to %s", count, gcs_uri, target_dir)
 
 
 def _download_from_gcs(client, gcs_path, local_path):
