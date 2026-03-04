@@ -102,7 +102,7 @@ class JobContext:
 class BaseK8sBackend:
   """Base class for Kubernetes-based backends."""
 
-  def __init__(self, cluster: Optional[str] = None, namespace: str = "default"):
+  def __init__(self, cluster: str, namespace: str = "default"):
     self.cluster = cluster
     self.namespace = namespace
 
@@ -225,13 +225,14 @@ def _prepare_artifacts(
   # Get caller directory
   frame = inspect.stack()[caller_frame_depth]
   module = inspect.getmodule(frame[0])
-  if module:
+  caller_path: str
+  if module and module.__file__:
     caller_path = os.path.dirname(os.path.abspath(module.__file__))
   else:
     caller_path = os.getcwd()
 
-  # --- Process Data objects ---
-  exclude_paths = set()
+  # Process Data objects
+  exclude_paths: set[str] = set()
   ref_map = {}  # id(Data) -> ref dict (for arg replacement)
   volume_refs = []  # list of ref dicts (for volumes)
 
@@ -307,6 +308,8 @@ def _build_container(ctx: JobContext) -> None:
 
 def _upload_artifacts(ctx: JobContext) -> None:
   """Phase 3: Upload artifacts to Cloud Storage."""
+  if ctx.payload_path is None or ctx.context_path is None:
+    raise ValueError("payload_path and context_path must be set before upload")
   logging.info("Uploading artifacts to Cloud Storage (job: %s)...", ctx.job_id)
   storage.upload_artifacts(
     bucket_name=ctx.bucket_name,
