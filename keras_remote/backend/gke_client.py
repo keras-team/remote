@@ -215,7 +215,7 @@ def validate_preflight(
       selector_str = ", ".join([f"{k}: {v}" for k, v in node_selector.items()])
       logging.info(
         f"Preflight check: No currently running nodes match selector: {selector_str}. "
-        "Proceeding under the assumption that the cluster will auto-provision (scale-to-zero)."
+        "Proceeding under the assumption that the cluster will auto-provision."
       )
   except ApiException as e:
     # If we can't list nodes due to permissions, log a warning but proceed
