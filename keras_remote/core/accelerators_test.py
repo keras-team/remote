@@ -163,6 +163,7 @@ class TestParseCpu(absltest.TestCase):
   def test_cpu_with_count(self):
     self.assertIsNone(parse_accelerator("cpu-8"))
 
+
 class TestParseGenericAliases(absltest.TestCase):
   def test_gpu_bare(self):
     result = parse_accelerator("gpu")
@@ -201,7 +202,7 @@ class TestParseGenericAliases(absltest.TestCase):
     self.assertIsInstance(result, TpuConfig)
     self.assertEqual(result.name, "v4")
     self.assertEqual(result.chips, 4096)
-    
+
   def test_v5e_alias(self):
     result = parse_accelerator("v5e-8")
     self.assertIsInstance(result, TpuConfig)
@@ -217,7 +218,7 @@ class TestParseGenericAliases(absltest.TestCase):
   def test_gpu_unsupported_count(self):
     with self.assertRaisesRegex(ValueError, "No GPU supports count 32"):
       parse_accelerator("gpu-32")
-      
+
   def test_tpu_unsupported_count(self):
     with self.assertRaisesRegex(ValueError, "No TPU supports 8192 chips"):
       parse_accelerator("tpu-8192")

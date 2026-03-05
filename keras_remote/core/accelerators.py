@@ -177,7 +177,16 @@ _TPU_TOPO_RE = re.compile(
 DEFAULT_GPU = "l4"
 DEFAULT_TPU = "v5litepod"
 
-_PREFERRED_GPUS = ["h100", "a100-80gb", "a100", "l4", "v100", "t4", "p100", "p4"]
+_PREFERRED_GPUS = [
+  "h100",
+  "a100-80gb",
+  "a100",
+  "l4",
+  "v100",
+  "t4",
+  "p100",
+  "p4",
+]
 _PREFERRED_TPUS = ["v6e", "v5p", "v5litepod", "v4", "v3", "v2"]
 
 
@@ -221,7 +230,9 @@ def parse_accelerator(accel_str: str) -> Accelerator:
     for tpu_name in _PREFERRED_TPUS:
       if tpu_name in TPUS and chips in TPUS[tpu_name].topologies:
         return make_tpu(tpu_name, chips)
-    valid_chips = sorted(set(c for spec in TPUS.values() for c in spec.topologies))
+    valid_chips = sorted(
+      set(c for spec in TPUS.values() for c in spec.topologies)
+    )
     raise ValueError(
       f"No TPU supports {chips} chips. Supported chip counts across all TPUs: {valid_chips}"
     )
