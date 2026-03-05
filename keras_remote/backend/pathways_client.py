@@ -2,6 +2,7 @@
 
 import time
 
+from absl import logging
 from kubernetes import client
 from kubernetes.client.rest import ApiException
 
@@ -13,9 +14,6 @@ from keras_remote.backend.gke_client import (
 )
 from keras_remote.backend.log_streaming import LogStreamer
 from keras_remote.core import accelerators
-from keras_remote.infra import infra
-
-logger = infra.logger
 
 LWS_GROUP = "leaderworkerset.x-k8s.io"
 LWS_VERSION = "v1"
@@ -40,7 +38,7 @@ def _get_lws_version(group=LWS_GROUP):
     # If we didn't find the group, raise ApiException to fallback
     raise ApiException(status=404, reason=f"API group {group} not found")
   except ApiException:
-    logger.warning(
+    logging.warning(
       "Failed to retrieve LWS API version from cluster. Defaulting to '%s'",
       LWS_VERSION,
     )
@@ -108,8 +106,8 @@ def submit_pathways_job(
       plural=LWS_PLURAL,
       body=lws_manifest,
     )
-    logger.info(f"Submitted Pathways job (LWS): {job_name}")
-    logger.info(
+    logging.info(f"Submitted Pathways job (LWS): {job_name}")
+    logging.info(
       "View job with: kubectl get %s %s -n %s", LWS_PLURAL, job_name, namespace
     )
     return created_lws
@@ -150,11 +148,11 @@ def wait_for_job(job_id, namespace="default", timeout=3600, poll_interval=10):
       try:
         pod = core_v1.read_namespaced_pod(leader_pod_name, namespace)
         if not logged_running:
-          logger.info(f"Found pod: {leader_pod_name}")
+          logging.info(f"Found pod: {leader_pod_name}")
           logged_running = True
 
         if pod.status.phase == "Succeeded":
-          logger.info(f"[REMOTE] Job {job_name} completed successfully")
+          logging.info(f"[REMOTE] Job {job_name} completed successfully")
           return "success"
 
         if pod.status.phase == "Failed":
@@ -163,7 +161,7 @@ def wait_for_job(job_id, namespace="default", timeout=3600, poll_interval=10):
 
         elif pod.status.phase == "Pending":
           _check_pod_scheduling(core_v1, job_name, namespace)
-          logger.debug("Pod is Pending...")
+          logging.debug("Pod is Pending...")
 
         elif pod.status.phase == "Running":
           streamer.start(leader_pod_name)
@@ -183,7 +181,7 @@ def wait_for_job(job_id, namespace="default", timeout=3600, poll_interval=10):
         # Check current state
         if container_status.state.terminated:
           if container_status.state.terminated.exit_code == 0:
-            logger.info(f"[REMOTE] Job {job_name} completed successfully")
+            logging.info(f"[REMOTE] Job {job_name} completed successfully")
             return "success"
           else:
             _print_pod_logs(core_v1, job_name, namespace)
@@ -195,7 +193,7 @@ def wait_for_job(job_id, namespace="default", timeout=3600, poll_interval=10):
         # Check last state (in case it restarted)
         if container_status.last_state.terminated:
           if container_status.last_state.terminated.exit_code == 0:
-            logger.info(
+            logging.info(
               f"[REMOTE] Job {job_name} completed successfully (restarted)"
             )
             return "success"
@@ -223,13 +221,13 @@ def cleanup_job(job_name, namespace="default"):
       plural=LWS_PLURAL,
       name=job_name,
     )
-    logger.info(f"Deleted LeaderWorkerSet: {job_name}")
+    logging.info(f"Deleted LeaderWorkerSet: {job_name}")
   except ApiException as e:
     if e.status == 404:
       # Job already deleted
       pass
     else:
-      logger.warning(
+      logging.warning(
         "Failed to delete LeaderWorkerSet %s: %s",
         job_name,
         e.reason,

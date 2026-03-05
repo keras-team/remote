@@ -6,6 +6,9 @@ resolves to a plain filesystem path — the user's function only sees paths.
 
 import hashlib
 import os
+import posixpath
+
+from absl import logging
 
 
 class Data:
@@ -20,6 +23,14 @@ class Data:
       path: Local file/directory path (absolute or relative) or GCS URI
             (``gs://bucket/prefix``).
 
+  .. note::
+
+      For GCS URIs, a trailing slash indicates a directory (prefix).
+      ``Data("gs://my-bucket/dataset/")`` is treated as a directory,
+      while ``Data("gs://my-bucket/dataset")`` is treated as a single
+      object. If you intend to reference a GCS directory, always
+      include the trailing slash.
+
   Examples::
 
       # Local directory
@@ -28,14 +39,20 @@ class Data:
       # Local file
       Data("./config.json")
 
-      # GCS URI
+      # GCS directory — trailing slash required
       Data("gs://my-bucket/datasets/imagenet/")
+
+      # GCS single object
+      Data("gs://my-bucket/datasets/weights.h5")
   """
 
   def __init__(self, path: str):
+    if not path:
+      raise ValueError("Data path must not be empty")
     self._raw_path = path
     if self.is_gcs:
       self._resolved_path = path
+      _warn_if_missing_trailing_slash(path)
     else:
       self._resolved_path = os.path.abspath(os.path.expanduser(path))
       if not os.path.exists(self._resolved_path):
@@ -63,10 +80,11 @@ class Data:
 
     Includes a type prefix ("dir:" or "file:") to prevent collisions
     between a single file and a directory containing only that file.
-    Symlinks are not followed (followlinks=False) to ensure
-    deterministic hashing and prevent circular symlink infinite
-    recursion. Users with symlinked data should pass the resolved
-    target path.
+
+    Symlinked directories are not recursed into (followlinks=False)
+    to prevent infinite recursion from circular symlinks. Symlinked
+    files are read and their resolved contents are hashed, so the
+    hash reflects the actual data visible at runtime.
     """
     if self.is_gcs:
       raise ValueError("Cannot compute content hash for GCS URI")
@@ -80,15 +98,18 @@ class Data:
           fpath = os.path.join(root, fname)
           relpath = os.path.relpath(fpath, self._resolved_path)
           h.update(relpath.encode("utf-8"))
+          h.update(b"\0")
           with open(fpath, "rb") as f:
             while True:
               chunk = f.read(65536)  # 64 KB chunks
               if not chunk:
                 break
               h.update(chunk)
+          h.update(b"\0")
     else:
       h.update(b"file:")
       h.update(os.path.basename(self._resolved_path).encode("utf-8"))
+      h.update(b"\0")
       with open(self._resolved_path, "rb") as f:
         while True:
           chunk = f.read(65536)
@@ -99,6 +120,23 @@ class Data:
 
   def __repr__(self):
     return f"Data({self._raw_path!r})"
+
+
+def _warn_if_missing_trailing_slash(path: str) -> None:
+  """Log a warning if a GCS path looks like a directory but has no trailing slash."""
+  if path.endswith("/"):
+    return
+  gcs_path = path.split("//", 1)[1]  # strip gs://
+  last_segment = posixpath.basename(gcs_path)
+  if last_segment and "." not in last_segment:
+    logging.warning(
+      "GCS path %r does not end with '/' but the last segment "
+      "(%r) has no file extension. If this is a directory "
+      "(prefix), add a trailing slash: %r",
+      path,
+      last_segment,
+      path + "/",
+    )
 
 
 def _make_data_ref(

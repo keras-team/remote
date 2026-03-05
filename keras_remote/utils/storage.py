@@ -139,6 +139,7 @@ def upload_data(
     return data.path
 
   content_hash = data.content_hash()
+  namespace_prefix = namespace_prefix.strip("/")
   cache_prefix = f"{namespace_prefix}/data-cache/{content_hash}"
 
   project = project or get_default_project()
@@ -207,6 +208,6 @@ def _upload_directory(
   for root, _dirs, files in os.walk(local_dir):
     for fname in files:
       local_path = os.path.join(root, fname)
-      rel_path = os.path.relpath(local_path, local_dir)
+      rel_path = os.path.relpath(local_path, local_dir).replace(os.sep, "/")
       blob = bucket.blob(f"{gcs_prefix}/{rel_path}")
       blob.upload_from_filename(local_path)

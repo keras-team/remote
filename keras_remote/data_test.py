@@ -49,6 +49,10 @@ class TestDataConstructor(absltest.TestCase):
     self.assertTrue(d.is_gcs)
     self.assertFalse(d.is_dir)
 
+  def test_empty_path_raises(self):
+    with self.assertRaises(ValueError):
+      Data("")
+
   def test_nonexistent_path_raises(self):
     with self.assertRaises(FileNotFoundError) as cm:
       Data("/nonexistent/path/to/data")
@@ -155,6 +159,46 @@ class TestContentHash(absltest.TestCase):
     h = Data(str(d)).content_hash()
     self.assertIsInstance(h, str)
     self.assertEqual(len(h), 64)
+
+  def test_filename_content_boundary(self):
+    """Filename/content collisions must produce different hashes.
+
+    Without a delimiter, file "a" with content "bc" and file "ab" with
+    content "c" would both hash the byte sequence "abc".
+    """
+    tmp = _make_temp_path(self)
+    d1 = tmp / "dir1"
+    d1.mkdir()
+    (d1 / "a").write_text("bc")
+
+    d2 = tmp / "dir2"
+    d2.mkdir()
+    (d2 / "ab").write_text("c")
+
+    self.assertNotEqual(
+      Data(str(d1)).content_hash(), Data(str(d2)).content_hash()
+    )
+
+  def test_file_boundary_across_entries(self):
+    """Consecutive file entries must not collide.
+
+    Without a delimiter between entries, two files ["x" -> "y", "z" -> ""]
+    and ["x" -> "", "yz" -> ""] would produce the same hash input.
+    """
+    tmp = _make_temp_path(self)
+    d1 = tmp / "dir1"
+    d1.mkdir()
+    (d1 / "x").write_text("y")
+    (d1 / "z").write_text("")
+
+    d2 = tmp / "dir2"
+    d2.mkdir()
+    (d2 / "x").write_text("")
+    (d2 / "yz").write_text("")
+
+    self.assertNotEqual(
+      Data(str(d1)).content_hash(), Data(str(d2)).content_hash()
+    )
 
   def test_path_included_in_hash(self):
     """Files with same content but different names produce different
