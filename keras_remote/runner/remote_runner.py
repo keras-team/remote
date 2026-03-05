@@ -154,7 +154,7 @@ def resolve_data_refs(args, kwargs, storage_client):
     if isinstance(obj, dict) and obj.get("__data_ref__"):
       # Volume-mounted data refs are handled by Kubernetes, skip download
       if obj.get("mount_path") is not None:
-        return obj
+        return obj["mount_path"]
       local_dir = os.path.join(DATA_DIR, str(counter))
       counter += 1
       _download_data(obj, local_dir, storage_client)
