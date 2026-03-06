@@ -106,6 +106,82 @@ class TestNsCreate(absltest.TestCase):
       self.assertIn("already exists", result.output)
 
 
+class TestNsCreateIgnoreIamErrors(absltest.TestCase):
+  def test_partial_success_with_flag(self):
+    """When --ignore-iam-errors is set and update fails, report partial success."""
+    with (
+      mock.patch(
+        "keras_remote.cli.commands.ns._load_state",
+        return_value=("proj", "us-central1-a", "cluster", [], []),
+      ),
+      mock.patch(
+        "keras_remote.cli.commands.ns._apply_update",
+        return_value=False,
+      ),
+    ):
+      from click.testing import CliRunner
+
+      from keras_remote.cli.commands.ns import ns
+
+      runner = CliRunner()
+      result = runner.invoke(
+        ns,
+        ["create", "team-nlp", "--ignore-iam-errors", "-y"],
+      )
+      self.assertEqual(result.exit_code, 0, msg=result.output)
+      self.assertIn("Created With Warnings", result.output)
+      self.assertIn("namespace", result.output.lower())
+
+  def test_hard_failure_without_flag(self):
+    """Without --ignore-iam-errors, update failure reports hard failure."""
+    with (
+      mock.patch(
+        "keras_remote.cli.commands.ns._load_state",
+        return_value=("proj", "us-central1-a", "cluster", [], []),
+      ),
+      mock.patch(
+        "keras_remote.cli.commands.ns._apply_update",
+        return_value=False,
+      ),
+    ):
+      from click.testing import CliRunner
+
+      from keras_remote.cli.commands.ns import ns
+
+      runner = CliRunner()
+      result = runner.invoke(
+        ns,
+        ["create", "team-nlp", "-y"],
+      )
+      self.assertEqual(result.exit_code, 0, msg=result.output)
+      self.assertIn("Creation Failed", result.output)
+
+  def test_normal_success_with_flag(self):
+    """When --ignore-iam-errors is set but update succeeds, report normal success."""
+    with (
+      mock.patch(
+        "keras_remote.cli.commands.ns._load_state",
+        return_value=("proj", "us-central1-a", "cluster", [], []),
+      ),
+      mock.patch(
+        "keras_remote.cli.commands.ns._apply_update",
+        return_value=True,
+      ),
+    ):
+      from click.testing import CliRunner
+
+      from keras_remote.cli.commands.ns import ns
+
+      runner = CliRunner()
+      result = runner.invoke(
+        ns,
+        ["create", "team-nlp", "--ignore-iam-errors", "-y"],
+      )
+      self.assertEqual(result.exit_code, 0, msg=result.output)
+      self.assertIn("Namespace Created", result.output)
+      self.assertNotIn("Warnings", result.output)
+
+
 class TestNsDelete(absltest.TestCase):
   def test_removes_namespace(self):
     """Verify ns delete removes the namespace from config."""

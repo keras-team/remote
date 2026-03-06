@@ -531,5 +531,89 @@ class TestResourcesImport(absltest.TestCase):
         self.assertIsNone(call.kwargs.get("import_"))
 
 
+class TestNamespaceIAMDependsOnK8s(absltest.TestCase):
+  """Verify IAM resources are ordered after K8s resources via depends_on."""
+
+  def test_gcp_sa_depends_on_k8s_namespace(self):
+    """The GCP SA must depend on the K8s namespace resource."""
+    from keras_remote.cli.config import NamespaceConfig
+
+    ns_config = NamespaceConfig(name="team-nlp")
+    config = _make_config(namespaces=[ns_config])
+
+    # Track depends_on args passed to ResourceOptions.
+    def track_opts(**kwargs):
+      ro = mock.MagicMock()
+      ro._test_depends_on = kwargs.get("depends_on", [])
+      return ro
+
+    with (
+      mock.patch.object(program, "pulumi") as pulumi_mock,
+      mock.patch.object(program, "gcp") as gcp_mock,
+      mock.patch.object(program, "k8s") as k8s_mock,
+    ):
+      pulumi_mock.ResourceOptions.side_effect = track_opts
+      program.create_program(config)()
+
+      k8s_ns = k8s_mock.core.v1.Namespace.return_value
+
+      sa_call = gcp_mock.serviceaccount.Account.call_args
+      sa_opts = sa_call.kwargs["opts"]
+      self.assertIn(k8s_ns, sa_opts._test_depends_on)
+
+  def test_gcp_sa_depends_on_k8s_network_policy(self):
+    """The GCP SA must depend on the K8s NetworkPolicy resource."""
+    from keras_remote.cli.config import NamespaceConfig
+
+    ns_config = NamespaceConfig(name="team-nlp")
+    config = _make_config(namespaces=[ns_config])
+
+    def track_opts(**kwargs):
+      ro = mock.MagicMock()
+      ro._test_depends_on = kwargs.get("depends_on", [])
+      return ro
+
+    with (
+      mock.patch.object(program, "pulumi") as pulumi_mock,
+      mock.patch.object(program, "gcp") as gcp_mock,
+      mock.patch.object(program, "k8s") as k8s_mock,
+    ):
+      pulumi_mock.ResourceOptions.side_effect = track_opts
+      program.create_program(config)()
+
+      netpol = k8s_mock.networking.v1.NetworkPolicy.return_value
+
+      sa_call = gcp_mock.serviceaccount.Account.call_args
+      sa_opts = sa_call.kwargs["opts"]
+      self.assertIn(netpol, sa_opts._test_depends_on)
+
+  def test_member_iam_depends_on_k8s_resources(self):
+    """Per-member IAM resources must depend on K8s resources."""
+    from keras_remote.cli.config import NamespaceConfig
+
+    ns_config = NamespaceConfig(name="team-nlp", members=["alice@co.com"])
+    config = _make_config(namespaces=[ns_config])
+
+    def track_opts(**kwargs):
+      ro = mock.MagicMock()
+      ro._test_depends_on = kwargs.get("depends_on", [])
+      return ro
+
+    with (
+      mock.patch.object(program, "pulumi") as pulumi_mock,
+      mock.patch.object(program, "gcp") as gcp_mock,
+      mock.patch.object(program, "k8s") as k8s_mock,
+    ):
+      pulumi_mock.ResourceOptions.side_effect = track_opts
+      program.create_program(config)()
+
+      k8s_ns = k8s_mock.core.v1.Namespace.return_value
+
+      # Per-member Cloud Build IAM
+      cb_call = gcp_mock.projects.IAMMember.call_args
+      cb_opts = cb_call.kwargs["opts"]
+      self.assertIn(k8s_ns, cb_opts._test_depends_on)
+
+
 if __name__ == "__main__":
   absltest.main()

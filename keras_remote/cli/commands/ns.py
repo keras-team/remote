@@ -161,6 +161,11 @@ def ns():
 @click.option("--max-jobs", type=int, default=None, help="Max concurrent Jobs")
 @click.option("--max-lws", type=int, default=None, help="Max concurrent LWS")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
+@click.option(
+  "--ignore-iam-errors",
+  is_flag=True,
+  help="Continue even if IAM operations fail (e.g. 403 permission errors)",
+)
 def ns_create(
   project,
   zone,
@@ -174,6 +179,7 @@ def ns_create(
   max_jobs,
   max_lws,
   yes,
+  ignore_iam_errors,
 ):
   """Create a namespace with isolation resources."""
   banner("keras-remote Namespace Create")
@@ -225,6 +231,20 @@ def ns_create(
   console.print()
   if ok:
     banner("Namespace Created")
+    console.print(
+      f"\nMembers can now use: "
+      f'[bold]@keras_remote.run(namespace="{name}")[/bold]'
+    )
+    console.print(
+      f"Or set: [bold]export KERAS_REMOTE_NAMESPACE={name}[/bold]\n"
+    )
+  elif ignore_iam_errors:
+    banner("Namespace Created With Warnings")
+    warning(
+      "Some IAM resources failed to provision (see errors above).\n"
+      "  K8s namespace and isolation resources were created.\n"
+      "  Re-run without --ignore-iam-errors once permissions are fixed."
+    )
     console.print(
       f"\nMembers can now use: "
       f'[bold]@keras_remote.run(namespace="{name}")[/bold]'

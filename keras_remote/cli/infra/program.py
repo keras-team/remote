@@ -342,51 +342,59 @@ def _create_namespace_resources(
     provider=k8s_provider, depends_on=[namespace]
   )
 
+  # Collect K8s resources so IAM resources can depend on them,
+  # ensuring K8s objects are fully created before IAM is attempted.
+  k8s_resources = [namespace]
+
   # K8s ServiceAccount with Workload Identity annotation
-  k8s.core.v1.ServiceAccount(
-    f"sa-{ns_name}",
-    metadata=k8s.meta.v1.ObjectMetaArgs(
-      name=f"{ns_name}-runner",
-      namespace=ns_name,
-      annotations={
-        "iam.gke.io/gcp-service-account": (
-          f"kr-{ns_name}@{project_id}.iam.gserviceaccount.com"
-        ),
-      },
-    ),
-    opts=ns_opts,
+  k8s_resources.append(
+    k8s.core.v1.ServiceAccount(
+      f"sa-{ns_name}",
+      metadata=k8s.meta.v1.ObjectMetaArgs(
+        name=f"{ns_name}-runner",
+        namespace=ns_name,
+        annotations={
+          "iam.gke.io/gcp-service-account": (
+            f"kr-{ns_name}@{project_id}.iam.gserviceaccount.com"
+          ),
+        },
+      ),
+      opts=ns_opts,
+    )
   )
 
   # K8s Role
-  k8s.rbac.v1.Role(
-    f"role-{ns_name}",
-    metadata=k8s.meta.v1.ObjectMetaArgs(
-      name="keras-remote-runner",
-      namespace=ns_name,
-    ),
-    rules=[
-      k8s.rbac.v1.PolicyRuleArgs(
-        api_groups=["batch"],
-        resources=["jobs"],
-        verbs=["create", "get", "list", "watch", "delete"],
+  k8s_resources.append(
+    k8s.rbac.v1.Role(
+      f"role-{ns_name}",
+      metadata=k8s.meta.v1.ObjectMetaArgs(
+        name="keras-remote-runner",
+        namespace=ns_name,
       ),
-      k8s.rbac.v1.PolicyRuleArgs(
-        api_groups=["leaderworkerset.x-k8s.io"],
-        resources=["leaderworkersets"],
-        verbs=["create", "get", "list", "watch", "delete"],
-      ),
-      k8s.rbac.v1.PolicyRuleArgs(
-        api_groups=[""],
-        resources=["pods", "pods/log"],
-        verbs=["get", "list", "watch"],
-      ),
-      k8s.rbac.v1.PolicyRuleArgs(
-        api_groups=[""],
-        resources=["resourcequotas"],
-        verbs=["get"],
-      ),
-    ],
-    opts=ns_opts,
+      rules=[
+        k8s.rbac.v1.PolicyRuleArgs(
+          api_groups=["batch"],
+          resources=["jobs"],
+          verbs=["create", "get", "list", "watch", "delete"],
+        ),
+        k8s.rbac.v1.PolicyRuleArgs(
+          api_groups=["leaderworkerset.x-k8s.io"],
+          resources=["leaderworkersets"],
+          verbs=["create", "get", "list", "watch", "delete"],
+        ),
+        k8s.rbac.v1.PolicyRuleArgs(
+          api_groups=[""],
+          resources=["pods", "pods/log"],
+          verbs=["get", "list", "watch"],
+        ),
+        k8s.rbac.v1.PolicyRuleArgs(
+          api_groups=[""],
+          resources=["resourcequotas"],
+          verbs=["get"],
+        ),
+      ],
+      opts=ns_opts,
+    )
   )
 
   # K8s RoleBindings for each member
@@ -400,25 +408,27 @@ def _create_namespace_resources(
       subject_kind = "User"
       subject_name = member.removeprefix("user:")
 
-    k8s.rbac.v1.RoleBinding(
-      f"rb-{ns_name}-{sanitized}",
-      metadata=k8s.meta.v1.ObjectMetaArgs(
-        name=f"{ns_name}-member-{sanitized}",
-        namespace=ns_name,
-      ),
-      subjects=[
-        k8s.rbac.v1.SubjectArgs(
-          kind=subject_kind,
-          name=subject_name,
+    k8s_resources.append(
+      k8s.rbac.v1.RoleBinding(
+        f"rb-{ns_name}-{sanitized}",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+          name=f"{ns_name}-member-{sanitized}",
+          namespace=ns_name,
+        ),
+        subjects=[
+          k8s.rbac.v1.SubjectArgs(
+            kind=subject_kind,
+            name=subject_name,
+            api_group="rbac.authorization.k8s.io",
+          )
+        ],
+        role_ref=k8s.rbac.v1.RoleRefArgs(
+          kind="Role",
+          name="keras-remote-runner",
           api_group="rbac.authorization.k8s.io",
-        )
-      ],
-      role_ref=k8s.rbac.v1.RoleRefArgs(
-        kind="Role",
-        name="keras-remote-runner",
-        api_group="rbac.authorization.k8s.io",
-      ),
-      opts=ns_opts,
+        ),
+        opts=ns_opts,
+      )
     )
 
   # K8s ResourceQuota
@@ -443,91 +453,100 @@ def _create_namespace_resources(
     )
 
   if hard:
-    k8s.core.v1.ResourceQuota(
-      f"quota-{ns_name}",
-      metadata=k8s.meta.v1.ObjectMetaArgs(
-        name=f"{ns_name}-quota",
-        namespace=ns_name,
-      ),
-      spec=k8s.core.v1.ResourceQuotaSpecArgs(hard=hard),
-      opts=ns_opts,
+    k8s_resources.append(
+      k8s.core.v1.ResourceQuota(
+        f"quota-{ns_name}",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+          name=f"{ns_name}-quota",
+          namespace=ns_name,
+        ),
+        spec=k8s.core.v1.ResourceQuotaSpecArgs(hard=hard),
+        opts=ns_opts,
+      )
     )
 
   # K8s NetworkPolicy
-  k8s.networking.v1.NetworkPolicy(
-    f"netpol-{ns_name}",
-    metadata=k8s.meta.v1.ObjectMetaArgs(
-      name="namespace-isolation",
-      namespace=ns_name,
-    ),
-    spec=k8s.networking.v1.NetworkPolicySpecArgs(
-      pod_selector=k8s.meta.v1.LabelSelectorArgs(),
-      policy_types=["Ingress", "Egress"],
-      ingress=[
-        k8s.networking.v1.NetworkPolicyIngressRuleArgs(
-          from_=[
-            k8s.networking.v1.NetworkPolicyPeerArgs(
-              pod_selector=k8s.meta.v1.LabelSelectorArgs(),
-            )
-          ],
-        )
-      ],
-      egress=[
-        # Intra-namespace
-        k8s.networking.v1.NetworkPolicyEgressRuleArgs(
-          to=[
-            k8s.networking.v1.NetworkPolicyPeerArgs(
-              pod_selector=k8s.meta.v1.LabelSelectorArgs(),
-            )
-          ],
-        ),
-        # HTTPS egress (GCS, AR, pip)
-        k8s.networking.v1.NetworkPolicyEgressRuleArgs(
-          to=[
-            k8s.networking.v1.NetworkPolicyPeerArgs(
-              ip_block=k8s.networking.v1.IPBlockArgs(cidr="0.0.0.0/0"),
-            )
-          ],
-          ports=[
-            k8s.networking.v1.NetworkPolicyPortArgs(protocol="TCP", port=443)
-          ],
-        ),
-        # DNS to kube-system
-        k8s.networking.v1.NetworkPolicyEgressRuleArgs(
-          to=[
-            k8s.networking.v1.NetworkPolicyPeerArgs(
-              namespace_selector=k8s.meta.v1.LabelSelectorArgs(
-                match_labels={"kubernetes.io/metadata.name": "kube-system"},
-              ),
-            )
-          ],
-          ports=[
-            k8s.networking.v1.NetworkPolicyPortArgs(protocol="UDP", port=53)
-          ],
-        ),
-        # GKE metadata server (Workload Identity)
-        k8s.networking.v1.NetworkPolicyEgressRuleArgs(
-          to=[
-            k8s.networking.v1.NetworkPolicyPeerArgs(
-              ip_block=k8s.networking.v1.IPBlockArgs(cidr="169.254.169.254/32"),
-            )
-          ],
-          ports=[
-            k8s.networking.v1.NetworkPolicyPortArgs(protocol="TCP", port=80)
-          ],
-        ),
-      ],
-    ),
-    opts=ns_opts,
+  k8s_resources.append(
+    k8s.networking.v1.NetworkPolicy(
+      f"netpol-{ns_name}",
+      metadata=k8s.meta.v1.ObjectMetaArgs(
+        name="namespace-isolation",
+        namespace=ns_name,
+      ),
+      spec=k8s.networking.v1.NetworkPolicySpecArgs(
+        pod_selector=k8s.meta.v1.LabelSelectorArgs(),
+        policy_types=["Ingress", "Egress"],
+        ingress=[
+          k8s.networking.v1.NetworkPolicyIngressRuleArgs(
+            from_=[
+              k8s.networking.v1.NetworkPolicyPeerArgs(
+                pod_selector=k8s.meta.v1.LabelSelectorArgs(),
+              )
+            ],
+          )
+        ],
+        egress=[
+          # Intra-namespace
+          k8s.networking.v1.NetworkPolicyEgressRuleArgs(
+            to=[
+              k8s.networking.v1.NetworkPolicyPeerArgs(
+                pod_selector=k8s.meta.v1.LabelSelectorArgs(),
+              )
+            ],
+          ),
+          # HTTPS egress (GCS, AR, pip)
+          k8s.networking.v1.NetworkPolicyEgressRuleArgs(
+            to=[
+              k8s.networking.v1.NetworkPolicyPeerArgs(
+                ip_block=k8s.networking.v1.IPBlockArgs(cidr="0.0.0.0/0"),
+              )
+            ],
+            ports=[
+              k8s.networking.v1.NetworkPolicyPortArgs(protocol="TCP", port=443)
+            ],
+          ),
+          # DNS to kube-system
+          k8s.networking.v1.NetworkPolicyEgressRuleArgs(
+            to=[
+              k8s.networking.v1.NetworkPolicyPeerArgs(
+                namespace_selector=k8s.meta.v1.LabelSelectorArgs(
+                  match_labels={"kubernetes.io/metadata.name": "kube-system"},
+                ),
+              )
+            ],
+            ports=[
+              k8s.networking.v1.NetworkPolicyPortArgs(protocol="UDP", port=53)
+            ],
+          ),
+          # GKE metadata server (Workload Identity)
+          k8s.networking.v1.NetworkPolicyEgressRuleArgs(
+            to=[
+              k8s.networking.v1.NetworkPolicyPeerArgs(
+                ip_block=k8s.networking.v1.IPBlockArgs(
+                  cidr="169.254.169.254/32"
+                ),
+              )
+            ],
+            ports=[
+              k8s.networking.v1.NetworkPolicyPortArgs(protocol="TCP", port=80)
+            ],
+          ),
+        ],
+      ),
+      opts=ns_opts,
+    )
   )
 
-  # GCP Service Account
+  # GCP Service Account — depends on all K8s resources so that namespace
+  # isolation is fully established before IAM is attempted.  This lets
+  # --ignore-iam-errors guarantee that K8s objects exist even when IAM
+  # calls fail with 403.
   namespace_sa = gcp.serviceaccount.Account(
     f"sa-gcp-{ns_name}",
     account_id=f"kr-{ns_name}",
     display_name=f"keras-remote runner for {ns_name}",
     project=project_id,
-    opts=pulumi.ResourceOptions(depends_on=depends_on),
+    opts=pulumi.ResourceOptions(depends_on=depends_on + k8s_resources),
   )
 
   # GCS prefix-scoped access via IAM Condition
@@ -587,16 +606,27 @@ def _create_namespace_resources(
   # Per-member build permissions
   for member in ns_config.members:
     _create_member_iam(
-      ns_name, member, project_id, ar_location, builds_bucket_name
+      ns_name,
+      member,
+      project_id,
+      ar_location,
+      builds_bucket_name,
+      extra_depends=k8s_resources,
     )
 
 
 def _create_member_iam(
-  ns_name, member, project_id, ar_location, builds_bucket_name
+  ns_name,
+  member,
+  project_id,
+  ar_location,
+  builds_bucket_name,
+  extra_depends=None,
 ):
   """Grant per-member build permissions (Cloud Build, AR, builds bucket)."""
   sanitized = member.replace("@", "-").replace(".", "-")
   iam_member = f"user:{member}" if ":" not in member else member
+  iam_opts = pulumi.ResourceOptions(depends_on=extra_depends or [])
 
   # Cloud Build editor
   gcp.projects.IAMMember(
@@ -604,6 +634,7 @@ def _create_member_iam(
     project=project_id,
     role="roles/cloudbuild.builds.editor",
     member=iam_member,
+    opts=iam_opts,
   )
 
   # Storage objectAdmin on builds bucket
@@ -612,6 +643,7 @@ def _create_member_iam(
     bucket=builds_bucket_name,
     role="roles/storage.objectAdmin",
     member=iam_member,
+    opts=iam_opts,
   )
 
   # Artifact Registry writer
@@ -622,6 +654,7 @@ def _create_member_iam(
     role="roles/artifactregistry.writer",
     member=iam_member,
     project=project_id,
+    opts=iam_opts,
   )
 
 
