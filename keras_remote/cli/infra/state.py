@@ -119,3 +119,27 @@ def apply_update(config):
     console.print()
     warning(f"Pulumi update encountered an issue: {e}")
     return False
+
+
+def apply_destroy(config):
+  """Destroy all Pulumi-managed resources for the given config.
+
+  Args:
+      config: A fully populated InfraConfig.
+
+  Returns:
+      True if the destroy succeeded, False otherwise.
+  """
+  program = create_program(config)
+  stack = get_stack(program, config)
+
+  console.print("\n[bold]Destroying Pulumi-managed resources...[/bold]\n")
+  try:
+    result = stack.destroy(on_output=print)
+    console.print()
+    success(f"Pulumi destroy complete. {result.summary.resource_changes}")
+    return True
+  except auto.errors.CommandError as e:
+    console.print()
+    warning(f"Pulumi destroy encountered an issue: {e}")
+    return False

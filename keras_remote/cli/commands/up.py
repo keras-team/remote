@@ -12,6 +12,7 @@ from keras_remote.cli.infra.post_deploy import (
   install_lws,
 )
 from keras_remote.cli.infra.state import apply_update, load_state
+from keras_remote.cli.options import common_options
 from keras_remote.cli.output import (
   banner,
   config_summary,
@@ -26,30 +27,12 @@ from keras_remote.core.accelerators import GpuConfig, generate_pool_name
 
 
 @click.command()
-@click.option(
-  "--project",
-  envvar="KERAS_REMOTE_PROJECT",
-  default=None,
-  help="GCP project ID [env: KERAS_REMOTE_PROJECT]",
-)
-@click.option(
-  "--zone",
-  envvar="KERAS_REMOTE_ZONE",
-  default=None,
-  help=(f"GCP zone [env: KERAS_REMOTE_ZONE, default: {DEFAULT_ZONE}]"),
-)
+@common_options
 @click.option(
   "--accelerator",
   default=None,
   help="Accelerator spec: cpu, t4, l4, a100, a100-80gb, h100, "
   "v5litepod, v5p, v6e, v3",
-)
-@click.option(
-  "--cluster",
-  "cluster_name",
-  envvar="KERAS_REMOTE_CLUSTER",
-  default=None,
-  help="GKE cluster name [default: keras-remote-cluster]",
 )
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
 def up(project, zone, accelerator, cluster_name, yes):

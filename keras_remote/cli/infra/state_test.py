@@ -131,5 +131,44 @@ class ApplyUpdateTest(absltest.TestCase):
     self.mock_create.assert_called_once_with(config)
 
 
+class ApplyDestroyTest(absltest.TestCase):
+  def setUp(self):
+    super().setUp()
+    self.mock_create = self.enterContext(
+      mock.patch.object(state, "create_program")
+    )
+    self.mock_get_stack = self.enterContext(
+      mock.patch.object(state, "get_stack")
+    )
+    self.mock_stack = mock.MagicMock()
+    self.mock_stack.destroy.return_value.summary.resource_changes = {
+      "delete": 1
+    }
+    self.mock_get_stack.return_value = self.mock_stack
+
+  def test_success_returns_true(self):
+    config = mock.MagicMock()
+
+    result = state.apply_destroy(config)
+
+    self.assertTrue(result)
+    self.mock_stack.destroy.assert_called_once()
+
+  def test_failure_returns_false(self):
+    self.mock_stack.destroy.side_effect = pulumi_errors.CommandError("failed")
+    config = mock.MagicMock()
+
+    result = state.apply_destroy(config)
+
+    self.assertFalse(result)
+
+  def test_passes_config_to_create_program(self):
+    config = mock.MagicMock()
+
+    state.apply_destroy(config)
+
+    self.mock_create.assert_called_once_with(config)
+
+
 if __name__ == "__main__":
   absltest.main()
