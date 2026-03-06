@@ -105,8 +105,8 @@ During `_prepare_artifacts()`:
 On the remote pod (`remote_runner.py`):
 
 1. `resolve_volumes()` — download volume data to mount paths
-1. `resolve_data_refs()` — recursively resolve `__data_ref__` dicts in args/kwargs to local paths
-1. Single-file `Data` resolves to the file path; directory `Data` resolves to the directory path
+2. `resolve_data_refs()` — recursively resolve `__data_ref__` dicts in args/kwargs to local paths
+3. Single-file `Data` resolves to the file path; directory `Data` resolves to the directory path
 
 ## Conventions
 
