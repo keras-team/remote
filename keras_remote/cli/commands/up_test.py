@@ -9,6 +9,7 @@ from pulumi.automation import errors as pulumi_errors
 
 from keras_remote.cli.commands.up import up
 from keras_remote.cli.config import NodePoolConfig
+from keras_remote.cli.infra.stack_manager import ActiveStackResolution
 from keras_remote.core.accelerators import GpuConfig, TpuConfig
 
 # Shared CLI args that skip interactive prompts.
@@ -39,6 +40,13 @@ _BASE_PATCHES = {
   "install_lws": mock.patch("keras_remote.cli.commands.up.install_lws"),
   "install_gpu_drivers": mock.patch(
     "keras_remote.cli.commands.up.install_gpu_drivers",
+  ),
+  "resolve_from_active_stack": mock.patch(
+    "keras_remote.cli.commands.up.resolve_from_active_stack",
+    return_value=ActiveStackResolution(None, None, None, None),
+  ),
+  "set_active_stack": mock.patch(
+    "keras_remote.cli.commands.up.set_active_stack",
   ),
 }
 
@@ -262,6 +270,39 @@ class UpCommandPoolPreservationTest(absltest.TestCase):
 
     self.assertEqual(result.exit_code, 0, result.output)
     self.assertIn("Setup Complete", result.output)
+
+
+class UpCommandActiveStackTest(absltest.TestCase):
+  """Tests that `up` sets the active stack after success."""
+
+  def setUp(self):
+    super().setUp()
+    self.runner = CliRunner()
+    self.mocks = _start_patches(self)
+
+    mock_stack = mock.MagicMock()
+    mock_stack.up.return_value.summary.resource_changes = {"create": 5}
+    self.mocks["get_stack"].return_value = mock_stack
+
+  def test_sets_active_stack_on_success(self):
+    result = self.runner.invoke(up, _CLI_ARGS)
+
+    self.assertEqual(result.exit_code, 0, result.output)
+    self.mocks["set_active_stack"].assert_called_once_with(
+      "test-project-keras-remote-cluster"
+    )
+
+  def test_sets_active_stack_on_failure(self):
+    self.mocks[
+      "get_stack"
+    ].return_value.up.side_effect = pulumi_errors.CommandError("failed")
+
+    result = self.runner.invoke(up, _CLI_ARGS)
+
+    self.assertEqual(result.exit_code, 0, result.output)
+    self.mocks["set_active_stack"].assert_called_once_with(
+      "test-project-keras-remote-cluster"
+    )
 
 
 if __name__ == "__main__":

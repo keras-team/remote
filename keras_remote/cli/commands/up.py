@@ -16,11 +16,15 @@ from keras_remote.cli.infra.program import create_program
 from keras_remote.cli.infra.stack_manager import (
   get_current_node_pools,
   get_stack,
+  make_stack_name,
+  resolve_from_active_stack,
+  set_active_stack,
 )
 from keras_remote.cli.output import (
   banner,
   config_summary,
   console,
+  show_target_stack,
   success,
   warning,
 )
@@ -64,10 +68,24 @@ def up(project, zone, accelerator, cluster_name, yes):
   # Check prerequisites
   check_all()
 
-  # Resolve configuration
+  # Resolve configuration (CLI/env → active stack → defaults).
+  # The active stack only provides fallback values for project/zone/cluster;
+  # the stack name is always derived via make_stack_name so that passing
+  # e.g. --cluster new-cluster creates a new stack.
+  source = "cli/env" if any([project, zone, cluster_name]) else None
+  if not all([project, zone, cluster_name]):
+    active = resolve_from_active_stack()
+    if not source and any([active.project, active.zone, active.cluster_name]):
+      source = "active stack"
+    project = project or active.project
+    zone = zone or active.zone
+    cluster_name = cluster_name or active.cluster_name
+  if not source:
+    source = "defaults"
   project = project or resolve_project()
   zone = zone or DEFAULT_ZONE
   cluster_name = cluster_name or DEFAULT_CLUSTER_NAME
+  show_target_stack(project, cluster_name, source)
 
   # Resolve accelerator (interactive if not provided)
   if accelerator and accelerator.strip().lower() == "cpu":
@@ -121,6 +139,7 @@ def up(project, zone, accelerator, cluster_name, yes):
     result = stack.up(on_output=print)
     console.print()
     success(f"Pulumi update complete. {result.summary.resource_changes}")
+    set_active_stack(make_stack_name(project, cluster_name))
   except auto.errors.CommandError as e:
     console.print()
     pulumi_failed = True
@@ -130,6 +149,7 @@ def up(project, zone, accelerator, cluster_name, yes):
       f"  {e}\n"
       "Attempting post-deploy configuration anyway..."
     )
+    set_active_stack(make_stack_name(project, cluster_name))
 
   # Post-deploy steps
   console.print("\n[bold]Running post-deploy configuration...[/bold]\n")

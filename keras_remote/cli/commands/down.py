@@ -4,48 +4,42 @@ import click
 import pulumi.automation as auto
 
 from keras_remote.cli.config import InfraConfig
-from keras_remote.cli.constants import DEFAULT_CLUSTER_NAME, DEFAULT_ZONE
 from keras_remote.cli.infra.program import create_program
-from keras_remote.cli.infra.stack_manager import get_stack
-from keras_remote.cli.output import banner, console, success, warning
+from keras_remote.cli.infra.stack_manager import (
+  clear_active_stack,
+  get_stack,
+  remove_stack,
+  require_active_stack,
+)
+from keras_remote.cli.output import (
+  banner,
+  console,
+  show_target_stack,
+  success,
+  warning,
+)
 from keras_remote.cli.prerequisites_check import check_all
-from keras_remote.cli.prompts import resolve_project
 
 
 @click.command()
-@click.option(
-  "--project",
-  envvar="KERAS_REMOTE_PROJECT",
-  default=None,
-  help="GCP project ID [env: KERAS_REMOTE_PROJECT]",
-)
-@click.option(
-  "--zone",
-  envvar="KERAS_REMOTE_ZONE",
-  default=None,
-  help=(f"GCP zone [env: KERAS_REMOTE_ZONE, default: {DEFAULT_ZONE}]"),
-)
-@click.option(
-  "--cluster",
-  "cluster_name",
-  envvar="KERAS_REMOTE_CLUSTER",
-  default=None,
-  help="GKE cluster name [default: keras-remote-cluster]",
-)
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
-def down(project, zone, cluster_name, yes):
+def down(yes):
   """Tear down keras-remote GCP infrastructure."""
   banner("keras-remote Cleanup")
 
   check_all()
 
-  project = project or resolve_project(allow_create=False)
-  zone = zone or DEFAULT_ZONE
-  cluster_name = cluster_name or DEFAULT_CLUSTER_NAME
+  # Stack name always comes from persisted state (set by `up` or `stacks set`).
+  active = require_active_stack()
+  show_target_stack(
+    active.project, active.cluster_name, "active stack", destructive=True
+  )
 
   # Warning
   console.print()
-  warning(f"This will delete ALL keras-remote resources in project: {project}")
+  warning(
+    f"This will delete ALL keras-remote resources in project: {active.project}"
+  )
   console.print()
   console.print("This includes:")
   console.print("  - GKE cluster and node pools")
@@ -59,14 +53,16 @@ def down(project, zone, cluster_name, yes):
 
   console.print()
 
-  config = InfraConfig(project=project, zone=zone, cluster_name=cluster_name)
+  config = InfraConfig(
+    project=active.project,
+    zone=active.zone,
+    cluster_name=active.cluster_name,
+  )
 
   # Pulumi destroy
   try:
-    # Minimal config to load the stack — accelerator is not
-    # needed for destroy since the stack already has its state.
     program = create_program(config)
-    stack = get_stack(program, config)
+    stack = get_stack(program, config, stack_name=active.stack_name)
     console.print("[bold]Destroying Pulumi-managed resources...[/bold]\n")
     result = stack.destroy(on_output=print)
     console.print()
@@ -74,15 +70,21 @@ def down(project, zone, cluster_name, yes):
   except auto.errors.CommandError as e:
     warning(f"Pulumi destroy encountered an issue: {e}")
 
+  # Remove the stack from local state and clear the active pointer.
+  try:
+    remove_stack(active.stack_name)
+  except auto.errors.CommandError:
+    clear_active_stack()
+
   # Summary
   console.print()
   banner("Cleanup Complete")
   console.print()
   console.print("Check manually for remaining resources:")
   console.print(
-    f"  GKE: https://console.cloud.google.com/kubernetes/list?project={project}"
+    f"  GKE: https://console.cloud.google.com/kubernetes/list?project={active.project}"
   )
   console.print(
-    f"  Billing: https://console.cloud.google.com/billing?project={project}"
+    f"  Billing: https://console.cloud.google.com/billing?project={active.project}"
   )
   console.print()

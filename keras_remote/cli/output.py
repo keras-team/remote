@@ -29,6 +29,23 @@ def error(msg):
   console.print(f"[red]{msg}[/red]")
 
 
+def show_target_stack(project, cluster_name, source, *, destructive=False):
+  """Print which stack the command is targeting.
+
+  Args:
+      project: GCP project ID.
+      cluster_name: GKE cluster name.
+      source: How the values were resolved, e.g. ``"cli"``,
+          ``"env"``, ``"active stack"``, or ``"defaults"``.
+      destructive: Use bold styling for destructive operations.
+  """
+  label = f"Stack: {project}-{cluster_name} (from {source})"
+  if destructive:
+    console.print(f"[bold yellow]{label}[/bold yellow]")
+  else:
+    console.print(f"[dim]{label}[/dim]")
+
+
 _INFRA_LABELS = {
   "project": "Project",
   "zone": "Zone",

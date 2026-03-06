@@ -4,56 +4,23 @@ import click
 import pulumi.automation as auto
 
 from keras_remote.cli.config import InfraConfig, NodePoolConfig
-from keras_remote.cli.constants import DEFAULT_CLUSTER_NAME, DEFAULT_ZONE
 from keras_remote.cli.infra.program import create_program
 from keras_remote.cli.infra.stack_manager import (
   get_current_node_pools,
   get_stack,
+  require_active_stack,
 )
 from keras_remote.cli.output import (
   banner,
   console,
   infrastructure_state,
+  show_target_stack,
   success,
   warning,
 )
 from keras_remote.cli.prerequisites_check import check_all
-from keras_remote.cli.prompts import resolve_project
 from keras_remote.core import accelerators
 from keras_remote.core.accelerators import generate_pool_name
-
-
-def _common_options(f):
-  """Shared options for pool subcommands."""
-  f = click.option(
-    "--project",
-    envvar="KERAS_REMOTE_PROJECT",
-    default=None,
-    help="GCP project ID [env: KERAS_REMOTE_PROJECT]",
-  )(f)
-  f = click.option(
-    "--zone",
-    envvar="KERAS_REMOTE_ZONE",
-    default=None,
-    help=f"GCP zone [env: KERAS_REMOTE_ZONE, default: {DEFAULT_ZONE}]",
-  )(f)
-  f = click.option(
-    "--cluster",
-    "cluster_name",
-    envvar="KERAS_REMOTE_CLUSTER",
-    default=None,
-    help="GKE cluster name [default: keras-remote-cluster]",
-  )(f)
-  return f
-
-
-def _resolve_common(project, zone, cluster_name):
-  """Resolve common options to concrete values."""
-  return (
-    project or resolve_project(),
-    zone or DEFAULT_ZONE,
-    cluster_name or DEFAULT_CLUSTER_NAME,
-  )
 
 
 @click.group()
@@ -61,17 +28,19 @@ def pool():
   """Manage accelerator node pools."""
 
 
-def _load_pools(project, zone, cluster_name):
+def _load_pools():
   """Check prerequisites, refresh stack state, and return existing pools."""
   check_all()
-  project, zone, cluster_name = _resolve_common(project, zone, cluster_name)
+  active = require_active_stack()
+  project, zone, cluster_name, active_stack_name = active
+  show_target_stack(project, cluster_name, "active stack")
 
   base_config = InfraConfig(
     project=project, zone=zone, cluster_name=cluster_name
   )
   try:
     program = create_program(base_config)
-    stack = get_stack(program, base_config)
+    stack = get_stack(program, base_config, stack_name=active_stack_name)
   except auto.errors.CommandError as e:
     raise click.ClickException(
       f"No Pulumi stack found for project '{project}': {e}\n"
@@ -85,10 +54,12 @@ def _load_pools(project, zone, cluster_name):
     warning(f"Failed to refresh stack state: {e}")
 
   existing_pools = get_current_node_pools(stack)
-  return project, zone, cluster_name, existing_pools
+  return project, zone, cluster_name, active_stack_name, existing_pools
 
 
-def _apply_pool_update(project, zone, cluster_name, node_pools):
+def _apply_pool_update(
+  project, zone, cluster_name, active_stack_name, node_pools
+):
   """Run a Pulumi update with the given node pool list.
 
   Returns:
@@ -101,7 +72,7 @@ def _apply_pool_update(project, zone, cluster_name, node_pools):
     node_pools=node_pools,
   )
   program = create_program(config)
-  stack = get_stack(program, config)
+  stack = get_stack(program, config, stack_name=active_stack_name)
 
   console.print("\n[bold]Updating infrastructure...[/bold]\n")
   try:
@@ -116,7 +87,6 @@ def _apply_pool_update(project, zone, cluster_name, node_pools):
 
 
 @pool.command("add")
-@_common_options
 @click.option(
   "--accelerator",
   required=True,
@@ -124,7 +94,7 @@ def _apply_pool_update(project, zone, cluster_name, node_pools):
   "v5litepod, v5p, v6e, v3 (with optional count/topology)",
 )
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
-def pool_add(project, zone, cluster_name, accelerator, yes):
+def pool_add(accelerator, yes):
   """Add an accelerator node pool to the cluster."""
   banner("keras-remote Pool Add")
 
@@ -143,9 +113,7 @@ def pool_add(project, zone, cluster_name, accelerator, yes):
   new_pool_name = generate_pool_name(accel_config)
   new_pool = NodePoolConfig(new_pool_name, accel_config)
 
-  project, zone, cluster_name, existing_pools = _load_pools(
-    project, zone, cluster_name
-  )
+  project, zone, cluster_name, active_stack_name, existing_pools = _load_pools()
   all_pools = existing_pools + [new_pool]
 
   console.print(f"\nAdding pool [bold]{new_pool_name}[/bold] ({accelerator})")
@@ -154,7 +122,9 @@ def pool_add(project, zone, cluster_name, accelerator, yes):
   if not yes:
     click.confirm("Proceed?", abort=True)
 
-  update_succeeded = _apply_pool_update(project, zone, cluster_name, all_pools)
+  update_succeeded = _apply_pool_update(
+    project, zone, cluster_name, active_stack_name, all_pools
+  )
 
   console.print()
   if update_succeeded:
@@ -170,16 +140,13 @@ def pool_add(project, zone, cluster_name, accelerator, yes):
 
 
 @pool.command("remove")
-@_common_options
 @click.argument("pool_name")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
-def pool_remove(project, zone, cluster_name, pool_name, yes):
+def pool_remove(pool_name, yes):
   """Remove an accelerator node pool from the cluster."""
   banner("keras-remote Pool Remove")
 
-  project, zone, cluster_name, existing_pools = _load_pools(
-    project, zone, cluster_name
-  )
+  project, zone, cluster_name, active_stack_name, existing_pools = _load_pools()
 
   remaining = [p for p in existing_pools if p.name != pool_name]
   if len(remaining) == len(existing_pools):
@@ -195,7 +162,9 @@ def pool_remove(project, zone, cluster_name, pool_name, yes):
   if not yes:
     click.confirm("Proceed?", abort=True)
 
-  update_succeeded = _apply_pool_update(project, zone, cluster_name, remaining)
+  update_succeeded = _apply_pool_update(
+    project, zone, cluster_name, active_stack_name, remaining
+  )
 
   console.print()
   if update_succeeded:
@@ -211,23 +180,25 @@ def pool_remove(project, zone, cluster_name, pool_name, yes):
 
 
 @pool.command("list")
-@_common_options
-def pool_list(project, zone, cluster_name):
+def pool_list():
   """List accelerator node pools on the cluster."""
   banner("keras-remote Node Pools")
 
   check_all()
-  project, zone, cluster_name = _resolve_common(project, zone, cluster_name)
+  active = require_active_stack()
+  show_target_stack(active.project, active.cluster_name, "active stack")
 
   base_config = InfraConfig(
-    project=project, zone=zone, cluster_name=cluster_name
+    project=active.project,
+    zone=active.zone,
+    cluster_name=active.cluster_name,
   )
 
   try:
     program = create_program(base_config)
-    stack = get_stack(program, base_config)
+    stack = get_stack(program, base_config, stack_name=active.stack_name)
   except auto.errors.CommandError as e:
-    warning(f"No Pulumi stack found for project '{project}': {e}")
+    warning(f"No Pulumi stack found: {e}")
     console.print("Run 'keras-remote up' to provision infrastructure.")
     return
 

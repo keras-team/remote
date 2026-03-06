@@ -2,12 +2,14 @@
 
 from unittest import mock
 
+import click
 from absl.testing import absltest
 from click.testing import CliRunner
 from pulumi.automation import errors as pulumi_errors
 
 from keras_remote.cli.commands.pool import pool
 from keras_remote.cli.config import NodePoolConfig
+from keras_remote.cli.infra.stack_manager import ActiveStackResolution
 from keras_remote.core.accelerators import GpuConfig, TpuConfig
 
 # Patches applied to every test to bypass prerequisites and infrastructure.
@@ -22,6 +24,15 @@ _BASE_PATCHES = {
     "keras_remote.cli.commands.pool.generate_pool_name",
     return_value="gpu-l4-abcd",
   ),
+  "require_active_stack": mock.patch(
+    "keras_remote.cli.commands.pool.require_active_stack",
+    return_value=ActiveStackResolution(
+      "test-project",
+      "us-central1-a",
+      "keras-remote-cluster",
+      "test-project-keras-remote-cluster",
+    ),
+  ),
 }
 
 
@@ -34,10 +45,6 @@ def _start_patches(test_case):
 
 _ADD_ARGS = [
   "add",
-  "--project",
-  "test-project",
-  "--zone",
-  "us-central1-a",
   "--accelerator",
   "l4",
   "--yes",
@@ -45,20 +52,12 @@ _ADD_ARGS = [
 
 _REMOVE_ARGS = [
   "remove",
-  "--project",
-  "test-project",
-  "--zone",
-  "us-central1-a",
   "gpu-l4-abcd",
   "--yes",
 ]
 
 _LIST_ARGS = [
   "list",
-  "--project",
-  "test-project",
-  "--zone",
-  "us-central1-a",
 ]
 
 
@@ -95,8 +94,6 @@ class PoolAddTest(absltest.TestCase):
       pool,
       [
         "add",
-        "--project",
-        "test-project",
         "--accelerator",
         "cpu",
         "--yes",
@@ -245,60 +242,63 @@ class PoolRemoveUpdateFailureTest(absltest.TestCase):
     self.assertNotIn("Pool Removed", result.output)
 
 
-class PoolAddNoStackTest(absltest.TestCase):
-  """Tests that `pool add` fails gracefully when no stack exists."""
+class PoolAddNoActiveStackTest(absltest.TestCase):
+  """Tests that `pool add` fails gracefully when no active stack is set."""
 
   def setUp(self):
     super().setUp()
     self.runner = CliRunner()
     self.mocks = _start_patches(self)
-    self.mocks["get_stack"].side_effect = pulumi_errors.CommandError(
-      "stack not found"
+    self.mocks["require_active_stack"].side_effect = click.ClickException(
+      "No active stack set. Run 'keras-remote up' to create one "
+      "or 'keras-remote stacks set <name>' to select an existing stack."
     )
 
-  def test_add_no_stack_shows_friendly_error(self):
+  def test_add_no_active_stack_shows_friendly_error(self):
     result = self.runner.invoke(pool, _ADD_ARGS)
 
     self.assertNotEqual(result.exit_code, 0)
-    self.assertIn("No Pulumi stack found", result.output)
+    self.assertIn("No active stack set", result.output)
     self.assertIn("keras-remote up", result.output)
 
 
-class PoolRemoveNoStackTest(absltest.TestCase):
-  """Tests that `pool remove` fails gracefully when no stack exists."""
+class PoolRemoveNoActiveStackTest(absltest.TestCase):
+  """Tests that `pool remove` fails gracefully when no active stack is set."""
 
   def setUp(self):
     super().setUp()
     self.runner = CliRunner()
     self.mocks = _start_patches(self)
-    self.mocks["get_stack"].side_effect = pulumi_errors.CommandError(
-      "stack not found"
+    self.mocks["require_active_stack"].side_effect = click.ClickException(
+      "No active stack set. Run 'keras-remote up' to create one "
+      "or 'keras-remote stacks set <name>' to select an existing stack."
     )
 
-  def test_remove_no_stack_shows_friendly_error(self):
+  def test_remove_no_active_stack_shows_friendly_error(self):
     result = self.runner.invoke(pool, _REMOVE_ARGS)
 
     self.assertNotEqual(result.exit_code, 0)
-    self.assertIn("No Pulumi stack found", result.output)
+    self.assertIn("No active stack set", result.output)
     self.assertIn("keras-remote up", result.output)
 
 
-class PoolListNoStackTest(absltest.TestCase):
-  """Tests that `pool list` handles missing stack gracefully."""
+class PoolListNoActiveStackTest(absltest.TestCase):
+  """Tests that `pool list` fails gracefully when no active stack is set."""
 
   def setUp(self):
     super().setUp()
     self.runner = CliRunner()
     self.mocks = _start_patches(self)
-    self.mocks["get_stack"].side_effect = pulumi_errors.CommandError(
-      "stack not found"
+    self.mocks["require_active_stack"].side_effect = click.ClickException(
+      "No active stack set. Run 'keras-remote up' to create one "
+      "or 'keras-remote stacks set <name>' to select an existing stack."
     )
 
-  def test_list_no_stack_shows_warning(self):
+  def test_list_no_active_stack_shows_friendly_error(self):
     result = self.runner.invoke(pool, _LIST_ARGS)
 
-    self.assertEqual(result.exit_code, 0, result.output)
-    self.assertIn("No Pulumi stack found", result.output)
+    self.assertNotEqual(result.exit_code, 0)
+    self.assertIn("No active stack set", result.output)
     self.assertIn("keras-remote up", result.output)
 
 
