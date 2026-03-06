@@ -102,6 +102,7 @@ class TestCreateJobSpec(absltest.TestCase):
       accel_config=self._make_gpu_config(),
       job_id="job-abc",
       bucket_name="proj-keras-remote-jobs",
+      gcs_prefix="default/job-abc",
       namespace="default",
     )
     self.assertEqual(job.metadata.name, "keras-remote-job-abc")
@@ -120,15 +121,15 @@ class TestCreateJobSpec(absltest.TestCase):
     self.assertEqual(env_names["JOB_ID"], "job-abc")
     self.assertEqual(env_names["GCS_BUCKET"], "proj-keras-remote-jobs")
 
-    # Check GCS args
+    # Check GCS args use gcs_prefix
     self.assertIn(
-      "gs://proj-keras-remote-jobs/job-abc/context.zip", container.args
+      "gs://proj-keras-remote-jobs/default/job-abc/context.zip", container.args
     )
     self.assertIn(
-      "gs://proj-keras-remote-jobs/job-abc/payload.pkl", container.args
+      "gs://proj-keras-remote-jobs/default/job-abc/payload.pkl", container.args
     )
     self.assertIn(
-      "gs://proj-keras-remote-jobs/job-abc/result.pkl", container.args
+      "gs://proj-keras-remote-jobs/default/job-abc/result.pkl", container.args
     )
 
     # Job spec fields
@@ -158,6 +159,7 @@ class TestCreateJobSpec(absltest.TestCase):
       accel_config=self._make_cpu_config(),
       job_id="j",
       bucket_name="b",
+      gcs_prefix="ns/j",
       namespace="ns",
     )
     self.assertIsNone(job.spec.template.spec.node_selector)

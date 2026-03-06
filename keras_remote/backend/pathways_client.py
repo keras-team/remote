@@ -52,6 +52,7 @@ def submit_pathways_job(
   project,
   job_id,
   bucket_name,
+  gcs_prefix=None,
   namespace="default",
 ):
   """Submit a LeaderWorkerSet to GKE cluster.
@@ -63,11 +64,16 @@ def submit_pathways_job(
       project: GCP project ID
       job_id: Unique job identifier
       bucket_name: GCS bucket name for artifacts
+      gcs_prefix: Namespace-scoped GCS prefix (e.g. "default/job-abc").
+          Defaults to job_id for backward compatibility.
       namespace: Kubernetes namespace (default: "default")
 
   Returns:
       dict: The created LeaderWorkerSet object
   """
+  if gcs_prefix is None:
+    gcs_prefix = job_id
+
   _load_kube_config()
   lws_version = _get_lws_version()
 
@@ -91,6 +97,7 @@ def submit_pathways_job(
     accel_config=accel_config,
     job_id=job_id,
     bucket_name=bucket_name,
+    gcs_prefix=gcs_prefix,
     num_workers=num_workers,
     namespace=namespace,
     version=lws_version,
@@ -240,6 +247,7 @@ def _create_lws_spec(
   accel_config,
   job_id,
   bucket_name,
+  gcs_prefix,
   num_workers,
   namespace,
   version=LWS_VERSION,
@@ -282,9 +290,9 @@ def _create_lws_spec(
           "image": container_uri,
           "command": ["python3", "-u", "/app/remote_runner.py"],
           "args": [
-            f"gs://{bucket_name}/{job_id}/context.zip",
-            f"gs://{bucket_name}/{job_id}/payload.pkl",
-            f"gs://{bucket_name}/{job_id}/result.pkl",
+            f"gs://{bucket_name}/{gcs_prefix}/context.zip",
+            f"gs://{bucket_name}/{gcs_prefix}/payload.pkl",
+            f"gs://{bucket_name}/{gcs_prefix}/result.pkl",
           ],
           "env": env_vars,
           "resources": {

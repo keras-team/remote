@@ -88,6 +88,7 @@ class TestCreateLwsSpec(absltest.TestCase):
       "accel_config": self._make_tpu_accel_config(),
       "job_id": "abc",
       "bucket_name": "my-bucket",
+      "gcs_prefix": "default/abc",
       "num_workers": 3,
       "namespace": "default",
     }
@@ -96,7 +97,9 @@ class TestCreateLwsSpec(absltest.TestCase):
 
   def test_basic_spec_structure(self):
     """Test metadata, replicas, and container spec are correctly populated."""
-    spec = self._make_spec(job_id="j1", bucket_name="bkt", num_workers=3)
+    spec = self._make_spec(
+      job_id="j1", bucket_name="bkt", gcs_prefix="default/j1", num_workers=3
+    )
     # Metadata.
     self.assertEqual(spec["metadata"]["name"], "keras-pathways-abc")
     self.assertEqual(spec["metadata"]["namespace"], "default")
@@ -116,9 +119,9 @@ class TestCreateLwsSpec(absltest.TestCase):
     self.assertEqual(
       container["args"],
       [
-        "gs://bkt/j1/context.zip",
-        "gs://bkt/j1/payload.pkl",
-        "gs://bkt/j1/result.pkl",
+        "gs://bkt/default/j1/context.zip",
+        "gs://bkt/default/j1/payload.pkl",
+        "gs://bkt/default/j1/result.pkl",
       ],
     )
 
@@ -127,6 +130,7 @@ class TestCreateLwsSpec(absltest.TestCase):
       accel_config=self._make_tpu_accel_config(),
       job_id="j1",
       bucket_name="bkt",
+      gcs_prefix="default/j1",
       num_workers=3,
     )
     container = spec["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"][

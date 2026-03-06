@@ -14,7 +14,7 @@ from keras_remote.infra.infra import get_default_project
 
 def upload_artifacts(
   bucket_name: str,
-  job_id: str,
+  gcs_prefix: str,
   payload_path: str,
   context_path: str,
   project: str | None = None,
@@ -23,7 +23,7 @@ def upload_artifacts(
 
   Args:
       bucket_name: Name of the GCS bucket
-      job_id: Unique job identifier
+      gcs_prefix: Namespace-scoped prefix, e.g. "default/job-abc123"
       payload_path: Local path to payload.pkl
       context_path: Local path to context.zip
       project: GCP project ID (optional, uses env vars if not provided)
@@ -34,17 +34,21 @@ def upload_artifacts(
   bucket = client.bucket(bucket_name)
 
   # Upload payload
-  blob = bucket.blob(f"{job_id}/payload.pkl")
+  blob = bucket.blob(f"{gcs_prefix}/payload.pkl")
   blob.upload_from_filename(payload_path)
   logging.info(
-    "Uploaded payload to gs://%s/%s/payload.pkl", bucket_name, job_id
+    "Uploaded payload to gs://%s/%s/payload.pkl",
+    bucket_name,
+    gcs_prefix,
   )
 
   # Upload context
-  blob = bucket.blob(f"{job_id}/context.zip")
+  blob = bucket.blob(f"{gcs_prefix}/context.zip")
   blob.upload_from_filename(context_path)
   logging.info(
-    "Uploaded context to gs://%s/%s/context.zip", bucket_name, job_id
+    "Uploaded context to gs://%s/%s/context.zip",
+    bucket_name,
+    gcs_prefix,
   )
 
   # Get project ID for console link
@@ -52,19 +56,19 @@ def upload_artifacts(
   logging.info(
     "View artifacts: https://console.cloud.google.com/storage/browser/%s/%s?project=%s",
     bucket_name,
-    job_id,
+    gcs_prefix,
     project,
   )
 
 
 def download_result(
-  bucket_name: str, job_id: str, project: str | None = None
+  bucket_name: str, gcs_prefix: str, project: str | None = None
 ) -> str:
   """Download result from Cloud Storage.
 
   Args:
       bucket_name: Name of the GCS bucket
-      job_id: Unique job identifier
+      gcs_prefix: Namespace-scoped prefix, e.g. "default/job-abc123"
       project: GCP project ID (optional, uses env vars if not provided)
 
   Returns:
@@ -74,32 +78,35 @@ def download_result(
   client = storage.Client(project=project)
   bucket = client.bucket(bucket_name)
 
-  blob = bucket.blob(f"{job_id}/result.pkl")
-  local_path = os.path.join(tempfile.gettempdir(), f"result-{job_id}.pkl")
+  blob = bucket.blob(f"{gcs_prefix}/result.pkl")
+  safe_name = gcs_prefix.replace("/", "-")
+  local_path = os.path.join(tempfile.gettempdir(), f"result-{safe_name}.pkl")
   blob.download_to_filename(local_path)
   logging.info(
-    "Downloaded result from gs://%s/%s/result.pkl", bucket_name, job_id
+    "Downloaded result from gs://%s/%s/result.pkl",
+    bucket_name,
+    gcs_prefix,
   )
 
   return local_path
 
 
 def cleanup_artifacts(
-  bucket_name: str, job_id: str, project: str | None = None
+  bucket_name: str, gcs_prefix: str, project: str | None = None
 ) -> None:
   """Clean up job artifacts from Cloud Storage.
 
   Args:
       bucket_name: Name of the GCS bucket
-      job_id: Unique job identifier
+      gcs_prefix: Namespace-scoped prefix, e.g. "default/job-abc123"
       project: GCP project ID (optional, uses env vars if not provided)
   """
   project = project or get_default_project()
   client = storage.Client(project=project)
   bucket = client.bucket(bucket_name)
 
-  # Delete all blobs with job_id prefix
-  blobs = bucket.list_blobs(prefix=f"{job_id}/")
+  # Delete all blobs with gcs_prefix
+  blobs = bucket.list_blobs(prefix=f"{gcs_prefix}/")
   deleted_count = 0
   for blob in blobs:
     blob.delete()
@@ -110,7 +117,7 @@ def cleanup_artifacts(
       "Cleaned up %d artifacts from gs://%s/%s/",
       deleted_count,
       bucket_name,
-      job_id,
+      gcs_prefix,
     )
 
 

@@ -46,7 +46,7 @@ class TestUploadArtifacts(_GcsTestBase):
 
     upload_artifacts(
       bucket_name="my-bucket",
-      job_id="job-abc123",
+      gcs_prefix="job-abc123",
       payload_path="/tmp/payload.pkl",
       context_path="/tmp/context.zip",
       project="test-project",
@@ -59,7 +59,7 @@ class TestUploadArtifacts(_GcsTestBase):
   def test_uses_correct_bucket(self):
     upload_artifacts(
       bucket_name="my-custom-bucket",
-      job_id="job-123",
+      gcs_prefix="job-123",
       payload_path="/tmp/p.pkl",
       context_path="/tmp/c.zip",
       project="proj",
@@ -72,13 +72,13 @@ class TestDownloadResult(_GcsTestBase):
     mock_bucket = self.mock_gcs.bucket.return_value
     mock_blob = mock_bucket.blob.return_value
 
-    download_result("my-bucket", "job-abc", project="proj")
+    download_result("my-bucket", gcs_prefix="job-abc", project="proj")
 
     mock_bucket.blob.assert_called_once_with("job-abc/result.pkl")
     mock_blob.download_to_filename.assert_called_once()
 
   def test_returns_path_with_job_id(self):
-    result = download_result("my-bucket", "job-xyz", project="proj")
+    result = download_result("my-bucket", gcs_prefix="job-xyz", project="proj")
     self.assertIn("result-job-xyz.pkl", result)
 
 
@@ -90,7 +90,7 @@ class TestCleanupArtifacts(_GcsTestBase):
     blob3 = MagicMock()
     mock_bucket.list_blobs.return_value = [blob1, blob2, blob3]
 
-    cleanup_artifacts("my-bucket", "job-abc", project="proj")
+    cleanup_artifacts("my-bucket", gcs_prefix="job-abc", project="proj")
 
     mock_bucket.list_blobs.assert_called_once_with(prefix="job-abc/")
     blob1.delete.assert_called_once()
@@ -101,7 +101,7 @@ class TestCleanupArtifacts(_GcsTestBase):
     mock_bucket = self.mock_gcs.bucket.return_value
     mock_bucket.list_blobs.return_value = []
 
-    cleanup_artifacts("my-bucket", "job-abc", project="proj")
+    cleanup_artifacts("my-bucket", gcs_prefix="job-abc", project="proj")
 
     mock_bucket.list_blobs.assert_called_once_with(prefix="job-abc/")
 

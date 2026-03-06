@@ -22,6 +22,7 @@ def submit_k8s_job(
   project,
   job_id,
   bucket_name,
+  gcs_prefix=None,
   namespace="default",
 ):
   """Submit a Kubernetes Job to GKE cluster.
@@ -33,11 +34,16 @@ def submit_k8s_job(
       project: GCP project ID
       job_id: Unique job identifier
       bucket_name: GCS bucket name for artifacts
+      gcs_prefix: Namespace-scoped GCS prefix (e.g. "default/job-abc").
+          Defaults to job_id for backward compatibility.
       namespace: Kubernetes namespace (default: "default")
 
   Returns:
       kubernetes.client.V1Job object
   """
+  if gcs_prefix is None:
+    gcs_prefix = job_id
+
   # Load kubeconfig
   _load_kube_config()
 
@@ -52,6 +58,7 @@ def submit_k8s_job(
     accel_config=accel_config,
     job_id=job_id,
     bucket_name=bucket_name,
+    gcs_prefix=gcs_prefix,
     namespace=namespace,
   )
 
@@ -293,7 +300,13 @@ def _load_kube_config():
 
 
 def _create_job_spec(
-  job_name, container_uri, accel_config, job_id, bucket_name, namespace
+  job_name,
+  container_uri,
+  accel_config,
+  job_id,
+  bucket_name,
+  gcs_prefix,
+  namespace,
 ):
   """Create Kubernetes Job specification.
 
@@ -303,6 +316,7 @@ def _create_job_spec(
       accel_config: Accelerator configuration from _parse_accelerator_for_gke
       job_id: Unique job identifier
       bucket_name: GCS bucket for artifacts
+      gcs_prefix: Namespace-scoped GCS prefix (e.g. "default/job-abc")
       namespace: Kubernetes namespace
 
   Returns:
@@ -324,9 +338,9 @@ def _create_job_spec(
     image=container_uri,
     command=["python3", "-u", "/app/remote_runner.py"],
     args=[
-      f"gs://{bucket_name}/{job_id}/context.zip",
-      f"gs://{bucket_name}/{job_id}/payload.pkl",
-      f"gs://{bucket_name}/{job_id}/result.pkl",
+      f"gs://{bucket_name}/{gcs_prefix}/context.zip",
+      f"gs://{bucket_name}/{gcs_prefix}/payload.pkl",
+      f"gs://{bucket_name}/{gcs_prefix}/result.pkl",
     ],
     env=env_vars,
     resources=client.V1ResourceRequirements(

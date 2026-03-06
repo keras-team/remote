@@ -46,6 +46,63 @@ class TestJobContext(absltest.TestCase):
     self.assertTrue(ctx.display_name.startswith("keras-remote-my_train-"))
     self.assertRegex(ctx.job_id, r"^job-[0-9a-f]{8}$")
 
+  def test_default_namespace_and_gcs_prefix(self):
+    ctx = JobContext(
+      func=self._make_func(),
+      args=(),
+      kwargs={},
+      env_vars={},
+      accelerator="cpu",
+      container_image=None,
+      zone="us-central1-a",
+      project="proj",
+    )
+    self.assertEqual(ctx.namespace, "default")
+    self.assertEqual(ctx.gcs_prefix, f"default/{ctx.job_id}")
+
+  def test_custom_namespace_gcs_prefix(self):
+    ctx = JobContext(
+      func=self._make_func(),
+      args=(),
+      kwargs={},
+      env_vars={},
+      accelerator="cpu",
+      container_image=None,
+      zone="us-central1-a",
+      project="proj",
+      namespace="team-nlp",
+    )
+    self.assertEqual(ctx.namespace, "team-nlp")
+    self.assertEqual(ctx.gcs_prefix, f"team-nlp/{ctx.job_id}")
+
+  def test_from_params_passes_namespace(self):
+    ctx = JobContext.from_params(
+      func=self._make_func(),
+      args=(),
+      kwargs={},
+      accelerator="cpu",
+      container_image=None,
+      zone="us-central1-a",
+      project="proj",
+      env_vars={},
+      namespace="my-ns",
+    )
+    self.assertEqual(ctx.namespace, "my-ns")
+    self.assertEqual(ctx.gcs_prefix, f"my-ns/{ctx.job_id}")
+
+  def test_from_params_default_namespace(self):
+    ctx = JobContext.from_params(
+      func=self._make_func(),
+      args=(),
+      kwargs={},
+      accelerator="cpu",
+      container_image=None,
+      zone="us-central1-a",
+      project="proj",
+      env_vars={},
+    )
+    self.assertEqual(ctx.namespace, "default")
+
   def test_from_params_explicit(self):
     ctx = JobContext.from_params(
       func=self._make_func(),

@@ -142,12 +142,12 @@ class TestExecuteOnGkeDefaults(absltest.TestCase):
       self.assertEqual(backend.cluster, "env-cluster")
 
   def test_namespace_from_env(self):
-    """When namespace=None, falls back to KERAS_REMOTE_GKE_NAMESPACE env var."""
+    """When namespace=None, falls back to KERAS_REMOTE_NAMESPACE env var."""
     with (
       mock.patch.dict(
         os.environ,
         {
-          "KERAS_REMOTE_GKE_NAMESPACE": "custom-ns",
+          "KERAS_REMOTE_NAMESPACE": "custom-ns",
           "KERAS_REMOTE_PROJECT": "proj",
         },
       ),

@@ -143,7 +143,7 @@ def _execute_on_gke(
   if not cluster:
     cluster = os.environ.get("KERAS_REMOTE_CLUSTER", DEFAULT_CLUSTER_NAME)
   if not namespace:
-    namespace = os.environ.get("KERAS_REMOTE_GKE_NAMESPACE", "default")
+    namespace = os.environ.get("KERAS_REMOTE_NAMESPACE", "default")
 
   ctx = JobContext.from_params(
     func,
@@ -155,6 +155,7 @@ def _execute_on_gke(
     project,
     env_vars,
     volumes=volumes,
+    namespace=namespace,
   )
   return execute_remote(ctx, GKEBackend(cluster=cluster, namespace=namespace))
 
@@ -176,7 +177,7 @@ def _execute_on_pathways(
   if not cluster:
     cluster = os.environ.get("KERAS_REMOTE_CLUSTER", DEFAULT_CLUSTER_NAME)
   if not namespace:
-    namespace = os.environ.get("KERAS_REMOTE_GKE_NAMESPACE", "default")
+    namespace = os.environ.get("KERAS_REMOTE_NAMESPACE", "default")
 
   ctx = JobContext.from_params(
     func,
@@ -188,6 +189,7 @@ def _execute_on_pathways(
     project,
     env_vars,
     volumes=volumes,
+    namespace=namespace,
   )
   return execute_remote(
     ctx, PathwaysBackend(cluster=cluster, namespace=namespace)

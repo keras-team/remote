@@ -43,10 +43,14 @@ class JobContext:
   # Generated identifiers
   job_id: str = field(default_factory=lambda: f"job-{uuid.uuid4().hex[:8]}")
 
+  # Namespace (defaults to "default" for single-tenant)
+  namespace: str = "default"
+
   # Derived values (computed in __post_init__)
   bucket_name: str = field(init=False)
   region: str = field(init=False)
   display_name: str = field(init=False)
+  gcs_prefix: str = field(init=False)
 
   # Data volumes {mount_path: Data}
   volumes: Optional[dict] = None
@@ -61,6 +65,7 @@ class JobContext:
     self.bucket_name = f"{self.project}-keras-remote-jobs"
     self.region = zone_to_region(self.zone)
     self.display_name = f"keras-remote-{self.func.__name__}-{self.job_id}"
+    self.gcs_prefix = f"{self.namespace}/{self.job_id}"
 
   @classmethod
   def from_params(
@@ -74,6 +79,7 @@ class JobContext:
     project: Optional[str],
     env_vars: dict,
     volumes: Optional[dict] = None,
+    namespace: str = "default",
   ) -> "JobContext":
     """Factory method with default resolution for zone/project."""
     if not zone:
@@ -96,6 +102,7 @@ class JobContext:
       zone=zone,
       project=project,
       volumes=volumes,
+      namespace=namespace,
     )
 
 
@@ -145,6 +152,7 @@ class GKEBackend(BaseK8sBackend):
       project=ctx.project,
       job_id=ctx.job_id,
       bucket_name=ctx.bucket_name,
+      gcs_prefix=ctx.gcs_prefix,
       namespace=self.namespace,
     )
 
@@ -181,6 +189,7 @@ class PathwaysBackend(BaseK8sBackend):
       project=ctx.project,
       job_id=ctx.job_id,
       bucket_name=ctx.bucket_name,
+      gcs_prefix=ctx.gcs_prefix,
       namespace=self.namespace,
     )
 
@@ -239,7 +248,12 @@ def _prepare_artifacts(
   # Process volumes
   if ctx.volumes:
     for mount_path, data_obj in ctx.volumes.items():
-      gcs_uri = storage.upload_data(ctx.bucket_name, data_obj, ctx.project)
+      gcs_uri = storage.upload_data(
+        ctx.bucket_name,
+        data_obj,
+        ctx.project,
+        namespace_prefix=ctx.namespace,
+      )
       volume_refs.append(
         _make_data_ref(gcs_uri, data_obj.is_dir, mount_path=mount_path)
       )
@@ -249,7 +263,12 @@ def _prepare_artifacts(
   # Process Data in function args
   data_refs = packager.extract_data_refs(ctx.args, ctx.kwargs)
   for data_obj, _position in data_refs:
-    gcs_uri = storage.upload_data(ctx.bucket_name, data_obj, ctx.project)
+    gcs_uri = storage.upload_data(
+      ctx.bucket_name,
+      data_obj,
+      ctx.project,
+      namespace_prefix=ctx.namespace,
+    )
     ref_map[id(data_obj)] = _make_data_ref(gcs_uri, data_obj.is_dir)
     if not data_obj.is_gcs:
       _maybe_exclude(data_obj.path, caller_path, exclude_paths)
@@ -313,7 +332,7 @@ def _upload_artifacts(ctx: JobContext) -> None:
   logging.info("Uploading artifacts to Cloud Storage (job: %s)...", ctx.job_id)
   storage.upload_artifacts(
     bucket_name=ctx.bucket_name,
-    job_id=ctx.job_id,
+    gcs_prefix=ctx.gcs_prefix,
     payload_path=ctx.payload_path,
     context_path=ctx.context_path,
     project=ctx.project,
@@ -324,7 +343,7 @@ def _download_result(ctx: JobContext) -> dict:
   """Phase 6: Download and deserialize result from Cloud Storage."""
   logging.info("Downloading result...")
   result_path = storage.download_result(
-    ctx.bucket_name, ctx.job_id, project=ctx.project
+    ctx.bucket_name, ctx.gcs_prefix, project=ctx.project
   )
 
   with open(result_path, "rb") as f:
@@ -334,7 +353,9 @@ def _download_result(ctx: JobContext) -> dict:
 def _cleanup_and_return(ctx: JobContext, result_payload: dict) -> Any:
   """Phase 7: Cleanup Cloud Storage artifacts and handle result."""
   logging.info("Cleaning up artifacts...")
-  storage.cleanup_artifacts(ctx.bucket_name, ctx.job_id, project=ctx.project)
+  storage.cleanup_artifacts(
+    ctx.bucket_name, ctx.gcs_prefix, project=ctx.project
+  )
 
   if result_payload["success"]:
     logging.info("Remote execution completed successfully")
