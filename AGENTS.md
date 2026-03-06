@@ -99,8 +99,8 @@ Local `Data` objects are content-hashed (SHA-256 over sorted file contents). Upl
 During `_prepare_artifacts()`:
 
 1. Upload `Data` from `volumes` and function args via `storage.upload_data()` (content-addressed)
-1. Replace `Data` objects in args/kwargs with serializable `__data_ref__` dicts
-1. Local `Data` paths inside the caller directory are auto-excluded from `context.zip`
+2. Replace `Data` objects in args/kwargs with serializable `__data_ref__` dicts
+3. Local `Data` paths inside the caller directory are auto-excluded from `context.zip`
 
 On the remote pod (`remote_runner.py`):
 
