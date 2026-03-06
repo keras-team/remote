@@ -89,10 +89,15 @@ def up(project, zone, accelerator, cluster_name, yes):
   try:
     program = create_program(config)
     stack = get_stack(program, config)
-    stack.refresh(on_output=print)
-    existing_pools = get_current_node_pools(stack)
   except auto.errors.CommandError:
-    pass  # First run or no stack yet — start with empty list.
+    stack = None  # First run or no stack yet.
+
+  if stack is not None:
+    try:
+      stack.refresh(on_output=print)
+    except auto.errors.CommandError as e:
+      warning(f"Failed to refresh stack state: {e}")
+    existing_pools = get_current_node_pools(stack)
 
   if existing_pools:
     config.node_pools = list(existing_pools)
