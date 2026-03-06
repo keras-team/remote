@@ -3,7 +3,6 @@
 import subprocess
 
 import click
-import pulumi.automation as auto
 
 from keras_remote.cli.config import InfraConfig, NodePoolConfig
 from keras_remote.cli.constants import DEFAULT_CLUSTER_NAME, DEFAULT_ZONE
@@ -12,11 +11,7 @@ from keras_remote.cli.infra.post_deploy import (
   install_gpu_drivers,
   install_lws,
 )
-from keras_remote.cli.infra.program import create_program
-from keras_remote.cli.infra.stack_manager import (
-  get_current_node_pools,
-  get_stack,
-)
+from keras_remote.cli.infra.state import apply_update, load_state
 from keras_remote.cli.output import (
   banner,
   config_summary,
@@ -83,20 +78,20 @@ def up(project, zone, accelerator, cluster_name, yes):
   # If a stack already exists, preserve its node pools as-is.
   # Users should manage pools via `keras-remote pool add/remove` after
   # initial setup.
-  config = InfraConfig(project=project, zone=zone, cluster_name=cluster_name)
-  existing_pools = []
-  try:
-    program = create_program(config)
-    stack = get_stack(program, config)
-    stack.refresh(on_output=print)
-    existing_pools = get_current_node_pools(stack)
-  except auto.errors.CommandError:
-    pass  # First run or no stack yet — start with empty list.
+  state = load_state(
+    project,
+    zone,
+    cluster_name,
+    allow_missing=True,
+    check_prerequisites=False,
+  )
 
-  if existing_pools:
-    config.node_pools = list(existing_pools)
+  config = InfraConfig(project=project, zone=zone, cluster_name=cluster_name)
+
+  if state.node_pools:
+    config.node_pools = list(state.node_pools)
     console.print(
-      f"\nFound {len(existing_pools)} existing node pool(s)."
+      f"\nFound {len(state.node_pools)} existing node pool(s)."
       "\nUse 'keras-remote pool add/remove/list' to manage node pools.\n"
     )
   elif accel_config is not None:
@@ -112,24 +107,12 @@ def up(project, zone, accelerator, cluster_name, yes):
   console.print()
 
   # Run Pulumi
-  program = create_program(config)
-  stack = get_stack(program, config)
   console.print("[bold]Provisioning infrastructure...[/bold]\n")
+  pulumi_ok = apply_update(config)
+  pulumi_failed = not pulumi_ok
 
-  pulumi_failed = False
-  try:
-    result = stack.up(on_output=print)
-    console.print()
-    success(f"Pulumi update complete. {result.summary.resource_changes}")
-  except auto.errors.CommandError as e:
-    console.print()
-    pulumi_failed = True
-    warning(
-      "Pulumi update encountered an issue"
-      " (some resources may already exist):\n"
-      f"  {e}\n"
-      "Attempting post-deploy configuration anyway..."
-    )
+  if pulumi_failed:
+    warning("Attempting post-deploy configuration anyway...")
 
   # Post-deploy steps
   console.print("\n[bold]Running post-deploy configuration...[/bold]\n")

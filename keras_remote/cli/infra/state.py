@@ -1,0 +1,121 @@
+"""Centralized Pulumi state loading and updates for keras-remote.
+
+Provides a single load_state() that reads ALL state dimensions, and a single
+apply_update() that runs a Pulumi update with a complete InfraConfig. This
+prevents commands from accidentally omitting state (e.g. forgetting to load
+namespaces), which would cause Pulumi to delete the omitted resources.
+"""
+
+from dataclasses import dataclass, field
+
+import click
+import pulumi.automation as auto
+
+from keras_remote.cli.config import InfraConfig, NodePoolConfig
+from keras_remote.cli.constants import DEFAULT_CLUSTER_NAME, DEFAULT_ZONE
+from keras_remote.cli.infra.program import create_program
+from keras_remote.cli.infra.stack_manager import (
+  get_current_node_pools,
+  get_stack,
+)
+from keras_remote.cli.output import console, success, warning
+from keras_remote.cli.prerequisites_check import check_all
+from keras_remote.cli.prompts import resolve_project
+
+
+@dataclass
+class StackState:
+  """Complete state loaded from a Pulumi stack."""
+
+  project: str
+  zone: str
+  cluster_name: str
+  node_pools: list[NodePoolConfig] = field(default_factory=list)
+  stack: auto.Stack | None = None
+
+
+def load_state(
+  project,
+  zone,
+  cluster_name,
+  *,
+  allow_missing=False,
+  check_prerequisites=True,
+):
+  """Load full infrastructure state from the Pulumi stack.
+
+  Args:
+      project: GCP project ID (or None to resolve interactively).
+      zone: GCP zone (or None for default).
+      cluster_name: GKE cluster name (or None for default).
+      allow_missing: If True, return empty state when no stack exists
+          instead of raising an error. Useful for first-run scenarios.
+      check_prerequisites: If True, run prerequisite checks (gcloud, etc.).
+
+  Returns:
+      A StackState with all state dimensions populated.
+
+  Raises:
+      click.ClickException: If no stack exists and allow_missing is False.
+  """
+  if check_prerequisites:
+    check_all()
+
+  project = project or resolve_project()
+  zone = zone or DEFAULT_ZONE
+  cluster_name = cluster_name or DEFAULT_CLUSTER_NAME
+
+  base_config = InfraConfig(
+    project=project, zone=zone, cluster_name=cluster_name
+  )
+
+  try:
+    program = create_program(base_config)
+    stack = get_stack(program, base_config)
+  except auto.errors.CommandError as e:
+    if allow_missing:
+      return StackState(project=project, zone=zone, cluster_name=cluster_name)
+    raise click.ClickException(
+      f"No Pulumi stack found for project '{project}': {e}\n"
+      "Run 'keras-remote up' to provision infrastructure first."
+    ) from e
+
+  console.print("\nRefreshing state...\n")
+  try:
+    stack.refresh(on_output=print)
+  except auto.errors.CommandError as e:
+    warning(f"Failed to refresh stack state: {e}")
+
+  node_pools = get_current_node_pools(stack)
+
+  return StackState(
+    project=project,
+    zone=zone,
+    cluster_name=cluster_name,
+    node_pools=node_pools,
+    stack=stack,
+  )
+
+
+def apply_update(config):
+  """Run a Pulumi update with the given complete config.
+
+  Args:
+      config: A fully populated InfraConfig.
+
+  Returns:
+      True if the update succeeded, False otherwise.
+  """
+  program = create_program(config)
+  stack = get_stack(program, config)
+
+  console.print("\n[bold]Updating infrastructure...[/bold]\n")
+  try:
+    result = stack.up(on_output=print)
+    console.print()
+    success(f"Pulumi update complete. {result.summary.resource_changes}")
+    return True
+  except auto.errors.CommandError as e:
+    console.print()
+    warning(f"Pulumi update encountered an issue: {e}")
+    return False
