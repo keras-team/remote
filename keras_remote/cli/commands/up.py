@@ -14,6 +14,7 @@ from keras_remote.cli.infra.post_deploy import (
 )
 from keras_remote.cli.infra.program import create_program
 from keras_remote.cli.infra.stack_manager import (
+  detect_resources_to_import,
   get_current_node_pools,
   get_stack,
 )
@@ -114,6 +115,13 @@ def up(project, zone, accelerator, cluster_name, yes):
   # Run Pulumi
   program = create_program(config)
   stack = get_stack(program, config)
+
+  # Auto-import shared resources that exist in GCP but not in state.
+  to_import = detect_resources_to_import(stack, config.project, config.zone)
+  if to_import:
+    program = create_program(config, resources_to_import=to_import)
+    stack = get_stack(program, config)
+
   console.print("[bold]Provisioning infrastructure...[/bold]\n")
 
   pulumi_failed = False

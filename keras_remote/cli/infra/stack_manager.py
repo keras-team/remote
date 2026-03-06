@@ -1,5 +1,6 @@
 """Pulumi Automation API wrapper for keras-remote."""
 
+import logging
 import os
 
 import click
@@ -14,6 +15,8 @@ from keras_remote.cli.constants import (
   STATE_DIR,
 )
 from keras_remote.core import accelerators
+
+logger = logging.getLogger(__name__)
 
 
 def _ensure_state_bucket(project: str) -> str:
@@ -77,6 +80,89 @@ def get_stack(program_fn, config):
   stack.set_config("gcp:zone", auto.ConfigValue(value=config.zone))
 
   return stack
+
+
+def detect_resources_to_import(stack, project, zone):
+  """Detect shared resources that exist in GCP but not in Pulumi state.
+
+  When infrastructure was originally provisioned outside Pulumi (or with
+  a different state backend), shared resources like buckets and the
+  Artifact Registry repository may exist in GCP without being tracked.
+  This function identifies those resources so they can be adopted into
+  state via ``import_`` on the next ``stack.up()``.
+
+  Args:
+      stack: A ``pulumi.automation.Stack`` instance.
+      project: GCP project ID.
+      zone: GCP zone.
+
+  Returns:
+      A dict mapping Pulumi logical resource name to GCP import ID.
+      Empty dict if all shared resources are already tracked.
+  """
+  from keras_remote.constants import zone_to_ar_location
+
+  # Read current state to find tracked resource URNs.
+  try:
+    state = stack.export_stack()
+    deployment = state.deployment or {}
+    resources = deployment.get("resources", [])
+    tracked_names = {r.get("urn", "").split("::")[-1] for r in resources}
+  except Exception:  # noqa: BLE001
+    return {}
+
+  shared_resources = {
+    "keras-remote-repo",
+    "keras-remote-jobs-bucket",
+    "keras-remote-builds-bucket",
+  }
+  untracked = shared_resources - tracked_names
+  if not untracked:
+    return {}
+
+  resources_to_import = {}
+  ar_location = zone_to_ar_location(zone)
+
+  # Check Artifact Registry repository.
+  if "keras-remote-repo" in untracked:
+    try:
+      from google.cloud import artifactregistry_v1
+
+      ar_client = artifactregistry_v1.ArtifactRegistryClient()
+      repo_name = (
+        f"projects/{project}/locations/{ar_location}/repositories/keras-remote"
+      )
+      ar_client.get_repository(name=repo_name)
+      resources_to_import["keras-remote-repo"] = repo_name
+    except Exception:  # noqa: BLE001
+      pass
+
+  # Check GCS buckets.
+  client = gcs_storage.Client(project=project)
+
+  if "keras-remote-jobs-bucket" in untracked:
+    bucket_name = f"{project}-keras-remote-jobs"
+    try:
+      if client.bucket(bucket_name).exists():
+        resources_to_import["keras-remote-jobs-bucket"] = bucket_name
+    except Exception:  # noqa: BLE001
+      pass
+
+  if "keras-remote-builds-bucket" in untracked:
+    bucket_name = f"{project}-keras-remote-builds"
+    try:
+      if client.bucket(bucket_name).exists():
+        resources_to_import["keras-remote-builds-bucket"] = bucket_name
+    except Exception:  # noqa: BLE001
+      pass
+
+  if resources_to_import:
+    logger.info(
+      "Importing existing resources into Pulumi state: %s",
+      list(resources_to_import.keys()),
+    )
+
+  return resources_to_import
 
 
 def get_current_node_pools(stack) -> list[NodePoolConfig]:

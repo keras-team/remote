@@ -41,11 +41,14 @@ _DEFAULT_POOL_OAUTH_SCOPES = _BASE_OAUTH_SCOPES + [
 ]
 
 
-def create_program(config):
+def create_program(config, resources_to_import=None):
   """Create a Pulumi inline program function closed over the config.
 
   Args:
       config: InfraConfig instance.
+      resources_to_import: Optional dict mapping Pulumi logical resource
+          name to GCP import ID, for adopting pre-existing cloud
+          resources into Pulumi state.
 
   Returns:
       A callable suitable for pulumi.automation.create_or_select_stack().
@@ -58,6 +61,7 @@ def create_program(config):
     cluster_name = config.cluster_name
     node_pools = config.node_pools
     namespaces = getattr(config, "namespaces", [])
+    import_ids = resources_to_import or {}
 
     # 1. Enable GCP APIs
     enabled_apis = []
@@ -79,7 +83,10 @@ def create_program(config):
       format="DOCKER",
       description="keras-remote container images",
       project=project_id,
-      opts=pulumi.ResourceOptions(depends_on=enabled_apis),
+      opts=pulumi.ResourceOptions(
+        depends_on=enabled_apis,
+        import_=import_ids.get("keras-remote-repo"),
+      ),
     )
 
     # 3. Cloud Storage buckets
@@ -93,7 +100,11 @@ def create_program(config):
       location=region,
       project=project_id,
       force_destroy=True,
-      opts=pulumi.ResourceOptions(depends_on=enabled_apis),
+      uniform_bucket_level_access=True,
+      opts=pulumi.ResourceOptions(
+        depends_on=enabled_apis,
+        import_=import_ids.get("keras-remote-jobs-bucket"),
+      ),
     )
 
     gcp.storage.Bucket(
@@ -102,7 +113,10 @@ def create_program(config):
       location=ar_location,
       project=project_id,
       force_destroy=True,
-      opts=pulumi.ResourceOptions(depends_on=enabled_apis),
+      opts=pulumi.ResourceOptions(
+        depends_on=enabled_apis,
+        import_=import_ids.get("keras-remote-builds-bucket"),
+      ),
     )
 
     # 4. GKE Cluster (with Workload Identity and Dataplane V2)

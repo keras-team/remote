@@ -452,5 +452,84 @@ class TestNodePoolWorkloadMetadata(parameterized.TestCase):
     )
 
 
+class TestJobsBucketUniformAccess(absltest.TestCase):
+  """Verify the jobs bucket has uniform_bucket_level_access enabled."""
+
+  def test_uniform_access_enabled(self):
+    with (
+      mock.patch.object(program, "pulumi"),
+      mock.patch.object(program, "gcp") as gcp_mock,
+      mock.patch.object(program, "k8s"),
+    ):
+      program.create_program(_make_config([]))()
+
+      # Find the jobs bucket call among all Bucket calls.
+      bucket_calls = gcp_mock.storage.Bucket.call_args_list
+      jobs_call = None
+      for call in bucket_calls:
+        if call[0][0] == "keras-remote-jobs-bucket":
+          jobs_call = call
+          break
+      self.assertIsNotNone(jobs_call, "Jobs bucket not found in Bucket calls")
+      self.assertTrue(
+        jobs_call.kwargs.get("uniform_bucket_level_access"),
+        "Jobs bucket must have uniform_bucket_level_access=True",
+      )
+
+
+class TestResourcesImport(absltest.TestCase):
+  """Verify create_program passes import_ options for shared resources."""
+
+  def test_import_ids_applied_to_shared_resources(self):
+    """When resources_to_import is provided, import_ is set on opts."""
+    import_ids = {
+      "keras-remote-repo": "projects/p/locations/us/repositories/keras-remote",
+      "keras-remote-jobs-bucket": "my-project-keras-remote-jobs",
+      "keras-remote-builds-bucket": "my-project-keras-remote-builds",
+    }
+
+    with (
+      mock.patch.object(program, "pulumi") as pulumi_mock,
+      mock.patch.object(program, "gcp") as gcp_mock,
+      mock.patch.object(program, "k8s"),
+    ):
+      program.create_program(_make_config([]), resources_to_import=import_ids)()
+
+      # Check AR repo opts
+      repo_call = gcp_mock.artifactregistry.Repository.call_args
+      repo_opts = repo_call.kwargs.get("opts")
+      self.assertIsNotNone(repo_opts)
+      # ResourceOptions was called with import_= for each resource.
+      # Find the ResourceOptions call for the repo.
+      repo_import_calls = [
+        c
+        for c in pulumi_mock.ResourceOptions.call_args_list
+        if c.kwargs.get("import_")
+        == "projects/p/locations/us/repositories/keras-remote"
+      ]
+      self.assertLen(repo_import_calls, 1)
+
+      # Check bucket opts
+      bucket_import_calls = [
+        c
+        for c in pulumi_mock.ResourceOptions.call_args_list
+        if c.kwargs.get("import_") == "my-project-keras-remote-jobs"
+      ]
+      self.assertLen(bucket_import_calls, 1)
+
+  def test_no_import_when_not_provided(self):
+    """When resources_to_import is None, import_ is None on opts."""
+    with (
+      mock.patch.object(program, "pulumi") as pulumi_mock,
+      mock.patch.object(program, "gcp"),
+      mock.patch.object(program, "k8s"),
+    ):
+      program.create_program(_make_config([]))()
+
+      # All ResourceOptions calls should have import_=None
+      for call in pulumi_mock.ResourceOptions.call_args_list:
+        self.assertIsNone(call.kwargs.get("import_"))
+
+
 if __name__ == "__main__":
   absltest.main()

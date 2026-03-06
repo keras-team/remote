@@ -7,6 +7,7 @@ from keras_remote.cli.config import InfraConfig, NodePoolConfig
 from keras_remote.cli.constants import DEFAULT_CLUSTER_NAME, DEFAULT_ZONE
 from keras_remote.cli.infra.program import create_program
 from keras_remote.cli.infra.stack_manager import (
+  detect_resources_to_import,
   get_current_node_pools,
   get_stack,
 )
@@ -102,6 +103,12 @@ def _apply_pool_update(project, zone, cluster_name, node_pools):
   )
   program = create_program(config)
   stack = get_stack(program, config)
+
+  # Auto-import shared resources that exist in GCP but not in state.
+  to_import = detect_resources_to_import(stack, project, zone)
+  if to_import:
+    program = create_program(config, resources_to_import=to_import)
+    stack = get_stack(program, config)
 
   console.print("\n[bold]Updating infrastructure...[/bold]\n")
   try:
