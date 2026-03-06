@@ -447,7 +447,7 @@ def _check_node_pool_exists_cached(selector_items) -> bool:
 
       # TPU mapping fallback
       machine_type = config_dict.get("machineType", "")
-      
+
       # Check resource labels for TPU type (common in v5e/v5litepod)
       resource_labels = config_dict.get("resourceLabels", {})
       if "goog-gke-accelerator-type" in resource_labels:
