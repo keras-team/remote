@@ -12,9 +12,12 @@ from keras_remote.cli.constants import (
 )
 from keras_remote.core.accelerators import GpuConfig, TpuConfig
 
-# Patch the pulumi_gcp module before importing program, so the module-level
-# import inside program.py picks up the mock.
-with mock.patch.dict("sys.modules", {"pulumi_gcp": mock.MagicMock()}):
+# Patch pulumi_gcp and pulumi_kubernetes modules before importing program,
+# so the module-level imports inside program.py pick up the mocks.
+with mock.patch.dict(
+  "sys.modules",
+  {"pulumi_gcp": mock.MagicMock(), "pulumi_kubernetes": mock.MagicMock()},
+):
   from keras_remote.cli.infra import program
 
 
@@ -116,13 +119,14 @@ class TestCreateGpuNodePool(absltest.TestCase):
     self.assertEqual(positional_args[0], "gpu-l4-a3f2")
 
 
-def _make_config(node_pools=None):
+def _make_config(node_pools=None, namespaces=None):
   """Create a mock InfraConfig for testing."""
   config = mock.MagicMock()
   config.project = "test-project"
   config.zone = "us-central1-a"
   config.cluster_name = "test-cluster"
   config.node_pools = node_pools or []
+  config.namespaces = namespaces or []
   return config
 
 
@@ -131,6 +135,7 @@ def _run_program_and_get_exports(config):
   with (
     mock.patch.object(program, "pulumi") as pulumi_mock,
     mock.patch.object(program, "gcp") as gcp_mock,
+    mock.patch.object(program, "k8s"),
   ):
     # Make NodePool(...) return a mock whose .name.apply(fn) resolves with
     # the name= kwarg, matching real Pulumi behaviour.
@@ -144,8 +149,14 @@ def _run_program_and_get_exports(config):
     gcp_mock.artifactregistry.Repository.return_value.name.apply.side_effect = (
       lambda fn: fn(None)
     )
-    # Make Output.all() simply collect resolved values into a list.
-    pulumi_mock.Output.all.side_effect = lambda *args: list(args)
+
+    # Make Output.all() return an object that acts as a list (for
+    # accelerator exports) but also supports .apply() (for kubeconfig).
+    class _FakeOutput(list):
+      def apply(self, fn):
+        return mock.MagicMock()
+
+    pulumi_mock.Output.all.side_effect = lambda *args: _FakeOutput(args)
 
     program_fn = program.create_program(config)
     program_fn()
@@ -253,7 +264,9 @@ class TestExportsDependOnResources(parameterized.TestCase):
       # pool.name.apply() calls.
       node_pool_mock = gcp_mock.container.NodePool.return_value
       node_pool_mock.name.apply.assert_called_once()
-      pulumi_mock.Output.all.assert_called_once()
+      # Output.all is called at least twice: once for kubeconfig
+      # generation and once for the accelerator export.
+      self.assertGreaterEqual(pulumi_mock.Output.all.call_count, 2)
 
   def test_ar_registry_export_depends_on_repository(self):
     """The ar_registry export must be produced via Repository.name.apply()."""
@@ -381,6 +394,61 @@ class TestScaleToZeroNodePools(parameterized.TestCase):
     self.assertEqual(
       node_config_kwargs.get("max_run_duration"),
       f"{NODE_MAX_RUN_DURATION_SECONDS}s",
+    )
+
+
+class TestClusterWorkloadIdentityAndDPv2(absltest.TestCase):
+  """Verify cluster has Workload Identity and Dataplane V2 enabled."""
+
+  def test_workload_identity_config(self):
+    with (
+      mock.patch.object(program, "pulumi"),
+      mock.patch.object(program, "gcp") as gcp_mock,
+    ):
+      program.create_program(_make_config([]))()
+
+      gcp_mock.container.ClusterWorkloadIdentityConfigArgs.assert_called_once_with(
+        workload_pool="test-project.svc.id.goog",
+      )
+
+  def test_datapath_provider(self):
+    with (
+      mock.patch.object(program, "pulumi"),
+      mock.patch.object(program, "gcp") as gcp_mock,
+    ):
+      program.create_program(_make_config([]))()
+
+      cluster_kwargs = gcp_mock.container.Cluster.call_args.kwargs
+      self.assertEqual(
+        cluster_kwargs.get("datapath_provider"), "ADVANCED_DATAPATH"
+      )
+
+
+class TestNodePoolWorkloadMetadata(parameterized.TestCase):
+  """Verify node pools have workload_metadata_config for Workload Identity."""
+
+  @parameterized.named_parameters(
+    dict(testcase_name="gpu", is_gpu=True),
+    dict(testcase_name="tpu", is_gpu=False),
+  )
+  @mock.patch.object(program, "gcp")
+  def test_workload_metadata_mode(self, gcp_mock, is_gpu):
+    cluster = mock.MagicMock()
+    cluster.name = "test-cluster"
+
+    if is_gpu:
+      gpu = GpuConfig("l4", 1, "nvidia-l4", "g2-standard-4")
+      program._create_gpu_node_pool(
+        cluster, gpu, "us-central1-a", "my-project", "test-pool"
+      )
+    else:
+      tpu = TpuConfig("v3", 4, "2x2", "tpu-v3-podslice", "ct3-hightpu-4t", 1)
+      program._create_tpu_node_pool(
+        cluster, tpu, "us-central1-a", "my-project", "test-pool"
+      )
+
+    gcp_mock.container.NodePoolNodeConfigWorkloadMetadataConfigArgs.assert_called_once_with(
+      mode="GKE_METADATA",
     )
 
 

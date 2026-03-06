@@ -4,18 +4,34 @@ import os
 
 import click
 import pulumi.automation as auto
+from google.cloud import storage as gcs_storage
 
-from keras_remote.cli.config import NodePoolConfig
+from keras_remote.cli.config import NamespaceConfig, NodePoolConfig
 from keras_remote.cli.constants import (
   PULUMI_ROOT,
   RESOURCE_NAME_PREFIX,
+  STATE_BUCKET_SUFFIX,
   STATE_DIR,
 )
 from keras_remote.core import accelerators
 
 
+def _ensure_state_bucket(project: str) -> str:
+  """Ensure the GCS bucket for Pulumi state exists, creating if needed.
+
+  Returns:
+      The bucket name.
+  """
+  bucket_name = f"{project}-{STATE_BUCKET_SUFFIX}"
+  client = gcs_storage.Client(project=project)
+  bucket = client.bucket(bucket_name)
+  if not bucket.exists():
+    bucket.create(location="us")
+  return bucket_name
+
+
 def get_stack(program_fn, config):
-  """Create or select a Pulumi stack with local file backend.
+  """Create or select a Pulumi stack with GCS remote backend.
 
   Args:
       program_fn: Pulumi inline program callable.
@@ -33,13 +49,16 @@ def get_stack(program_fn, config):
     click.echo("Pulumi CLI not found. Installing...")
     pulumi_cmd = auto.PulumiCommand.install(root=PULUMI_ROOT)
 
+  # Ensure state bucket exists
+  state_bucket = _ensure_state_bucket(config.project)
+
   # Use project ID as stack name so each GCP project gets its own stack
   stack_name = config.project
 
   project_settings = auto.ProjectSettings(
     name=RESOURCE_NAME_PREFIX,
     runtime="python",
-    backend=auto.ProjectBackend(url=f"file://{STATE_DIR}"),
+    backend=auto.ProjectBackend(url=f"gs://{state_bucket}"),
   )
 
   stack = auto.create_or_select_stack(
@@ -90,6 +109,37 @@ def get_current_node_pools(stack) -> list[NodePoolConfig]:
     return [_export_to_node_pool(accel)]
 
   return []
+
+
+def get_current_namespaces(stack) -> list[NamespaceConfig]:
+  """Read the current namespace list from Pulumi stack exports.
+
+  Args:
+      stack: A ``pulumi.automation.Stack`` whose outputs have been
+          populated (e.g. after ``stack.refresh()``).
+
+  Returns:
+      A list of :class:`NamespaceConfig` objects.
+  """
+  outputs = stack.outputs()
+  if "namespaces" not in outputs:
+    return []
+  ns_list = outputs["namespaces"].value
+  if not ns_list:
+    return []
+  return [
+    NamespaceConfig(
+      name=ns["name"],
+      members=ns.get("members", []),
+      gpus=ns.get("gpus"),
+      tpus=ns.get("tpus"),
+      cpu=ns.get("cpu"),
+      memory=ns.get("memory"),
+      max_jobs=ns.get("max_jobs"),
+      max_lws=ns.get("max_lws"),
+    )
+    for ns in ns_list
+  ]
 
 
 def _export_to_node_pool(entry: dict) -> NodePoolConfig:

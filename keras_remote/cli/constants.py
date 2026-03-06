@@ -1,6 +1,7 @@
 """Default values and constants for the keras-remote CLI."""
 
 import os
+import re
 
 from keras_remote.constants import (
   DEFAULT_CLUSTER_NAME,  # noqa: F401 — re-exported
@@ -12,6 +13,7 @@ STATE_DIR = os.environ.get(
   "KERAS_REMOTE_STATE_DIR",
   os.path.expanduser("~/.keras-remote/pulumi"),
 )
+STATE_BUCKET_SUFFIX = "keras-remote-state"
 PULUMI_ROOT = os.path.expanduser("~/.keras-remote/pulumi-cli")
 REQUIRED_APIS = [
   "compute.googleapis.com",
@@ -19,7 +21,15 @@ REQUIRED_APIS = [
   "artifactregistry.googleapis.com",
   "storage.googleapis.com",
   "container.googleapis.com",
+  "iam.googleapis.com",
 ]
+
+# Namespace naming constraints (tightest: GCP SA "kr-{name}" max 30 chars)
+NAMESPACE_MAX_LENGTH = 27
+NAMESPACE_PATTERN = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
+RESERVED_NAMESPACES = frozenset(
+  {"default", "kube-system", "kube-public", "kube-node-lease"}
+)
 
 NVIDIA_DRIVER_DAEMONSET_URL = (
   "https://raw.githubusercontent.com/GoogleCloudPlatform/"
