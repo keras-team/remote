@@ -93,7 +93,7 @@ class LiveOutputPanel:
       self._live = Live(
         self,
         console=self._console,
-        refresh_per_second=4,
+        refresh_per_second=5,
       )
       self._live.__enter__()
     else:
