@@ -72,7 +72,6 @@ This adds the `keras-remote up`, `keras-remote down`, `keras-remote status`, and
 - Python 3.11+
 - Google Cloud SDK (`gcloud`)
   - Run `gcloud auth login` and `gcloud auth application-default login`
-- [Pulumi CLI](https://www.pulumi.com/docs/install/) (required for `[cli]` install only)
 - A Google Cloud project with billing enabled
 
 ## Quick Start
@@ -345,7 +344,7 @@ keras-remote down
 
 This removes:
 
-- GKE cluster and accelerator node pools (via Pulumi)
+- GKE cluster and accelerator node pools
 - Artifact Registry repository and container images
 - Cloud Storage buckets (jobs and builds)
 Use `--yes` to skip the confirmation prompt.
