@@ -74,6 +74,8 @@ This adds the `keras-remote up`, `keras-remote down`, `keras-remote status`, and
   - Run `gcloud auth login` and `gcloud auth application-default login`
 - A Google Cloud project with billing enabled
 
+Note: The Pulumi CLI is bundled and managed automatically. It will be installed to `~/.keras-remote/pulumi` on first use if not already present.
+
 ## Quick Start
 
 ### 1. Configure Google Cloud
@@ -210,8 +212,8 @@ The Data API is designed to be read-only. It reliably delivers data to your pods
 
 Under the hood, the Data API optimizes your workflows with two key features:
 
-* **Smart Caching:** Local data is content-hashed and uploaded to a cache bucket only once. Subsequent job runs that use byte-identical data will hit the cache and skip the upload entirely, drastically speeding up execution.
-* **Automatic Zip Exclusion:** When you reference a data path inside your current working directory, Keras Remote automatically excludes that directory from the project's zipped payload to avoid uploading the same data twice.
+- **Smart Caching:** Local data is content-hashed and uploaded to a cache bucket only once. Subsequent job runs that use byte-identical data will hit the cache and skip the upload entirely, drastically speeding up execution.
+- **Automatic Zip Exclusion:** When you reference a data path inside your current working directory, Keras Remote automatically excludes that directory from the project's zipped payload to avoid uploading the same data twice.
 
 There are three main ways to handle data depending on your workflow:
 
@@ -236,8 +238,7 @@ def train(data_dir):
 train(Data("./my_dataset/"))
 
 # Cache hit: subsequent runs with the same data skip the upload!
-train(Data("./my_dataset/")) 
-
+train(Data("./my_dataset/"))
 ```
 
 **Note on GCS Directories:** When referencing a GCS directory with the `Data` class, you must include a trailing slash (e.g., `Data("gs://my-bucket/dataset/")`). If you omit the trailing slash, the system will treat it as a single file object.
@@ -294,11 +295,11 @@ train("gs://my-bucket/arrayrecords/")
 
 ### Environment Variables
 
-| Variable               | Required | Default         | Description                        |
-| ---------------------- | -------- | --------------- | ---------------------------------- |
-| `KERAS_REMOTE_PROJECT` | Yes      | —               | Google Cloud project ID            |
-| `KERAS_REMOTE_ZONE`    | No       | `us-central1-a` | Default compute zone               |
-| `KERAS_REMOTE_CLUSTER` | No       | —               | GKE cluster name                   |
+| Variable               | Required | Default         | Description             |
+| ---------------------- | -------- | --------------- | ----------------------- |
+| `KERAS_REMOTE_PROJECT` | Yes      | —               | Google Cloud project ID |
+| `KERAS_REMOTE_ZONE`    | No       | `us-central1-a` | Default compute zone    |
+| `KERAS_REMOTE_CLUSTER` | No       | —               | GKE cluster name        |
 
 ### Decorator Parameters
 
@@ -435,7 +436,7 @@ This removes:
 - GKE cluster and accelerator node pools
 - Artifact Registry repository and container images
 - Cloud Storage buckets (jobs and builds)
-Use `--yes` to skip the confirmation prompt.
+  Use `--yes` to skip the confirmation prompt.
 
 ## Contributing
 
