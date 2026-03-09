@@ -13,7 +13,7 @@ from keras_remote.data import Data
 
 
 def run(
-  accelerator="v3-8",
+  accelerator="v6e-8",
   container_image=None,
   zone=None,
   project=None,

@@ -8,14 +8,14 @@ Run Keras and JAX workloads on cloud TPUs and GPUs with a simple decorator. No i
 ```python
 import keras_remote
 
-@keras_remote.run(accelerator="v3-8")
+@keras_remote.run(accelerator="v6e-8")
 def train_model():
     import keras
     model = keras.Sequential([...])
     model.fit(x_train, y_train)
     return model.history.history["loss"][-1]
 
-# Executes on TPU v3-8, returns the result
+# Executes on TPU v6e-8, returns the result
 final_loss = train_model()
 ```
 
@@ -25,10 +25,12 @@ final_loss = train_model()
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Usage Examples](#usage-examples)
+- [Handling Data](#handling-data)
 - [Configuration](#configuration)
 - [Supported Accelerators](#supported-accelerators)
 - [Monitoring](#monitoring)
 - [Troubleshooting](#troubleshooting)
+- [Resource Cleanup](#resource-cleanup)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -40,6 +42,7 @@ final_loss = train_model()
 - **Container caching** — Subsequent runs start in 2-4 minutes after initial build
 - **Built-in monitoring** — View job status and logs in Google Cloud Console
 - **Automatic cleanup** — Resources are released when jobs complete
+- **Transparent errors** — Remote exceptions are re-raised locally with the original traceback
 
 ## Installation
 
@@ -65,7 +68,7 @@ cd keras-remote
 pip install -e ".[cli]"
 ```
 
-This adds the `keras-remote up`, `keras-remote down`, `keras-remote status`, and `keras-remote config` commands for provisioning and tearing down cloud resources.
+This adds the `keras-remote up`, `keras-remote down`, `keras-remote status`, `keras-remote config`, and `keras-remote pool` commands for provisioning and managing cloud resources.
 
 ### Requirements
 
@@ -113,6 +116,19 @@ To view configuration:
 keras-remote config
 ```
 
+To manage accelerator node pools after initial setup:
+
+```bash
+# Add a node pool for a specific accelerator
+keras-remote pool add --accelerator=v6e-8
+
+# List current node pools
+keras-remote pool list
+
+# Remove a node pool by name
+keras-remote pool remove <pool-name>
+```
+
 ### 2. Set Environment Variables
 
 Add to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
@@ -127,7 +143,7 @@ export KERAS_REMOTE_ZONE="us-central1-a"  # Optional
 ```python
 import keras_remote
 
-@keras_remote.run(accelerator="v3-8")
+@keras_remote.run(accelerator="v6e-8")
 def hello_tpu():
     import jax
     return f"Running on {jax.devices()}"
@@ -143,7 +159,7 @@ print(result)
 ```python
 import keras_remote
 
-@keras_remote.run(accelerator="v3-8")
+@keras_remote.run(accelerator="v6e-8")
 def compute(x, y):
     return x + y
 
@@ -156,7 +172,7 @@ print(f"Result: {result}")  # Output: Result: 12
 ```python
 import keras_remote
 
-@keras_remote.run(accelerator="v3-8")
+@keras_remote.run(accelerator="v6e-8")
 def train_model():
     import keras
     import numpy as np
@@ -189,20 +205,22 @@ scikit-learn
 
 Keras Remote automatically detects and installs dependencies on the remote worker.
 
+> **Note:** JAX packages (`jax`, `jaxlib`, `libtpu`, `libtpu-nightly`) are automatically filtered from your `requirements.txt` to prevent overriding the accelerator-specific JAX installation. To keep a JAX line, append `# kr:keep` to it.
+
 ### Prebuilt Container Images
 
 Skip container build time by using prebuilt images:
 
 ```python
 @keras_remote.run(
-    accelerator="v3-8",
+    accelerator="v6e-8",
     container_image="us-docker.pkg.dev/my-project/keras-remote/prebuilt:v1.0"
 )
 def train():
     ...
 ```
 
-See [examples/Dockerfile.prebuilt](examples/Dockerfile.prebuilt) for a template.
+Build your own prebuilt image using the project's Dockerfile template as a starting point.
 
 ## Handling Data
 
@@ -295,22 +313,26 @@ train("gs://my-bucket/arrayrecords/")
 
 ### Environment Variables
 
-| Variable               | Required | Default         | Description             |
-| ---------------------- | -------- | --------------- | ----------------------- |
-| `KERAS_REMOTE_PROJECT` | Yes      | —               | Google Cloud project ID |
-| `KERAS_REMOTE_ZONE`    | No       | `us-central1-a` | Default compute zone    |
-| `KERAS_REMOTE_CLUSTER` | No       | —               | GKE cluster name        |
+| Variable                     | Required | Default                | Description             |
+| ---------------------------- | -------- | ---------------------- | ----------------------- |
+| `KERAS_REMOTE_PROJECT`       | Yes      | —                      | Google Cloud project ID |
+| `KERAS_REMOTE_ZONE`          | No       | `us-central1-a`        | Default compute zone    |
+| `KERAS_REMOTE_CLUSTER`       | No       | `keras-remote-cluster` | GKE cluster name        |
+| `KERAS_REMOTE_GKE_NAMESPACE` | No       | `default`              | Kubernetes namespace    |
 
 ### Decorator Parameters
 
 ```python
 @keras_remote.run(
-    accelerator="v3-8",        # Required: TPU/GPU type
+    accelerator="v6e-8",       # TPU/GPU type (default: "v6e-8")
     container_image=None,      # Custom container URI
     zone=None,                 # Override default zone
     project=None,              # Override default project
+    capture_env_vars=None,     # Env var names/patterns to forward (supports * wildcard)
     cluster=None,              # GKE cluster name
-    namespace="default"        # Kubernetes namespace
+    backend=None,              # "gke", "pathways", or None (auto-detect)
+    namespace="default",       # Kubernetes namespace
+    volumes=None,              # Dict mapping absolute paths to Data objects
 )
 ```
 
@@ -323,23 +345,38 @@ Note: each accelerator and topology requires
 
 | Type           | Configurations                              |
 | -------------- | ------------------------------------------- |
-| TPU v2         | `v2-8`, `v2-32`                             |
-| TPU v3         | `v3-8`, `v3-32`                             |
+| TPU v2         | `v2-4`, `v2-16`, `v2-32`                    |
+| TPU v3         | `v3-4`, `v3-16`, `v3-32`                    |
 | TPU v5 Litepod | `v5litepod-1`, `v5litepod-4`, `v5litepod-8` |
 | TPU v5p        | `v5p-8`, `v5p-16`                           |
 | TPU v6e        | `v6e-8`, `v6e-16`                           |
 
 ### GPUs
 
-| Type        | Aliases                     |
-| ----------- | --------------------------- |
-| NVIDIA T4   | `t4`, `nvidia-tesla-t4`     |
-| NVIDIA L4   | `l4`, `nvidia-l4`           |
-| NVIDIA V100 | `v100`, `nvidia-tesla-v100` |
-| NVIDIA A100 | `a100`, `nvidia-tesla-a100` |
-| NVIDIA H100 | `h100`, `nvidia-h100-80gb`  |
+| Type             | Aliases                         | Multi-GPU Counts |
+| ---------------- | ------------------------------- | ---------------- |
+| NVIDIA T4        | `t4`, `nvidia-tesla-t4`         | 1, 2, 4          |
+| NVIDIA L4        | `l4`, `nvidia-l4`               | 1, 2, 4          |
+| NVIDIA V100      | `v100`, `nvidia-tesla-v100`     | 1, 2, 4, 8       |
+| NVIDIA A100      | `a100`, `nvidia-tesla-a100`     | 1, 2, 4, 8       |
+| NVIDIA A100 80GB | `a100-80gb`, `nvidia-a100-80gb` | 1, 2, 4, 8       |
+| NVIDIA H100      | `h100`, `nvidia-h100-80gb`      | 1, 2, 4, 8       |
 
 For multi-GPU configurations on GKE, append the count: `a100x4`, `l4x2`, etc.
+
+### CPU
+
+Use `accelerator="cpu"` to run on a CPU-only node (no accelerator attached).
+
+### Multi-Host TPU (Pathways)
+
+Multi-host TPU configurations (those requiring more than one node, such as `v2-16`, `v3-32`, or `v5p-16`) automatically use the [Pathways](https://cloud.google.com/tpu/docs/pathways-overview) backend. You can also set the backend explicitly:
+
+```python
+@keras_remote.run(accelerator="v3-32", backend="pathways")
+def distributed_train():
+    ...
+```
 
 ## Monitoring
 
@@ -370,9 +407,10 @@ export KERAS_REMOTE_PROJECT="your-project-id"
 Enable required APIs and create the Artifact Registry repository:
 
 ```bash
-gcloud services enable cloudbuild.googleapis.com \
-    artifactregistry.googleapis.com storage.googleapis.com \
-    container.googleapis.com --project=$KERAS_REMOTE_PROJECT
+gcloud services enable compute.googleapis.com \
+    cloudbuild.googleapis.com artifactregistry.googleapis.com \
+    storage.googleapis.com container.googleapis.com \
+    --project=$KERAS_REMOTE_PROJECT
 
 gcloud artifacts repositories create keras-remote \
     --repository-format=docker \
@@ -436,7 +474,8 @@ This removes:
 - GKE cluster and accelerator node pools
 - Artifact Registry repository and container images
 - Cloud Storage buckets (jobs and builds)
-  Use `--yes` to skip the confirmation prompt.
+
+Use `--yes` to skip the confirmation prompt.
 
 ## Contributing
 
