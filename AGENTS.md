@@ -171,7 +171,8 @@ The CLI manages three layers of state: in-memory config (`InfraConfig`), Pulumi 
 | Builds bucket | `{project}-kr-{cluster_name}-builds`              |
 | AR repository | `kr-{cluster_name}`                               |
 | GKE cluster   | `{cluster_name}`                                  |
-| GCP APIs      | project-wide (shared, `disable_on_destroy=False`) |
+
+*Note: GCP APIs are enabled project-wide, shared across clusters, and are not disabled when a cluster is destroyed (`disable_on_destroy=False`).*
 
 Key behaviors:
 
