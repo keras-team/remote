@@ -322,7 +322,7 @@ train("gs://my-bucket/arrayrecords/")
 
 ```python
 @keras_remote.run(
-    accelerator="v6e-8",       # TPU/GPU type (default: "v3-8")
+    accelerator="v6e-8",       # TPU/GPU type (default: "v6e-8")
     container_image=None,      # Custom container URI
     zone=None,                 # Override default zone
     project=None,              # Override default project
