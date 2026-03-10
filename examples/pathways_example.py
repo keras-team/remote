@@ -10,9 +10,54 @@ import keras_remote
 
 
 # A simple model that will be executed remotely on pathways
-@keras_remote.run(accelerator="v5litepod-1", backend="pathways")
+@keras_remote.run(
+  accelerator="v6e-16", backend="pathways", cluster="keras-team-dogfood"
+)
 def train_simple_model():
+  import jax
+  from jax import lax
+
   print("Running Pathways job on JAX Backend!")
+
+  # Verify distributed JAX setup (Pathways auto-initialization)
+  process_count = jax.process_count()
+  process_index = jax.process_index()
+  device_count = jax.device_count()
+  local_device_count = jax.local_device_count()
+
+  print("JAX Distributed Environment:")
+  print(f"  Process Count: {process_count}")
+  print(f"  Process Index: {process_index}")
+  print(f"  Total Devices: {device_count}")
+  print(f"  Local Devices: {local_device_count}")
+
+  # Fail if not actually running on multiple hosts
+  if process_count <= 1:
+    raise RuntimeError(
+      f"Pathways verification failed: Expected > 1 processes, but found {process_count}. "
+      "This indicates the job is NOT running in a multi-host Pathways environment."
+    )
+
+  # Verify collective communication (cross-host psum)
+  try:
+    # Use jax.pmap to sum values across all devices in the cluster
+    x = np.ones(local_device_count)
+    distributed_sum = jax.pmap(lambda val: lax.psum(val, "i"), axis_name="i")(x)
+    total_sum = distributed_sum[0]
+
+    if total_sum != device_count:
+      raise RuntimeError(
+        f"Collective verification failed: Expected psum {device_count}, got {total_sum}"
+      )
+    print(
+      f"Successfully verified collective communication across all {total_sum} devices!"
+    )
+  except Exception as e:
+    print(f"Warning: Collective verification failed: {e}")
+    if isinstance(e, RuntimeError) and "Collective verification failed" in str(
+      e
+    ):
+      raise
 
   # Create a simple dataset
   x = np.random.rand(1000, 10)
