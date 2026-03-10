@@ -238,13 +238,16 @@ def _parse_accelerator(accelerator):
     }
 
   if isinstance(parsed, TpuConfig):
+    # For TPU Podslices (multi-node), resource requests must be per-node.
+    # num_nodes is 1 for single-host TPUs (v3-8, v4-8, v5litepod-1/4/8).
+    chips_per_node = parsed.chips // parsed.num_nodes
     return {
       "node_selector": {
         "cloud.google.com/gke-tpu-accelerator": parsed.gke_accelerator,
         "cloud.google.com/gke-tpu-topology": parsed.topology,
       },
-      "resource_limits": {"google.com/tpu": str(parsed.chips)},
-      "resource_requests": {"google.com/tpu": str(parsed.chips)},
+      "resource_limits": {"google.com/tpu": str(chips_per_node)},
+      "resource_requests": {"google.com/tpu": str(chips_per_node)},
       "tolerations": [
         {"key": "google.com/tpu", "operator": "Exists", "effect": "NoSchedule"}
       ],
@@ -330,8 +333,10 @@ def _create_job_spec(
     ],
     env=env_vars,
     resources=client.V1ResourceRequirements(
-      limits=accel_config["resource_limits"],
-      requests=accel_config["resource_requests"],
+      limits={k: str(v) for k, v in accel_config["resource_limits"].items()},
+      requests={
+        k: str(v) for k, v in accel_config["resource_requests"].items()
+      },
     ),
   )
 
@@ -466,7 +471,9 @@ def _check_node_pool_exists_cached(selector_items) -> bool:
       for tpu_spec in accelerators.TPUS.values():
         for chips, topo_spec in tpu_spec.topologies.items():
           if topo_spec.machine_type == machine_type:
-            pool_labels["cloud.google.com/gke-accelerator-count"] = str(chips)
+            pool_labels["cloud.google.com/gke-accelerator-count"] = str(
+              chips // topo_spec.num_nodes
+            )
             break
 
       if all(pool_labels.get(k) == str(v) for k, v in selector.items()):

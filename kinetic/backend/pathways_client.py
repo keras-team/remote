@@ -289,8 +289,12 @@ def _create_lws_spec(
           ],
           "env": env_vars,
           "resources": {
-            "limits": accel_config["resource_limits"],
-            "requests": accel_config["resource_requests"],
+            "limits": {
+              k: str(v) for k, v in accel_config["resource_limits"].items()
+            },
+            "requests": {
+              k: str(v) for k, v in accel_config["resource_requests"].items()
+            },
           },
         }
       ],
