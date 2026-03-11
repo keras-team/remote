@@ -53,6 +53,7 @@ def submit_pathways_job(
   job_id,
   bucket_name,
   namespace="default",
+  spot=False,
 ):
   """Submit a LeaderWorkerSet to GKE cluster.
 
@@ -71,12 +72,10 @@ def submit_pathways_job(
   _load_kube_config()
   lws_version = _get_lws_version()
 
-  accel_config = _parse_accelerator(accelerator)
+  parsed_config = accelerators.parse_accelerator(accelerator, spot=spot)
+  accel_config = _parse_accelerator(accelerator, spot=spot)
   job_name = _get_job_name(job_id)
 
-  # Extract num nodes from the TPU configuration
-
-  parsed_config = accelerators.parse_accelerator(accelerator)
   if (
     isinstance(parsed_config, accelerators.TpuConfig)
     and parsed_config.num_nodes > 1
@@ -137,6 +136,7 @@ def wait_for_job(job_id, namespace="default", timeout=3600, poll_interval=10):
   # The leader pod is suffixed with '-0' by LWS
   leader_pod_name = f"{job_name}-0"
 
+  logged_pending = set()
   with LogStreamer(core_v1, namespace) as streamer:
     while True:
       elapsed = time.time() - start_time
@@ -160,7 +160,7 @@ def wait_for_job(job_id, namespace="default", timeout=3600, poll_interval=10):
           raise RuntimeError(f"Pathways job {job_name} failed")
 
         elif pod.status.phase == "Pending":
-          _check_pod_scheduling(core_v1, job_name, namespace)
+          _check_pod_scheduling(core_v1, job_name, namespace, logged_pending)
           logging.debug("Pod is Pending...")
 
         elif pod.status.phase == "Running":
@@ -262,10 +262,12 @@ def _create_lws_spec(
     {"name": "TPU_WORKER_ID", "value": "$(LWS_WORKER_INDEX)"},
   ]
 
-  tolerations = [
-    {"key": t["key"], "operator": t["operator"], "effect": t["effect"]}
-    for t in accel_config["tolerations"]
-  ]
+  tolerations = []
+  for t in accel_config["tolerations"]:
+    entry = {"key": t["key"], "operator": t["operator"], "effect": t["effect"]}
+    if "value" in t:
+      entry["value"] = t["value"]
+    tolerations.append(entry)
 
   pod_template = {
     "metadata": {
@@ -288,8 +290,12 @@ def _create_lws_spec(
           ],
           "env": env_vars,
           "resources": {
-            "limits": accel_config["resource_limits"],
-            "requests": accel_config["resource_requests"],
+            "limits": {
+              k: str(v) for k, v in accel_config["resource_limits"].items()
+            },
+            "requests": {
+              k: str(v) for k, v in accel_config["resource_requests"].items()
+            },
           },
         }
       ],

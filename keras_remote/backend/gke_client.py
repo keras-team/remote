@@ -23,6 +23,7 @@ def submit_k8s_job(
   job_id,
   bucket_name,
   namespace="default",
+  spot=False,
 ):
   """Submit a Kubernetes Job to GKE cluster.
 
@@ -42,7 +43,7 @@ def submit_k8s_job(
   _load_kube_config()
 
   # Parse accelerator configuration
-  accel_config = _parse_accelerator(accelerator)
+  accel_config = _parse_accelerator(accelerator, spot=spot)
 
   # Create job specification
   job_name = f"keras-remote-{job_id}"
@@ -224,9 +225,9 @@ def validate_preflight(
     logging.warning("Preflight check: Failed to query nodes: %s", e.reason)
 
 
-def _parse_accelerator(accelerator):
+def _parse_accelerator(accelerator, spot=False):
   """Convert accelerator string to GKE pod spec fields."""
-  parsed = accelerators.parse_accelerator(accelerator)
+  parsed = accelerators.parse_accelerator(accelerator, spot=spot)
 
   if parsed is None:
     return {
@@ -238,21 +239,36 @@ def _parse_accelerator(accelerator):
     }
 
   if isinstance(parsed, TpuConfig):
-    return {
+    # For TPU Podslices (multi-node), resource requests must be per-node.
+    # num_nodes is 1 for single-host TPUs (v3-8, v4-8, v5litepod-1/4/8).
+    chips_per_node = parsed.chips // parsed.num_nodes
+    config = {
       "node_selector": {
         "cloud.google.com/gke-tpu-accelerator": parsed.gke_accelerator,
         "cloud.google.com/gke-tpu-topology": parsed.topology,
       },
-      "resource_limits": {"google.com/tpu": str(parsed.chips)},
-      "resource_requests": {"google.com/tpu": str(parsed.chips)},
+      "resource_limits": {"google.com/tpu": str(chips_per_node)},
+      "resource_requests": {"google.com/tpu": str(chips_per_node)},
       "tolerations": [
         {"key": "google.com/tpu", "operator": "Exists", "effect": "NoSchedule"}
       ],
       "jax_platform": "tpu",
     }
 
+    if parsed.spot:
+      config["node_selector"]["cloud.google.com/gke-spot"] = "true"
+      config["tolerations"].append(
+        {
+          "key": "cloud.google.com/gke-spot",
+          "operator": "Equal",
+          "value": "true",
+          "effect": "NoSchedule",
+        }
+      )
+    return config
+
   # GpuConfig
-  return {
+  config = {
     "node_selector": {"cloud.google.com/gke-accelerator": parsed.gke_label},
     "resource_limits": {"nvidia.com/gpu": str(parsed.count)},
     "resource_requests": {"nvidia.com/gpu": str(parsed.count)},
@@ -261,6 +277,17 @@ def _parse_accelerator(accelerator):
     ],
     "jax_platform": "gpu",
   }
+  if parsed.spot:
+    config["node_selector"]["cloud.google.com/gke-spot"] = "true"
+    config["tolerations"].append(
+      {
+        "key": "cloud.google.com/gke-spot",
+        "operator": "Equal",
+        "value": "true",
+        "effect": "NoSchedule",
+      }
+    )
+  return config
 
 
 def _load_kube_config():
@@ -330,8 +357,10 @@ def _create_job_spec(
     ],
     env=env_vars,
     resources=client.V1ResourceRequirements(
-      limits=accel_config["resource_limits"],
-      requests=accel_config["resource_requests"],
+      limits={k: str(v) for k, v in accel_config["resource_limits"].items()},
+      requests={
+        k: str(v) for k, v in accel_config["resource_requests"].items()
+      },
     ),
   )
 
@@ -436,6 +465,10 @@ def _check_node_pool_exists_cached(selector_items) -> bool:
       config_dict = pool.get("config", {})
       pool_labels = config_dict.get("labels", {}).copy()
 
+      # Spot VM mapping
+      if config_dict.get("spot"):
+        pool_labels["cloud.google.com/gke-spot"] = "true"
+
       # Map GKE injected node labels for accelerators mapping
       accel_config_list = config_dict.get("accelerators", [])
       if accel_config_list:
@@ -444,6 +477,13 @@ def _check_node_pool_exists_cached(selector_items) -> bool:
           pool_labels["cloud.google.com/gke-tpu-accelerator"] = accel_type
         else:
           pool_labels["cloud.google.com/gke-accelerator"] = accel_type
+
+      # TPU topology mapping from placement policy
+      placement_policy = pool.get("placementPolicy", {})
+      if placement_policy and placement_policy.get("tpuTopology"):
+        pool_labels["cloud.google.com/gke-tpu-topology"] = placement_policy[
+          "tpuTopology"
+        ]
 
       # TPU mapping fallback
       machine_type = config_dict.get("machineType", "")
@@ -455,7 +495,9 @@ def _check_node_pool_exists_cached(selector_items) -> bool:
           "goog-gke-accelerator-type"
         ]
 
-      if machine_type.startswith("ct"):
+      if machine_type.startswith("ct") and not pool_labels.get(
+        "cloud.google.com/gke-tpu-topology"
+      ):
         # We roughly map TPU topology presence for preflight
         pool_labels["cloud.google.com/gke-tpu-topology"] = selector.get(
           "cloud.google.com/gke-tpu-topology", ""
@@ -466,7 +508,9 @@ def _check_node_pool_exists_cached(selector_items) -> bool:
       for tpu_spec in accelerators.TPUS.values():
         for chips, topo_spec in tpu_spec.topologies.items():
           if topo_spec.machine_type == machine_type:
-            pool_labels["cloud.google.com/gke-accelerator-count"] = str(chips)
+            pool_labels["cloud.google.com/gke-accelerator-count"] = str(
+              chips // topo_spec.num_nodes
+            )
             break
 
       if all(pool_labels.get(k) == str(v) for k, v in selector.items()):

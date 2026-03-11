@@ -56,6 +56,9 @@ class JobContext:
   # Data volumes {mount_path: Data}
   volumes: Optional[dict] = None
 
+  # Configuration modifiers
+  spot: bool = False
+
   # Artifact paths (set during prepare phase)
   payload_path: Optional[str] = None
   context_path: Optional[str] = None
@@ -80,6 +83,7 @@ class JobContext:
     env_vars: dict,
     cluster_name: Optional[str] = None,
     volumes: Optional[dict] = None,
+    spot: bool = False,
   ) -> "JobContext":
     """Factory method with default resolution for zone/project/cluster."""
     if not zone:
@@ -105,6 +109,7 @@ class JobContext:
       project=project,
       cluster_name=cluster_name,
       volumes=volumes,
+      spot=spot,
     )
 
 
@@ -155,6 +160,7 @@ class GKEBackend(BaseK8sBackend):
       job_id=ctx.job_id,
       bucket_name=ctx.bucket_name,
       namespace=self.namespace,
+      spot=ctx.spot,
     )
 
   def wait_for_job(self, job: Any, ctx: JobContext) -> None:
@@ -191,6 +197,7 @@ class PathwaysBackend(BaseK8sBackend):
       job_id=ctx.job_id,
       bucket_name=ctx.bucket_name,
       namespace=self.namespace,
+      spot=ctx.spot,
     )
 
   def wait_for_job(self, job: Any, ctx: JobContext) -> None:
