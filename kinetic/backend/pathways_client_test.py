@@ -143,6 +143,33 @@ class TestCreateLwsSpec(absltest.TestCase):
     self.assertEqual(env["MEGASCALE_NUM_SLICES"], "4")
     self.assertEqual(env["TPU_WORKER_ID"], "$(LWS_WORKER_INDEX)")
 
+  def test_spot_spec(self):
+    """Test that spot selectors and tolerations are added when present."""
+    accel_config = self._make_tpu_accel_config()
+    accel_config["node_selector"]["cloud.google.com/gke-spot"] = "true"
+    accel_config["tolerations"].append(
+      {
+        "key": "cloud.google.com/gke-spot",
+        "operator": "Equal",
+        "value": "true",
+        "effect": "NoSchedule",
+      }
+    )
+
+    spec = self._make_spec(accel_config=accel_config)
+    pod_spec = spec["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"]
+
+    self.assertEqual(
+      pod_spec["nodeSelector"]["cloud.google.com/gke-spot"], "true"
+    )
+    spot_tol = [
+      t
+      for t in pod_spec["tolerations"]
+      if t.get("key") == "cloud.google.com/gke-spot"
+    ]
+    self.assertLen(spot_tol, 1)
+    self.assertEqual(spot_tol[0]["value"], "true")
+
   def test_tpu_accel_config(self):
     """Test resources, tolerations, and node selector for TPU config."""
     spec = self._make_spec(accel_config=self._make_tpu_accel_config())

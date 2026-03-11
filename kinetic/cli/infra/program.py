@@ -242,6 +242,7 @@ def _create_gpu_node_pool(
       ],
       labels={RESOURCE_NAME_PREFIX: "true"},
       max_run_duration=f"{NODE_MAX_RUN_DURATION_SECONDS}s",  # 24 hours
+      spot=gpu.spot,
     ),
   )
 
@@ -286,7 +287,10 @@ def _create_tpu_node_pool(
       machine_type=tpu.machine_type,
       oauth_scopes=_BASE_OAUTH_SCOPES,
       labels={RESOURCE_NAME_PREFIX: "true"},
-      max_run_duration=f"{NODE_MAX_RUN_DURATION_SECONDS}s",  # 24 hours
+      max_run_duration=None
+      if tpu.spot
+      else f"{NODE_MAX_RUN_DURATION_SECONDS}s",  # 24 hours
+      spot=tpu.spot,
     ),
     placement_policy=placement,
   )
