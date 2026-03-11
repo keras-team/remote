@@ -78,6 +78,38 @@ class TestParseAccelerator(absltest.TestCase):
     )
     self.assertEqual(result["resource_limits"], {"google.com/tpu": "4"})
 
+  def test_spot_gpu(self):
+    result = _parse_accelerator("l4:spot")
+    self.assertEqual(
+      result["node_selector"]["cloud.google.com/gke-spot"], "true"
+    )
+    # Check for spot toleration
+    spot_tol = [
+      t
+      for t in result["tolerations"]
+      if t.get("key") == "cloud.google.com/gke-spot"
+    ]
+    self.assertLen(spot_tol, 1)
+    self.assertEqual(spot_tol[0]["value"], "true")
+
+  def test_spot_tpu(self):
+    result = _parse_accelerator("v6e-8:spot")
+    self.assertEqual(
+      result["node_selector"]["cloud.google.com/gke-spot"], "true"
+    )
+    # Check for spot toleration
+    spot_tol = [
+      t
+      for t in result["tolerations"]
+      if t.get("key") == "cloud.google.com/gke-spot"
+    ]
+    self.assertLen(spot_tol, 1)
+    self.assertEqual(spot_tol[0]["value"], "true")
+    # Should still have TPU toleration
+    self.assertTrue(
+      any(t.get("key") == "google.com/tpu" for t in result["tolerations"])
+    )
+
 
 class TestCreateJobSpec(absltest.TestCase):
   def _make_gpu_config(self):
