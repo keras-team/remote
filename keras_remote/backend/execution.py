@@ -236,7 +236,7 @@ def _maybe_exclude(data_path, caller_path, exclude_paths):
 def _prepare_artifacts(
   ctx: JobContext, tmpdir: str, caller_frame_depth: int = 3
 ) -> None:
-  """Phase 1: Package function payload and working directory context."""
+  """Package function payload and working directory context."""
   logging.info("Packaging function and context...")
 
   # Get caller directory
@@ -305,7 +305,7 @@ def _prepare_artifacts(
 
 
 def _build_container(ctx: JobContext) -> None:
-  """Phase 2: Build or get cached container image."""
+  """Build or get cached container image."""
   if ctx.container_image:
     ctx.image_uri = ctx.container_image
     logging.info("Using custom container: %s", ctx.image_uri)
@@ -325,7 +325,7 @@ def _build_container(ctx: JobContext) -> None:
 
 
 def _upload_artifacts(ctx: JobContext) -> None:
-  """Phase 3: Upload artifacts to Cloud Storage."""
+  """Upload artifacts to Cloud Storage."""
   if ctx.payload_path is None or ctx.context_path is None:
     raise ValueError("payload_path and context_path must be set before upload")
   logging.info("Uploading artifacts to Cloud Storage (job: %s)...", ctx.job_id)
@@ -339,7 +339,7 @@ def _upload_artifacts(ctx: JobContext) -> None:
 
 
 def _download_result(ctx: JobContext) -> dict:
-  """Phase 6: Download and deserialize result from Cloud Storage."""
+  """Download and deserialize result from Cloud Storage."""
   logging.info("Downloading result...")
   result_path = storage.download_result(
     ctx.bucket_name, ctx.job_id, project=ctx.project
@@ -350,10 +350,10 @@ def _download_result(ctx: JobContext) -> dict:
 
 
 def _cleanup_and_return(ctx: JobContext, result_payload: dict) -> Any:
-  """Phase 7: Cleanup Cloud Storage artifacts and handle result."""
-  logging.info("Cleaning up artifacts...")
-  storage.cleanup_artifacts(ctx.bucket_name, ctx.job_id, project=ctx.project)
+  """Handle result — return value or re-raise remote exception.
 
+  GCS artifact cleanup is handled by the finally block in execute_remote().
+  """
   if result_payload["success"]:
     logging.info("Remote execution completed successfully")
     return result_payload["result"]
@@ -388,40 +388,52 @@ def execute_remote(ctx: JobContext, backend: BaseK8sBackend) -> Any:
   backend.validate_preflight(ctx)
 
   with tempfile.TemporaryDirectory() as tmpdir:
-    # Phase 1: Package artifacts
+    # Step 1: Package artifacts
     _prepare_artifacts(ctx, tmpdir)
 
-    # Phase 2: Build or get cached container image
+    # Step 2: Build or get cached container image
     _build_container(ctx)
 
-    # Phase 3: Upload artifacts to Cloud Storage
+    # Step 3: Upload artifacts to Cloud Storage
     _upload_artifacts(ctx)
 
-    # Phase 4: Submit job (backend-specific)
+    # Step 4: Submit job (backend-specific)
     logging.info("Submitting job to %s...", backend.__class__.__name__)
     job = backend.submit_job(ctx)
 
-    # Phase 5: Wait for completion (with cleanup on failure)
-    job_error = None
     try:
-      backend.wait_for_job(job, ctx)
-    except RuntimeError as e:
-      job_error = e
-    finally:
-      backend.cleanup_job(job, ctx)
-
-    # Phase 6: Download and deserialize result
-    # Try even if the job failed — the runner may have captured a user
-    # exception and uploaded the result before exiting with non-zero.
-    if job_error is not None:
+      # Step 5: Wait for completion (with cleanup on failure)
+      job_error = None
       try:
-        result_payload = _download_result(ctx)
-      except google_exceptions.NotFound:
-        # Result wasn't uploaded (infrastructure failure), surface the
-        # original job error.
-        raise job_error from None
-    else:
-      result_payload = _download_result(ctx)
+        backend.wait_for_job(job, ctx)
+      except RuntimeError as e:
+        job_error = e
+      finally:
+        backend.cleanup_job(job, ctx)
 
-    # Phase 7: Cleanup and return/raise
-    return _cleanup_and_return(ctx, result_payload)
+      # Step 6: Download and deserialize result
+      # Try even if the job failed — the runner may have captured a user
+      # exception and uploaded the result before exiting with non-zero.
+      if job_error is not None:
+        try:
+          result_payload = _download_result(ctx)
+        except google_exceptions.NotFound:
+          # Result wasn't uploaded (infrastructure failure), surface the
+          # original job error.
+          raise job_error from None
+      else:
+        result_payload = _download_result(ctx)
+
+      # Step 7: Return result or raise remote exception
+      return _cleanup_and_return(ctx, result_payload)
+    finally:
+      # Always attempt GCS cleanup, even if download or deserialization
+      # fails unexpectedly. This prevents orphaned artifacts.
+      try:
+        storage.cleanup_artifacts(
+          ctx.bucket_name, ctx.job_id, project=ctx.project
+        )
+      except Exception:
+        logging.warning(
+          "Failed to clean up GCS artifacts for job %s", ctx.job_id
+        )

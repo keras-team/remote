@@ -133,7 +133,7 @@ Every customizable resource name must follow the same resolution model across al
 | `KERAS_REMOTE_PROJECT`       | `project=`     | `--project`      | Yes           | _(required)_           |
 | `KERAS_REMOTE_ZONE`          | `zone=`        | `--zone`         | Yes           | `us-central1-a`        |
 | `KERAS_REMOTE_CLUSTER`       | `cluster=`     | `--cluster`      | Yes           | `keras-remote-cluster` |
-| `KERAS_REMOTE_GKE_NAMESPACE` | `namespace=`   | _(runtime only)_ | Yes           | `default`              |
+| `KERAS_REMOTE_NAMESPACE`     | `namespace=`   | _(runtime only)_ | Yes           | `default`              |
 
 When adding a new configurable resource name, ensure it is wired into **all three paths** (decorator, CLI flags on every relevant command, and `config show`). The `GOOGLE_CLOUD_PROJECT` env var is also accepted as a fallback for project ID (after `KERAS_REMOTE_PROJECT`).
 

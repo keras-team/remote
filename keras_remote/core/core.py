@@ -20,7 +20,7 @@ def run(
   capture_env_vars=None,
   cluster=None,
   backend=None,
-  namespace="default",
+  namespace=None,
   volumes=None,
 ):
   """Execute function on remote TPU/GPU.
@@ -34,7 +34,8 @@ def run(
       to propagate to the remote environment. Defaults to None.
     cluster: GKE cluster name (default: from KERAS_REMOTE_CLUSTER)
     backend: Backend to use ('gke' or 'pathways')
-    namespace: Kubernetes namespace (default: 'default')
+    namespace: Kubernetes namespace (default: None, resolved via
+      KERAS_REMOTE_NAMESPACE env var or 'default')
     volumes: Dict mapping absolute mount paths to Data objects, e.g.
       ``{"/data": Data("./dataset/")}``. Data is downloaded to these
       paths on the pod before function execution.
@@ -143,7 +144,7 @@ def _execute_on_gke(
   if not cluster:
     cluster = os.environ.get("KERAS_REMOTE_CLUSTER", DEFAULT_CLUSTER_NAME)
   if not namespace:
-    namespace = os.environ.get("KERAS_REMOTE_GKE_NAMESPACE", "default")
+    namespace = os.environ.get("KERAS_REMOTE_NAMESPACE", "default")
 
   ctx = JobContext.from_params(
     func,
@@ -177,7 +178,7 @@ def _execute_on_pathways(
   if not cluster:
     cluster = os.environ.get("KERAS_REMOTE_CLUSTER", DEFAULT_CLUSTER_NAME)
   if not namespace:
-    namespace = os.environ.get("KERAS_REMOTE_GKE_NAMESPACE", "default")
+    namespace = os.environ.get("KERAS_REMOTE_NAMESPACE", "default")
 
   ctx = JobContext.from_params(
     func,

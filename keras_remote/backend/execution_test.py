@@ -238,6 +238,7 @@ class TestExecuteRemote(absltest.TestCase):
         "keras_remote.backend.execution._cleanup_and_return",
         return_value=42,
       ),
+      mock.patch("keras_remote.backend.execution.storage"),
     ):
       ctx = self._make_ctx()
       backend = MagicMock()
@@ -258,6 +259,7 @@ class TestExecuteRemote(absltest.TestCase):
         "keras_remote.backend.execution._download_result",
         side_effect=google_exceptions.NotFound("no result uploaded"),
       ),
+      mock.patch("keras_remote.backend.execution.storage"),
     ):
       ctx = self._make_ctx()
       backend = MagicMock()

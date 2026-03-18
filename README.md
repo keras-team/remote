@@ -367,7 +367,7 @@ For more examples, see the [`examples/`](examples/) directory.
 | `KERAS_REMOTE_PROJECT`       | Yes      | —                      | Google Cloud project ID                                      |
 | `KERAS_REMOTE_ZONE`          | No       | `us-central1-a`        | Default compute zone                                         |
 | `KERAS_REMOTE_CLUSTER`       | No       | `keras-remote-cluster` | GKE cluster name                                             |
-| `KERAS_REMOTE_GKE_NAMESPACE` | No       | `default`              | Kubernetes namespace                                         |
+| `KERAS_REMOTE_NAMESPACE`     | No       | `default`              | Kubernetes namespace                                         |
 | `KERAS_REMOTE_LOG_LEVEL`     | No       | `INFO`                 | Log verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `FATAL`) |
 
 Keras Remote uses `absl-py` for logging. Set `KERAS_REMOTE_LOG_LEVEL=DEBUG` for verbose output when debugging issues.

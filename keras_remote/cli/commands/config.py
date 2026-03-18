@@ -56,11 +56,11 @@ def show():
   )
 
   # Namespace
-  namespace = os.environ.get("KERAS_REMOTE_GKE_NAMESPACE")
+  namespace = os.environ.get("KERAS_REMOTE_NAMESPACE")
   table.add_row(
     "Namespace",
     namespace or "default",
-    "KERAS_REMOTE_GKE_NAMESPACE" if namespace else "default (default)",
+    "KERAS_REMOTE_NAMESPACE" if namespace else "default (default)",
   )
 
   # State directory
@@ -78,5 +78,5 @@ def show():
   console.print("  export KERAS_REMOTE_PROJECT=my-project")
   console.print(f"  export KERAS_REMOTE_ZONE={DEFAULT_ZONE}")
   console.print("  export KERAS_REMOTE_CLUSTER=keras-remote-cluster")
-  console.print("  export KERAS_REMOTE_GKE_NAMESPACE=my-namespace")
+  console.print("  export KERAS_REMOTE_NAMESPACE=my-namespace")
   console.print()
