@@ -1,4 +1,4 @@
-# Keras Remote
+# Kinetic
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
@@ -32,7 +32,7 @@ final_loss = train_model()
 
 ## How It Works
 
-When you call a decorated function, Keras Remote handles the entire remote execution pipeline:
+When you call a decorated function, Kinetic handles the entire remote execution pipeline:
 
 1. **Packages** your function, local code, and data dependencies
 2. **Builds a container** with your dependencies via Cloud Build (cached after first build — subsequent runs skip this step)
@@ -112,7 +112,7 @@ kinetic up --project=my-project --accelerator=t4 --yes
 Set your project ID so the library knows where to run jobs:
 
 ```bash
-export KERAS_REMOTE_PROJECT="your-project-id"
+export KINETIC_PROJECT="your-project-id"
 ```
 
 Add this to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.) to persist it. See [Configuration](#configuration) for the full list of environment variables.
@@ -163,14 +163,14 @@ print(f"Final loss: {final_loss}")
 
 ### Working with Data
 
-Keras Remote provides a declarative Data API to seamlessly make your local and cloud data available to remote functions.
+Kinetic provides a declarative Data API to seamlessly make your local and cloud data available to remote functions.
 
 The Data API is read-only — it delivers data to your pods at the start of a job. For saving model outputs or checkpointing, write directly to GCS from within your function.
 
 Under the hood, the Data API provides two key optimizations:
 
 - **Smart Caching:** Local data is content-hashed and uploaded to a cache bucket only once. Subsequent job runs with byte-identical data skip the upload entirely.
-- **Automatic Zip Exclusion:** When you reference a data path inside your current working directory, Keras Remote automatically excludes that directory from the project's zipped payload to avoid uploading the same data twice.
+- **Automatic Zip Exclusion:** When you reference a data path inside your current working directory, Kinetic automatically excludes that directory from the project's zipped payload to avoid uploading the same data twice.
 
 There are three approaches depending on your workflow:
 
@@ -204,7 +204,7 @@ You can also pass multiple `Data` arguments, or nest them inside lists and dicti
 
 #### Static Data (The `volumes` Parameter)
 
-For established training scripts where data requirements are fixed, use the `volumes` parameter in the decorator. This mounts data at hardcoded absolute filesystem paths, allowing you to use Keras Remote with existing codebases without altering the function signature.
+For established training scripts where data requirements are fixed, use the `volumes` parameter in the decorator. This mounts data at hardcoded absolute filesystem paths, allowing you to use Kinetic with existing codebases without altering the function signature.
 
 ```python
 import pandas as pd
@@ -267,7 +267,7 @@ dependencies = [
 ]
 ```
 
-Keras Remote automatically detects and installs dependencies on the remote worker.
+Kinetic automatically detects and installs dependencies on the remote worker.
 If both files exist in the same directory, `requirements.txt` takes precedence.
 
 > **Note:** JAX packages (`jax`, `jaxlib`, `libtpu`, `libtpu-nightly`) are automatically filtered from your dependencies to prevent overriding the accelerator-specific JAX installation. To keep a JAX line, append `# kr:keep` to it.
@@ -331,7 +331,7 @@ kinetic up --project=my-project --accelerator=v6e-8
 kinetic up --project=my-project --cluster=gpu-cluster --accelerator=a100
 ```
 
-**Target a cluster** in your code with the `cluster` parameter or the `KERAS_REMOTE_CLUSTER` environment variable:
+**Target a cluster** in your code with the `cluster` parameter or the `KINETIC_CLUSTER` environment variable:
 
 ```python
 # Run on the GPU cluster
@@ -340,7 +340,7 @@ def train_on_gpu():
     ...
 
 # Or set the env var to avoid repeating the cluster name
-# export KERAS_REMOTE_CLUSTER="gpu-cluster"
+# export KINETIC_CLUSTER="gpu-cluster"
 @kinetic.run(accelerator="a100")
 def train_on_gpu():
     ...
@@ -364,13 +364,13 @@ For more examples, see the [`examples/`](examples/) directory.
 
 | Variable                     | Required | Default                | Description                                                  |
 | ---------------------------- | -------- | ---------------------- | ------------------------------------------------------------ |
-| `KERAS_REMOTE_PROJECT`       | Yes      | —                      | Google Cloud project ID                                      |
-| `KERAS_REMOTE_ZONE`          | No       | `us-central1-a`        | Default compute zone                                         |
-| `KERAS_REMOTE_CLUSTER`       | No       | `kinetic-cluster` | GKE cluster name                                             |
-| `KERAS_REMOTE_NAMESPACE`     | No       | `default`              | Kubernetes namespace                                         |
-| `KERAS_REMOTE_LOG_LEVEL`     | No       | `INFO`                 | Log verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `FATAL`) |
+| `KINETIC_PROJECT`       | Yes      | —                      | Google Cloud project ID                                      |
+| `KINETIC_ZONE`          | No       | `us-central1-a`        | Default compute zone                                         |
+| `KINETIC_CLUSTER`       | No       | `kinetic-cluster` | GKE cluster name                                             |
+| `KINETIC_NAMESPACE`     | No       | `default`              | Kubernetes namespace                                         |
+| `KINETIC_LOG_LEVEL`     | No       | `INFO`                 | Log verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `FATAL`) |
 
-Keras Remote uses `absl-py` for logging. Set `KERAS_REMOTE_LOG_LEVEL=DEBUG` for verbose output when debugging issues.
+Kinetic uses `absl-py` for logging. Set `KINETIC_LOG_LEVEL=DEBUG` for verbose output when debugging issues.
 
 #### Decorator Parameters
 
@@ -436,7 +436,7 @@ kinetic up --project=my-project --accelerator=t4 --yes
 
 #### `kinetic down`
 
-Remove all Keras Remote resources to avoid ongoing charges:
+Remove all Kinetic resources to avoid ongoing charges:
 
 ```bash
 kinetic down
@@ -497,7 +497,7 @@ kubectl get jobs -n default
 #### "Project must be specified" error
 
 ```bash
-export KERAS_REMOTE_PROJECT="your-project-id"
+export KINETIC_PROJECT="your-project-id"
 ```
 
 #### "404 Requested entity was not found" error
@@ -508,12 +508,12 @@ Enable required APIs and create the Artifact Registry repository:
 gcloud services enable compute.googleapis.com \
     cloudbuild.googleapis.com artifactregistry.googleapis.com \
     storage.googleapis.com container.googleapis.com \
-    --project=$KERAS_REMOTE_PROJECT
+    --project=$KINETIC_PROJECT
 
 gcloud artifacts repositories create kinetic \
     --repository-format=docker \
     --location=us \
-    --project=$KERAS_REMOTE_PROJECT
+    --project=$KINETIC_PROJECT
 ```
 
 #### Permission denied errors
@@ -521,7 +521,7 @@ gcloud artifacts repositories create kinetic \
 Grant required IAM roles:
 
 ```bash
-gcloud projects add-iam-policy-binding $KERAS_REMOTE_PROJECT \
+gcloud projects add-iam-policy-binding $KINETIC_PROJECT \
     --member="user:your-email@example.com" \
     --role="roles/storage.admin"
 ```
@@ -531,7 +531,7 @@ gcloud projects add-iam-policy-binding $KERAS_REMOTE_PROJECT \
 Check Cloud Build logs:
 
 ```bash
-gcloud builds list --project=$KERAS_REMOTE_PROJECT --limit=5
+gcloud builds list --project=$KINETIC_PROJECT --limit=5
 ```
 
 ### Verify Setup
@@ -543,10 +543,10 @@ Run `kinetic status` to check the health of your infrastructure. For manual veri
 gcloud auth list
 
 # Check project
-echo $KERAS_REMOTE_PROJECT
+echo $KINETIC_PROJECT
 
 # Check APIs
-gcloud services list --enabled --project=$KERAS_REMOTE_PROJECT \
+gcloud services list --enabled --project=$KINETIC_PROJECT \
     | grep -E "(cloudbuild|artifactregistry|storage|container)"
 ```
 
