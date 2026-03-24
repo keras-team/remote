@@ -65,9 +65,7 @@ class PoolAddTest(absltest.TestCase):
       mock.patch("kinetic.cli.commands.pool.load_state")
     )
     self.mock_apply = self.enterContext(
-      mock.patch(
-        "kinetic.cli.commands.pool.apply_update", return_value=True
-      )
+      mock.patch("kinetic.cli.commands.pool.apply_update", return_value=True)
     )
     self.mock_gen = self.enterContext(
       mock.patch(
@@ -125,9 +123,7 @@ class PoolRemoveTest(absltest.TestCase):
       mock.patch("kinetic.cli.commands.pool.load_state")
     )
     self.mock_apply = self.enterContext(
-      mock.patch(
-        "kinetic.cli.commands.pool.apply_update", return_value=True
-      )
+      mock.patch("kinetic.cli.commands.pool.apply_update", return_value=True)
     )
 
   def test_remove_existing_pool(self):
@@ -208,9 +204,7 @@ class PoolAddUpdateFailureTest(absltest.TestCase):
       )
     )
     self.enterContext(
-      mock.patch(
-        "kinetic.cli.commands.pool.apply_update", return_value=False
-      )
+      mock.patch("kinetic.cli.commands.pool.apply_update", return_value=False)
     )
     self.enterContext(
       mock.patch(
@@ -242,9 +236,7 @@ class PoolRemoveUpdateFailureTest(absltest.TestCase):
       )
     )
     self.enterContext(
-      mock.patch(
-        "kinetic.cli.commands.pool.apply_update", return_value=False
-      )
+      mock.patch("kinetic.cli.commands.pool.apply_update", return_value=False)
     )
 
   def test_remove_update_failure_warns(self):

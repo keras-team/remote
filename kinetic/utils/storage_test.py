@@ -278,8 +278,7 @@ class TestUploadDirectory(absltest.TestCase):
     super().setUp()
     self.mock_upload = self.enterContext(
       mock.patch(
-        "kinetic.utils.storage.transfer_manager"
-        ".upload_many_from_filenames",
+        "kinetic.utils.storage.transfer_manager.upload_many_from_filenames",
       )
     )
 

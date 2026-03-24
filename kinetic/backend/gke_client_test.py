@@ -121,15 +121,9 @@ class TestCreateJobSpec(absltest.TestCase):
     self.assertEqual(env_names["GCS_BUCKET"], "proj-kinetic-jobs")
 
     # Check GCS args
-    self.assertIn(
-      "gs://proj-kinetic-jobs/job-abc/context.zip", container.args
-    )
-    self.assertIn(
-      "gs://proj-kinetic-jobs/job-abc/payload.pkl", container.args
-    )
-    self.assertIn(
-      "gs://proj-kinetic-jobs/job-abc/result.pkl", container.args
-    )
+    self.assertIn("gs://proj-kinetic-jobs/job-abc/context.zip", container.args)
+    self.assertIn("gs://proj-kinetic-jobs/job-abc/payload.pkl", container.args)
+    self.assertIn("gs://proj-kinetic-jobs/job-abc/result.pkl", container.args)
 
     # Job spec fields
     self.assertEqual(job.spec.backoff_limit, 0)

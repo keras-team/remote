@@ -86,8 +86,7 @@ class TestDownloadData(absltest.TestCase):
     super().setUp()
     self.mock_download = self.enterContext(
       mock.patch(
-        "kinetic.runner.remote_runner.transfer_manager"
-        ".download_many_to_path",
+        "kinetic.runner.remote_runner.transfer_manager.download_many_to_path",
       )
     )
 
@@ -530,9 +529,7 @@ class TestRunGcsMode(absltest.TestCase):
       "mount_path": None,
     }
 
-    with mock.patch(
-      "kinetic.runner.remote_runner._download_data"
-    ) as mock_dl:
+    with mock.patch("kinetic.runner.remote_runner._download_data") as mock_dl:
 
       def fake_dl(ref, target_dir, client):
         os.makedirs(target_dir, exist_ok=True)
@@ -565,9 +562,7 @@ class TestRunGcsMode(absltest.TestCase):
       }
     ]
 
-    with mock.patch(
-      "kinetic.runner.remote_runner._download_data"
-    ) as mock_dl:
+    with mock.patch("kinetic.runner.remote_runner._download_data") as mock_dl:
 
       def fake_dl(ref, target_dir, client):
         os.makedirs(target_dir, exist_ok=True)

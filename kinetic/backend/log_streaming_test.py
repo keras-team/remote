@@ -85,9 +85,7 @@ class TestStreamPodLogs(absltest.TestCase):
     mock_core.read_namespaced_pod_log.return_value = mock_resp
 
     with (
-      mock.patch(
-        "kinetic.backend.log_streaming.Console"
-      ) as mock_console_cls,
+      mock.patch("kinetic.backend.log_streaming.Console") as mock_console_cls,
       mock.patch("kinetic.backend.log_streaming.logging") as mock_log,
     ):
       mock_console_cls.return_value.is_terminal = False
