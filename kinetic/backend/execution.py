@@ -44,6 +44,7 @@ class JobContext:
   zone: str
   project: str
   cluster_name: str
+  working_dir: Optional[str] = None
 
   # Generated identifiers
   job_id: str = field(default_factory=lambda: f"job-{uuid.uuid4().hex[:8]}")
@@ -69,6 +70,8 @@ class JobContext:
     self.bucket_name = f"{self.project}-kn-{self.cluster_name}-jobs"
     self.region = zone_to_region(self.zone)
     self.display_name = f"kinetic-{self.func.__name__}-{self.job_id}"
+    if self.working_dir is None:
+      self.working_dir = _resolve_working_dir(self.func)
 
   @classmethod
   def from_params(
@@ -108,6 +111,7 @@ class JobContext:
       zone=zone,
       project=project,
       cluster_name=cluster_name,
+      working_dir=_resolve_working_dir(func),
       volumes=volumes,
       spot=spot,
     )
@@ -240,20 +244,18 @@ def _maybe_exclude(data_path, caller_path, exclude_paths):
     exclude_paths.add(data_abs)
 
 
-def _prepare_artifacts(
-  ctx: JobContext, tmpdir: str, caller_frame_depth: int = 3
-) -> None:
+def _resolve_working_dir(func: Callable) -> str:
+  """Resolve the user working directory from the wrapped function."""
+  module = inspect.getmodule(func)
+  if module and module.__file__:
+    return os.path.dirname(os.path.abspath(module.__file__))
+  return os.getcwd()
+
+
+def _prepare_artifacts(ctx: JobContext, tmpdir: str) -> None:
   """Package function payload and working directory context."""
   logging.info("Packaging function and context...")
-
-  # Get caller directory
-  frame = inspect.stack()[caller_frame_depth]
-  module = inspect.getmodule(frame[0])
-  caller_path: str
-  if module and module.__file__:
-    caller_path = os.path.dirname(os.path.abspath(module.__file__))
-  else:
-    caller_path = os.getcwd()
+  caller_path = ctx.working_dir
 
   # Process Data objects
   exclude_paths: set[str] = set()

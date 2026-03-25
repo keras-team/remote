@@ -101,11 +101,13 @@ def run_gcs_mode():
     logging.info("Executing %s()", func.__name__)
     result = None
     exception = None
+    remote_traceback = None
 
     try:
       result = func(*args, **kwargs)
       logging.info("Function completed successfully")
     except BaseException as e:
+      remote_traceback = traceback.format_exc()
       logging.error("%s: %s", type(e).__name__, e)
       traceback.print_exc()
       sys.stdout.flush()
@@ -120,7 +122,7 @@ def run_gcs_mode():
       "success": exception is None,
       "result": result if exception is None else None,
       "exception": exception,
-      "traceback": traceback.format_exc() if exception else None,
+      "traceback": remote_traceback,
     }
 
     with open(result_path, "wb") as f:

@@ -101,6 +101,7 @@ class TestCreateLwsSpec(absltest.TestCase):
     self.assertEqual(spec["metadata"]["name"], "keras-pathways-abc")
     self.assertEqual(spec["metadata"]["namespace"], "default")
     self.assertEqual(spec["metadata"]["labels"]["app"], "kinetic-pathways")
+    self.assertEqual(spec["metadata"]["labels"]["job-id"], "j1")
     # Replicas and size.
     self.assertEqual(spec["spec"]["replicas"], 1)
     self.assertEqual(spec["spec"]["leaderWorkerTemplate"]["size"], 4)

@@ -314,7 +314,7 @@ def _create_lws_spec(
     "metadata": {
       "name": job_name,
       "namespace": namespace,
-      "labels": {"app": "kinetic-pathways"},
+      "labels": {"app": "kinetic-pathways", "job-id": job_id},
     },
     "spec": {
       "replicas": 1,

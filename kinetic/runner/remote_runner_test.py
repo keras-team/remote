@@ -502,6 +502,7 @@ class TestRunGcsMode(absltest.TestCase):
     self.assertFalse(result["success"])
     self.assertIsInstance(result["exception"], ValueError)
     self.assertIn("test error", str(result["exception"]))
+    self.assertIn("ValueError: test error", result["traceback"])
 
   def test_env_vars_applied(self):
     def read_env():
