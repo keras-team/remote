@@ -95,7 +95,7 @@ def _parse_pyproject_dependencies(pyproject_path: str) -> str:
 
   Returns:
       Newline-separated dependency strings in PEP 508 format suitable for
-      ``pip install``, or an empty string if the file declares no
+      ``uv pip install``, or an empty string if the file declares no
       dependencies.
   """
   with open(pyproject_path, "rb") as f:
@@ -380,23 +380,36 @@ def _generate_dockerfile(
   Returns:
       Dockerfile content as string
   """
-  # Determine JAX installation command based on accelerator category
+  # Build a single uv pip install command for all dependencies so that
+  # uv resolves everything in one pass (faster, more consistent).
+  parts = ["RUN uv pip install --system"]
+
+  # JAX with accelerator-specific extras.
   if category == "cpu":
-    jax_install = "RUN python3 -m pip install jax"
+    parts.append("jax")
   elif category == "tpu":
-    jax_install = (
-      "RUN python3 -m pip install 'jax[tpu]>=0.4.6' "
+    parts.append("'jax[tpu]>=0.4.6'")
+  else:
+    parts.append("'jax[cuda12]'")
+
+  # Core dependencies.
+  parts.extend(["keras", "cloudpickle", "google-cloud-storage"])
+
+  # User requirements.
+  if has_requirements:
+    parts.append("-r /tmp/requirements.txt")
+
+  # TPU needs an extra find-links index.
+  if category == "tpu":
+    parts.append(
       "-f https://storage.googleapis.com/jax-releases/libtpu_releases.html"
     )
-  else:
-    jax_install = "RUN python3 -m pip install 'jax[cuda12]'"
 
-  requirements_section = ""
+  install_command = " ".join(parts)
+
+  requirements_copy = ""
   if has_requirements:
-    requirements_section = (
-      "COPY requirements.txt /tmp/requirements.txt\n"
-      "RUN python3 -m pip install -r /tmp/requirements.txt\n"
-    )
+    requirements_copy = "COPY requirements.txt /tmp/requirements.txt"
 
   template_path = os.path.join(_PACKAGE_ROOT, "Dockerfile.template")
   with open(template_path, "r") as f:
@@ -404,8 +417,8 @@ def _generate_dockerfile(
 
   return template.substitute(
     base_image=base_image,
-    jax_install=jax_install,
-    requirements_section=requirements_section,
+    requirements_copy=requirements_copy,
+    install_command=install_command,
   )
 
 
