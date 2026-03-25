@@ -35,13 +35,14 @@ def pool():
   help="Minimum node count for the accelerator node pool (default: 0)",
 )
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
-def pool_add(project, zone, cluster_name, accelerator, min_nodes, yes):
+@click.option("--spot", is_flag=True, help="Use Spot VMs for node pool")
+def pool_add(project, zone, cluster_name, accelerator, min_nodes, yes, spot):
   """Add an accelerator node pool to the cluster."""
   banner("kinetic Pool Add")
 
   # Parse the accelerator spec first to fail fast on bad input.
   try:
-    accel_config = accelerators.parse_accelerator(accelerator)
+    accel_config = accelerators.parse_accelerator(accelerator, spot=spot)
   except ValueError as e:
     raise click.BadParameter(str(e), param_hint="--accelerator") from e
 

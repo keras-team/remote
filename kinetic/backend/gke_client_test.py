@@ -58,6 +58,15 @@ class TestParseAccelerator(absltest.TestCase):
     self.assertLen(result["tolerations"], 1)
     self.assertEqual(result["tolerations"][0]["key"], "google.com/tpu")
 
+  def test_tpu_v3_16_multi_node(self):
+    # v3-16 has 4 nodes and 16 total chips -> 4 chips per node
+    result = _parse_accelerator("v3-16")
+    self.assertEqual(result["resource_limits"], {"google.com/tpu": "4"})
+    self.assertEqual(result["resource_requests"], {"google.com/tpu": "4"})
+    self.assertEqual(
+      result["node_selector"]["cloud.google.com/gke-tpu-topology"], "4x4"
+    )
+
   def test_tpu_v5litepod_4(self):
     result = _parse_accelerator("v5litepod-4")
     self.assertEqual(
@@ -68,6 +77,38 @@ class TestParseAccelerator(absltest.TestCase):
       },
     )
     self.assertEqual(result["resource_limits"], {"google.com/tpu": "4"})
+
+  def test_spot_gpu(self):
+    result = _parse_accelerator("l4:spot")
+    self.assertEqual(
+      result["node_selector"]["cloud.google.com/gke-spot"], "true"
+    )
+    # Check for spot toleration
+    spot_tol = [
+      t
+      for t in result["tolerations"]
+      if t.get("key") == "cloud.google.com/gke-spot"
+    ]
+    self.assertLen(spot_tol, 1)
+    self.assertEqual(spot_tol[0]["value"], "true")
+
+  def test_spot_tpu(self):
+    result = _parse_accelerator("v6e-8:spot")
+    self.assertEqual(
+      result["node_selector"]["cloud.google.com/gke-spot"], "true"
+    )
+    # Check for spot toleration
+    spot_tol = [
+      t
+      for t in result["tolerations"]
+      if t.get("key") == "cloud.google.com/gke-spot"
+    ]
+    self.assertLen(spot_tol, 1)
+    self.assertEqual(spot_tol[0]["value"], "true")
+    # Should still have TPU toleration
+    self.assertTrue(
+      any(t.get("key") == "google.com/tpu" for t in result["tolerations"])
+    )
 
 
 class TestCreateJobSpec(absltest.TestCase):
@@ -411,6 +452,29 @@ class TestCheckNodePoolExistsCached(absltest.TestCase):
       (
         ("cloud.google.com/gke-tpu-accelerator", "tpu-v5-lite-podslice"),
         ("cloud.google.com/gke-tpu-topology", "2x2"),
+      )
+    )
+    self.assertTrue(result)
+
+  def test_tpu_multi_node_match(self):
+    """Test that it correctly identifies a 4-chip-per-node pool for v6e-16."""
+    self.mock_run.return_value = json.dumps(
+      [
+        {
+          "config": {
+            "machineType": "ct6e-standard-4t",
+            "accelerators": [{"acceleratorType": "tpu-v6e-slice"}],
+            "labels": {},
+          }
+        }
+      ]
+    )
+
+    result = _check_node_pool_exists_cached(
+      (
+        ("cloud.google.com/gke-tpu-accelerator", "tpu-v6e-slice"),
+        ("cloud.google.com/gke-tpu-topology", "4x4"),
+        ("cloud.google.com/gke-accelerator-count", "4"),
       )
     )
     self.assertTrue(result)

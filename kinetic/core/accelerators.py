@@ -18,6 +18,7 @@ class GpuConfig:
   count: int  # number of GPUs (1, 2, 4, …)
   gke_label: str  # "nvidia-l4" — K8s node selector value
   machine_type: str  # "g2-standard-4" — GKE node pool machine type
+  spot: bool = False
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,7 @@ class TpuConfig:
   gke_accelerator: str  # "tpu-v5-lite-podslice"
   machine_type: str  # "ct5lp-hightpu-4t"
   num_nodes: int  # GKE node pool node count
+  spot: bool = False
 
 
 Accelerator = Union[GpuConfig, TpuConfig, None]
@@ -245,7 +247,7 @@ def _resolve_tpu_alias(name: str) -> str:
   return _TPU_ALIASES.get(name, name)
 
 
-def parse_accelerator(accel_str: str) -> Accelerator:
+def parse_accelerator(accel_str: str, spot: bool = False) -> Accelerator:
   """Parse an accelerator string into a fully resolved config.
 
   Returns GpuConfig, TpuConfig, or None (for "cpu").
@@ -268,15 +270,18 @@ def parse_accelerator(accel_str: str) -> Accelerator:
       v6e > v5p > v5litepod for TPUs).
   """
   s = accel_str.strip().lower()
+  if s.endswith(":spot"):
+    spot = True
+    s = s[:-5]
 
   if s == "cpu" or (s.startswith("cpu:") and s[4:].isdigit()):
     return None
 
   if s == "gpu":
-    return make_gpu(DEFAULT_GPU, 1)
+    return make_gpu(DEFAULT_GPU, 1, spot=spot)
 
   if s == "tpu":
-    return make_tpu(DEFAULT_TPU, TPUS[DEFAULT_TPU].default_chips)
+    return make_tpu(DEFAULT_TPU, TPUS[DEFAULT_TPU].default_chips, spot=spot)
 
   # 1) Try parsing as GPU
   is_gpu_explicit = s.startswith("gpu:")
@@ -286,7 +291,7 @@ def parse_accelerator(accel_str: str) -> Accelerator:
     count = int(gpu_str)
     for gpu_name in _PREFERRED_GPUS:
       if gpu_name in GPUS and count in GPUS[gpu_name].counts:
-        return make_gpu(gpu_name, count)
+        return make_gpu(gpu_name, count, spot=spot)
     if is_gpu_explicit:
       valid_counts = sorted(
         set(c for spec in GPUS.values() for c in spec.counts)
@@ -297,13 +302,13 @@ def parse_accelerator(accel_str: str) -> Accelerator:
 
   name = _resolve_gpu_alias(gpu_str)
   if name in GPUS:
-    return make_gpu(name, 1)
+    return make_gpu(name, 1, spot=spot)
 
   m = _MULTI_GPU_RE.match(gpu_str)
   if m:
     name = _resolve_gpu_alias(m.group(1))
     if name in GPUS:
-      return make_gpu(name, int(m.group(2)))
+      return make_gpu(name, int(m.group(2)), spot=spot)
 
   if is_gpu_explicit:
     raise ValueError(f"Unknown GPU accelerator: '{accel_str}'")
@@ -316,7 +321,7 @@ def parse_accelerator(accel_str: str) -> Accelerator:
     chips = int(tpu_str)
     for tpu_name in _PREFERRED_TPUS:
       if tpu_name in TPUS and chips in TPUS[tpu_name].topologies:
-        return make_tpu(tpu_name, chips)
+        return make_tpu(tpu_name, chips, spot=spot)
     if is_tpu_explicit:
       valid_chips = sorted(
         set(c for spec in TPUS.values() for c in spec.topologies)
@@ -327,7 +332,7 @@ def parse_accelerator(accel_str: str) -> Accelerator:
 
   name = _resolve_tpu_alias(tpu_str)
   if name in TPUS:
-    return make_tpu(name, TPUS[name].default_chips)
+    return make_tpu(name, TPUS[name].default_chips, spot=spot)
 
   m = _TPU_TOPO_RE.match(tpu_str)
   if m:
@@ -336,7 +341,7 @@ def parse_accelerator(accel_str: str) -> Accelerator:
       topo_str = m.group(2)
       for chips, topo_spec in TPUS[name].topologies.items():
         if topo_spec.topology == topo_str:
-          return make_tpu(name, chips)
+          return make_tpu(name, chips, spot=spot)
       valid = [ts.topology for ts in TPUS[name].topologies.values()]
       raise ValueError(
         f"Topology '{topo_str}' not supported for '{name}'. "
@@ -347,7 +352,7 @@ def parse_accelerator(accel_str: str) -> Accelerator:
   if m:
     name = _resolve_tpu_alias(m.group(1))
     if name in TPUS:
-      return make_tpu(name, int(m.group(2)))
+      return make_tpu(name, int(m.group(2)), spot=spot)
 
   raise ValueError(
     f"Unknown accelerator: '{accel_str}'. "
@@ -380,7 +385,7 @@ def generate_pool_name(accel: GpuConfig | TpuConfig) -> str:
   raise TypeError(f"Expected GpuConfig or TpuConfig, got {type(accel)}")
 
 
-def make_gpu(name: str, count: int) -> GpuConfig:
+def make_gpu(name: str, count: int, spot: bool = False) -> GpuConfig:
   spec = GPUS[name]
   if count not in spec.counts:
     raise ValueError(
@@ -392,10 +397,11 @@ def make_gpu(name: str, count: int) -> GpuConfig:
     count=count,
     gke_label=spec.gke_label,
     machine_type=spec.counts[count],
+    spot=spot,
   )
 
 
-def make_tpu(name: str, chips: int) -> TpuConfig:
+def make_tpu(name: str, chips: int, spot: bool = False) -> TpuConfig:
   spec = TPUS[name]
   if chips not in spec.topologies:
     raise ValueError(
@@ -410,4 +416,5 @@ def make_tpu(name: str, chips: int) -> TpuConfig:
     gke_accelerator=spec.gke_accelerator,
     machine_type=topo_spec.machine_type,
     num_nodes=topo_spec.num_nodes,
+    spot=spot,
   )

@@ -14,6 +14,36 @@ from kinetic.core.accelerators import (
 )
 
 
+class TestParseSpot(absltest.TestCase):
+  def test_suffix_gpu(self):
+    result = parse_accelerator("l4:spot")
+    self.assertIsInstance(result, GpuConfig)
+    self.assertTrue(result.spot)
+    self.assertEqual(result.name, "l4")
+
+  def test_suffix_tpu(self):
+    result = parse_accelerator("v6e-8:spot")
+    self.assertIsInstance(result, TpuConfig)
+    self.assertTrue(result.spot)
+    self.assertEqual(result.name, "v6e")
+
+  def test_explicit_flag_gpu(self):
+    result = parse_accelerator("l4", spot=True)
+    self.assertIsInstance(result, GpuConfig)
+    self.assertTrue(result.spot)
+
+  def test_explicit_flag_tpu(self):
+    result = parse_accelerator("v6e-8", spot=True)
+    self.assertIsInstance(result, TpuConfig)
+    self.assertTrue(result.spot)
+
+  def test_default_is_not_spot(self):
+    result = parse_accelerator("l4")
+    self.assertFalse(result.spot)
+    result = parse_accelerator("v6e-8")
+    self.assertFalse(result.spot)
+
+
 class TestParseGpuDirect(parameterized.TestCase):
   def test_l4(self):
     result = parse_accelerator("gpu:l4")

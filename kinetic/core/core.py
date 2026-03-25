@@ -22,6 +22,7 @@ def run(
   backend=None,
   namespace=None,
   volumes=None,
+  spot=False,
 ):
   """Execute function on remote TPU/GPU.
 
@@ -75,7 +76,7 @@ def run(
       resolved_backend = backend
       if resolved_backend is None:
         try:
-          accel_config = accelerators.parse_accelerator(accelerator)
+          accel_config = accelerators.parse_accelerator(accelerator, spot=spot)
           # Use Pathways for multi-host TPUs (if supported) or simplified logic
           # For now, let's default to GKE unless explicit or strictly needed
           if (
@@ -101,6 +102,7 @@ def run(
           namespace,
           env_vars,
           volumes,
+          spot,
         )
       elif resolved_backend == "pathways":
         return _execute_on_pathways(
@@ -115,6 +117,7 @@ def run(
           namespace,
           env_vars,
           volumes,
+          spot,
         )
       else:
         raise ValueError(
@@ -138,6 +141,7 @@ def _execute_on_gke(
   namespace,
   env_vars,
   volumes,
+  spot,
 ):
   """Execute function on GKE cluster with GPU/TPU nodes."""
   # Get GKE-specific defaults
@@ -157,6 +161,7 @@ def _execute_on_gke(
     env_vars,
     cluster_name=cluster,
     volumes=volumes,
+    spot=spot,
   )
   return execute_remote(ctx, GKEBackend(cluster=cluster, namespace=namespace))
 
@@ -173,6 +178,7 @@ def _execute_on_pathways(
   namespace,
   env_vars,
   volumes,
+  spot,
 ):
   """Execute function on GKE cluster via ML Pathways."""
   if not cluster:
@@ -191,6 +197,7 @@ def _execute_on_pathways(
     env_vars,
     cluster_name=cluster,
     volumes=volumes,
+    spot=spot,
   )
   return execute_remote(
     ctx, PathwaysBackend(cluster=cluster, namespace=namespace)
