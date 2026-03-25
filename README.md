@@ -75,14 +75,10 @@ gcloud auth application-default login
 ### Install
 
 ```bash
-git clone https://github.com/keras-team/kinetic.git
-cd kinetic
-pip install -e ".[cli]"
+pip install keras-kinetic
 ```
 
 This installs both the `@kinetic.run()` decorator and the `kinetic` CLI for managing infrastructure.
-
-> If your GKE cluster and Artifact Registry are already provisioned, you can install without the CLI: `pip install -e .`
 
 ### Provision Infrastructure
 
@@ -423,7 +419,7 @@ Use `accelerator="cpu"` to run on a CPU-only node (no accelerator attached).
 
 ### CLI Commands
 
-The `kinetic` CLI manages your cloud infrastructure. Install it with `pip install -e ".[cli]"`.
+The `kinetic` CLI manages your cloud infrastructure. Install it with `pip install keras-kinetic`.
 
 #### `kinetic up`
 

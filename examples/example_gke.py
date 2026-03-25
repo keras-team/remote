@@ -54,7 +54,7 @@ def simple_computation(x, y):
 
 
 # Example 2: Keras model training on CPU
-@kinetic.run(accelerator="v6e-2x4", cluster="spot-tpu-nodes", spot=True)
+@kinetic.run(accelerator="v6e-2x4", spot=True)
 def train_simple_model_cpu():
   """Train a simple Keras model on remote CPU."""
 
