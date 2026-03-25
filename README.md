@@ -270,7 +270,7 @@ dependencies = [
 Kinetic automatically detects and installs dependencies on the remote worker.
 If both files exist in the same directory, `requirements.txt` takes precedence.
 
-> **Note:** JAX packages (`jax`, `jaxlib`, `libtpu`, `libtpu-nightly`) are automatically filtered from your dependencies to prevent overriding the accelerator-specific JAX installation. To keep a JAX line, append `# kr:keep` to it.
+> **Note:** JAX packages (`jax`, `jaxlib`, `libtpu`, `libtpu-nightly`) are automatically filtered from your dependencies to prevent overriding the accelerator-specific JAX installation. To keep a JAX line, append `# kn:keep` to it.
 
 ### Prebuilt Container Images
 

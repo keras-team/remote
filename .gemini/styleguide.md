@@ -8,9 +8,9 @@ When performing code reviews on pull requests, you must strictly adhere to the f
 
 4. **Demand Robustness**: Do not accept fragile code. If the proposed code is not robust enough or lacks proper error handling, explicitly tell the author why the current approach is brittle and what must be done to reinforce it.
 
-5. **Respect Existing Repo Patterns**: Before suggesting review comments (like asking users to add boilerplate or specific patterns), actively check for existing design patterns across the repository. Do not suggest adding useless code or structures that contradict or fall outside the established Keras repo coding style.
+5. **Respect Existing Repo Patterns**: Before suggesting review comments (like asking users to add boilerplate or specific patterns), actively check for existing design patterns across the repository. Do not suggest adding useless code or structures that contradict or fall outside the established repo coding style.
 
-# Keras Remote API design guidelines
+# Kinetic API design guidelines
 
 These guidelines are meant to help focus design discussions and help us create delightful developer experiences for remote execution.
 
@@ -117,7 +117,7 @@ Every feature has a maintenance cost.
 Every configurable resource name (project, zone, cluster, namespace, etc.) must be resolvable through the same set of paths:
 
 1. **Explicit parameter** to `@run()` (highest priority)
-2. **Environment variable** (`KERAS_REMOTE_*`)
+2. **Environment variable** (`KINETIC_*`)
 3. **CLI flag** (with Click's `envvar=` for automatic env var binding)
 4. **Interactive prompt or sensible default** (lowest priority)
 
@@ -163,18 +163,18 @@ This ensures:
 
 ## All infrastructure resources must be cluster-scoped.
 
-Every resource managed by the CLI must include the cluster name in its identifier so that multiple clusters within the same GCP project are fully independent. The naming convention is `{project}-kr-{cluster_name}-{purpose}` for buckets and `kr-{cluster_name}` for Artifact Registry repos.
+Every resource managed by the CLI must include the cluster name in its identifier so that multiple clusters within the same GCP project are fully independent. The naming convention is `{project}-kn-{cluster_name}-{purpose}` for buckets and `kn-{cluster_name}` for Artifact Registry repos.
 
 | Resource      | Name pattern                         |
 | ------------- | ------------------------------------ |
 | Pulumi stack  | `{project}-{cluster_name}`           |
-| Jobs bucket   | `{project}-kr-{cluster_name}-jobs`   |
-| Builds bucket | `{project}-kr-{cluster_name}-builds` |
-| AR repository | `kr-{cluster_name}`                  |
+| Jobs bucket   | `{project}-kn-{cluster_name}-jobs`   |
+| Builds bucket | `{project}-kn-{cluster_name}-builds` |
+| AR repository | `kn-{cluster_name}`                  |
 
 The only exception is project-wide GCP API enablement, which is intentionally shared across clusters (`disable_on_destroy=False`).
 
-When adding a new infrastructure resource, always scope it to the `(project, cluster_name)` pair. Runtime code (`JobContext`, `container_builder`) resolves the cluster name from `KERAS_REMOTE_CLUSTER` env var or default.
+When adding a new infrastructure resource, always scope it to the `(project, cluster_name)` pair. Runtime code (`JobContext`, `container_builder`) resolves the cluster name from `KINETIC_CLUSTER` env var or default.
 
 ---
 

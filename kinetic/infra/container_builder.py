@@ -35,7 +35,7 @@ _RUNNER_DIR = os.path.join(os.path.dirname(__file__), os.pardir, "runner")
 # the accelerator-specific JAX installation (e.g., jax[tpu], jax[cuda12]).
 _JAX_PACKAGE_NAMES = frozenset({"jax", "jaxlib", "libtpu", "libtpu-nightly"})
 _PACKAGE_NAME_RE = re.compile(r"^([a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?)")
-_KEEP_MARKER = "# kr:keep"
+_KEEP_MARKER = "# kn:keep"
 
 
 def _filter_jax_requirements(requirements_content: str) -> str:
@@ -44,7 +44,7 @@ def _filter_jax_requirements(requirements_content: str) -> str:
   Strips lines that would override the accelerator-specific JAX installation
   managed by the Dockerfile template. Logs a warning for each filtered line.
 
-  To preserve a JAX line, append ``# kr:keep`` to it in requirements.txt.
+  To preserve a JAX line, append ``# kn:keep`` to it in requirements.txt.
 
   Args:
       requirements_content: Raw text of a requirements.txt file.
@@ -73,7 +73,7 @@ def _filter_jax_requirements(requirements_content: str) -> str:
         logging.warning(
           "Filtered '%s' from requirements — JAX is installed "
           "automatically with the correct accelerator backend. "
-          "To override, add '# kr:keep' to the line.",
+          "To override, add '# kn:keep' to the line.",
           m.group(1),
         )
         continue
@@ -129,8 +129,8 @@ def get_or_build_container(
           install list.
       accelerator_type: TPU/GPU type (e.g., 'v3-8')
       project: GCP project ID
-      zone: GCP zone for region derivation (defaults to KERAS_REMOTE_ZONE)
-      cluster_name: GKE cluster name (defaults to KERAS_REMOTE_CLUSTER)
+      zone: GCP zone for region derivation (defaults to KINETIC_ZONE)
+      cluster_name: GKE cluster name (defaults to KINETIC_CLUSTER)
 
   Returns:
       Container image URI in Artifact Registry
@@ -159,7 +159,7 @@ def get_or_build_container(
   image_tag = f"{category}-{requirements_hash[:12]}"
 
   # Use Artifact Registry (cluster-scoped repo)
-  repo_id = f"kr-{cluster_name}"
+  repo_id = f"kn-{cluster_name}"
   registry = f"{ar_location}-docker.pkg.dev/{project}/{repo_id}"
   image_uri = f"{registry}/base:{image_tag}"
 
@@ -312,7 +312,7 @@ def _build_and_push(
 
     # Upload source to GCS (cluster-scoped bucket)
     cluster_name = cluster_name or get_default_cluster_name()
-    bucket_name = f"{project}-kr-{cluster_name}-builds"
+    bucket_name = f"{project}-kn-{cluster_name}-builds"
     source_gcs = _upload_build_source(tarball_path, bucket_name, project)
 
     # Submit build to Cloud Build

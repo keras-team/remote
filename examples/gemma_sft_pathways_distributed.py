@@ -19,7 +19,7 @@ import kinetic
 )
 def finetune_gemma_distributed():
   """
-  Distributed Finetuning of Gemma using Keras Remote + ML Pathways on TPUs.
+  Distributed Finetuning of Gemma using Kinetic + ML Pathways on TPUs.
   This mirrors the Kaggle DataParallel fine-tuning methodology, but executed remotely.
   """
   print(

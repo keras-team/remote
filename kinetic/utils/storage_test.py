@@ -110,33 +110,33 @@ class TestGetProject(parameterized.TestCase):
   @parameterized.named_parameters(
     dict(
       testcase_name="kinetic_project_only",
-      kr_project="kr-proj",
+      kn_project="kn-proj",
       gc_project=None,
-      expected="kr-proj",
+      expected="kn-proj",
     ),
     dict(
       testcase_name="google_cloud_project_fallback",
-      kr_project=None,
+      kn_project=None,
       gc_project="gc-proj",
       expected="gc-proj",
     ),
     dict(
       testcase_name="neither_set",
-      kr_project=None,
+      kn_project=None,
       gc_project=None,
       expected=None,
     ),
     dict(
       testcase_name="kinetic_takes_precedence",
-      kr_project="kr-proj",
+      kn_project="kn-proj",
       gc_project="gc-proj",
-      expected="kr-proj",
+      expected="kn-proj",
     ),
   )
-  def test_resolves_project(self, kr_project, gc_project, expected):
+  def test_resolves_project(self, kn_project, gc_project, expected):
     env = {}
-    if kr_project:
-      env["KERAS_REMOTE_PROJECT"] = kr_project
+    if kn_project:
+      env["KINETIC_PROJECT"] = kn_project
     if gc_project:
       env["GOOGLE_CLOUD_PROJECT"] = gc_project
     with mock.patch.dict(os.environ, env, clear=True):

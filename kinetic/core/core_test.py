@@ -112,13 +112,13 @@ class TestEnvVarCapture(absltest.TestCase):
 
 class TestExecuteOnGkeDefaults(absltest.TestCase):
   def test_cluster_from_env(self):
-    """When cluster=None, falls back to KERAS_REMOTE_CLUSTER env var."""
+    """When cluster=None, falls back to KINETIC_CLUSTER env var."""
     with (
       mock.patch.dict(
         os.environ,
         {
-          "KERAS_REMOTE_CLUSTER": "env-cluster",
-          "KERAS_REMOTE_PROJECT": "proj",
+          "KINETIC_CLUSTER": "env-cluster",
+          "KINETIC_PROJECT": "proj",
         },
       ),
       mock.patch(
@@ -142,13 +142,13 @@ class TestExecuteOnGkeDefaults(absltest.TestCase):
       self.assertEqual(backend.cluster, "env-cluster")
 
   def test_namespace_from_env(self):
-    """When namespace=None, falls back to KERAS_REMOTE_NAMESPACE env var."""
+    """When namespace=None, falls back to KINETIC_NAMESPACE env var."""
     with (
       mock.patch.dict(
         os.environ,
         {
-          "KERAS_REMOTE_NAMESPACE": "custom-ns",
-          "KERAS_REMOTE_PROJECT": "proj",
+          "KINETIC_NAMESPACE": "custom-ns",
+          "KINETIC_PROJECT": "proj",
         },
       ),
       mock.patch(

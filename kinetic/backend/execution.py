@@ -63,7 +63,7 @@ class JobContext:
   image_uri: Optional[str] = None
 
   def __post_init__(self):
-    self.bucket_name = f"{self.project}-kr-{self.cluster_name}-jobs"
+    self.bucket_name = f"{self.project}-kn-{self.cluster_name}-jobs"
     self.region = zone_to_region(self.zone)
     self.display_name = f"kinetic-{self.func.__name__}-{self.job_id}"
 
@@ -88,7 +88,7 @@ class JobContext:
       project = get_default_project()
       if not project:
         raise ValueError(
-          "project must be specified or set KERAS_REMOTE_PROJECT"
+          "project must be specified or set KINETIC_PROJECT"
           " (or GOOGLE_CLOUD_PROJECT) environment variable"
         )
     if not cluster_name:

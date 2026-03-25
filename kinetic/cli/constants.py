@@ -9,7 +9,7 @@ from kinetic.constants import (
 
 RESOURCE_NAME_PREFIX = "kinetic"
 STATE_DIR = os.environ.get(
-  "KERAS_REMOTE_STATE_DIR",
+  "KINETIC_STATE_DIR",
   os.path.expanduser("~/.kinetic/pulumi"),
 )
 PULUMI_ROOT = os.path.expanduser("~/.kinetic/pulumi-cli")

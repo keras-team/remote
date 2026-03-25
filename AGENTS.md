@@ -1,8 +1,8 @@
-# AGENTS.md — Keras Remote
+# AGENTS.md — Kinetic
 
 ## Project Overview
 
-Keras Remote lets users execute Keras/JAX workloads on cloud TPUs and GPUs via a single decorator (`@kinetic.run()`). It handles infrastructure provisioning, container building, job submission, and result retrieval on GCP.
+Kinetic lets users execute Keras/JAX workloads on cloud TPUs and GPUs via a single decorator (`@kinetic.run()`). It handles infrastructure provisioning, container building, job submission, and result retrieval on GCP.
 
 ## Architecture
 
@@ -128,20 +128,20 @@ Every customizable resource name must follow the same resolution model across al
 - **CLI commands**: `--flag` (with `envvar=`) → env var → interactive prompt or default
 - **`config show`**: displays current value and source for every configurable name
 
-| Env Var                      | `@run()` param | CLI flag         | `config show` | Default                |
-| ---------------------------- | -------------- | ---------------- | ------------- | ---------------------- |
-| `KERAS_REMOTE_PROJECT`       | `project=`     | `--project`      | Yes           | _(required)_           |
-| `KERAS_REMOTE_ZONE`          | `zone=`        | `--zone`         | Yes           | `us-central1-a`        |
-| `KERAS_REMOTE_CLUSTER`       | `cluster=`     | `--cluster`      | Yes           | `kinetic-cluster` |
-| `KERAS_REMOTE_NAMESPACE`     | `namespace=`   | _(runtime only)_ | Yes           | `default`              |
+| Env Var               | `@run()` param | CLI flag         | `config show` | Default            |
+| --------------------- | -------------- | ---------------- | ------------- | ------------------ |
+| `KINETIC_PROJECT`     | `project=`     | `--project`      | Yes           | _(required)_       |
+| `KINETIC_ZONE`        | `zone=`        | `--zone`         | Yes           | `us-central1-a`    |
+| `KINETIC_CLUSTER`     | `cluster=`     | `--cluster`      | Yes           | `kinetic-cluster`  |
+| `KINETIC_NAMESPACE`   | `namespace=`   | _(runtime only)_ | Yes           | `default`          |
 
-When adding a new configurable resource name, ensure it is wired into **all three paths** (decorator, CLI flags on every relevant command, and `config show`). The `GOOGLE_CLOUD_PROJECT` env var is also accepted as a fallback for project ID (after `KERAS_REMOTE_PROJECT`).
+When adding a new configurable resource name, ensure it is wired into **all three paths** (decorator, CLI flags on every relevant command, and `config show`). The `GOOGLE_CLOUD_PROJECT` env var is also accepted as a fallback for project ID (after `KINETIC_PROJECT`).
 
 Additional CLI-only env vars:
 
-| Env Var                  | Default                  | Description                  |
-| ------------------------ | ------------------------ | ---------------------------- |
-| `KERAS_REMOTE_STATE_DIR` | `~/.kinetic/pulumi` | Pulumi local state directory |
+| Env Var              | Default               | Description                  |
+| -------------------- | --------------------- | ---------------------------- |
+| `KINETIC_STATE_DIR`  | `~/.kinetic/pulumi`   | Pulumi local state directory |
 
 ### CLI State Management
 
@@ -167,9 +167,9 @@ The CLI manages three layers of state: in-memory config (`InfraConfig`), Pulumi 
 | Resource      | Name pattern                                      |
 | ------------- | ------------------------------------------------- |
 | Pulumi stack  | `{project}-{cluster_name}`                        |
-| Jobs bucket   | `{project}-kr-{cluster_name}-jobs`                |
-| Builds bucket | `{project}-kr-{cluster_name}-builds`              |
-| AR repository | `kr-{cluster_name}`                               |
+| Jobs bucket   | `{project}-kn-{cluster_name}-jobs`                |
+| Builds bucket | `{project}-kn-{cluster_name}-builds`              |
+| AR repository | `kn-{cluster_name}`                               |
 | GKE cluster   | `{cluster_name}`                                  |
 
 *Note: GCP APIs are enabled project-wide, shared across clusters, and are not disabled when a cluster is destroyed (`disable_on_destroy=False`).*

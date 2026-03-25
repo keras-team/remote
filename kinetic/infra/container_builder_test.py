@@ -47,21 +47,21 @@ class TestFilterJaxRequirements(parameterized.TestCase):
     self.assertEqual(_filter_jax_requirements(line), line)
 
   @parameterized.named_parameters(
-    dict(testcase_name="jax_keep", line="jax==0.4.30  # kr:keep\n"),
-    dict(testcase_name="jaxlib_keep", line="jaxlib  # kr:keep\n"),
-    dict(testcase_name="libtpu_keep", line="libtpu-nightly  # kr:keep\n"),
+    dict(testcase_name="jax_keep", line="jax==0.4.30  # kn:keep\n"),
+    dict(testcase_name="jaxlib_keep", line="jaxlib  # kn:keep\n"),
+    dict(testcase_name="libtpu_keep", line="libtpu-nightly  # kn:keep\n"),
   )
-  def test_kr_keep_overrides_filter(self, line):
+  def test_kn_keep_overrides_filter(self, line):
     self.assertEqual(_filter_jax_requirements(line), line)
 
   def test_mixed_requirements(self):
     content = (
       "numpy==1.26\njax[tpu]>=0.4.6\nscipy\n"
-      "jaxlib\nkeras\njax==0.4.30  # kr:keep\n"
+      "jaxlib\nkeras\njax==0.4.30  # kn:keep\n"
     )
     result = _filter_jax_requirements(content)
     self.assertEqual(
-      result, "numpy==1.26\nscipy\nkeras\njax==0.4.30  # kr:keep\n"
+      result, "numpy==1.26\nscipy\nkeras\njax==0.4.30  # kn:keep\n"
     )
 
   def test_empty_string(self):
@@ -309,7 +309,7 @@ class TestGetOrBuildContainer(absltest.TestCase):
       )
 
     mock_build.assert_not_called()
-    self.assertIn("us-docker.pkg.dev/test-proj/kr-my-cluster/base:", result)
+    self.assertIn("us-docker.pkg.dev/test-proj/kn-my-cluster/base:", result)
 
   def test_builds_when_image_missing(self):
     with (
@@ -319,7 +319,7 @@ class TestGetOrBuildContainer(absltest.TestCase):
       ),
       mock.patch(
         "kinetic.infra.container_builder._build_and_push",
-        return_value="us-docker.pkg.dev/proj/kr-my-cluster/base:gpu-bbbbbbbbbbbb",
+        return_value="us-docker.pkg.dev/proj/kn-my-cluster/base:gpu-bbbbbbbbbbbb",
       ) as mock_build,
     ):
       result = get_or_build_container(
@@ -334,7 +334,7 @@ class TestGetOrBuildContainer(absltest.TestCase):
     mock_build.assert_called_once()
     self.assertEqual(
       result,
-      "us-docker.pkg.dev/proj/kr-my-cluster/base:gpu-bbbbbbbbbbbb",
+      "us-docker.pkg.dev/proj/kn-my-cluster/base:gpu-bbbbbbbbbbbb",
     )
 
   def _get_image_uri(self, accelerator_type, project, zone):
@@ -355,7 +355,7 @@ class TestGetOrBuildContainer(absltest.TestCase):
     result = self._get_image_uri("v3-4", "my-proj", "europe-west4-b")
 
     self.assertTrue(
-      result.startswith("europe-docker.pkg.dev/my-proj/kr-my-cluster/base:")
+      result.startswith("europe-docker.pkg.dev/my-proj/kn-my-cluster/base:")
     )
     tag = result.split(":")[-1]
     self.assertRegex(tag, r"^tpu-[0-9a-f]{12}$")
@@ -364,7 +364,7 @@ class TestGetOrBuildContainer(absltest.TestCase):
     result = self._get_image_uri("a100-80gb", "proj", "us-central1-a")
 
     self.assertTrue(
-      result.startswith("us-docker.pkg.dev/proj/kr-my-cluster/base:")
+      result.startswith("us-docker.pkg.dev/proj/kn-my-cluster/base:")
     )
     tag = result.split(":")[-1]
     self.assertRegex(tag, r"^gpu-[0-9a-f]{12}$")

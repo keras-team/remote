@@ -153,9 +153,9 @@ def up(project, zone, accelerator, cluster_name, min_nodes, yes):
 
   console.print()
   console.print("Add these environment variables to your shell config:")
-  console.print(f"  export KERAS_REMOTE_PROJECT={project}")
-  console.print(f"  export KERAS_REMOTE_ZONE={zone}")
-  console.print(f"  export KERAS_REMOTE_CLUSTER={cluster_name}")
+  console.print(f"  export KINETIC_PROJECT={project}")
+  console.print(f"  export KINETIC_ZONE={zone}")
+  console.print(f"  export KINETIC_CLUSTER={cluster_name}")
   console.print()
   console.print("View quotas:")
   console.print(

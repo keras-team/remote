@@ -72,7 +72,7 @@ def create_program(config):
     # 2. Artifact Registry docker repository
     repo = gcp.artifactregistry.Repository(
       "kinetic-repo",
-      repository_id=f"kr-{cluster_name}",
+      repository_id=f"kn-{cluster_name}",
       location=ar_location,
       format="DOCKER",
       description="kinetic container images",
@@ -85,7 +85,7 @@ def create_program(config):
 
     gcp.storage.Bucket(
       "kinetic-jobs-bucket",
-      name=f"{project_id}-kr-{cluster_name}-jobs",
+      name=f"{project_id}-kn-{cluster_name}-jobs",
       location=region,
       project=project_id,
       force_destroy=True,
@@ -94,7 +94,7 @@ def create_program(config):
 
     gcp.storage.Bucket(
       "kinetic-builds-bucket",
-      name=f"{project_id}-kr-{cluster_name}-builds",
+      name=f"{project_id}-kn-{cluster_name}-builds",
       location=ar_location,
       project=project_id,
       force_destroy=True,
@@ -171,7 +171,7 @@ def create_program(config):
     pulumi.export(
       "ar_registry",
       repo.name.apply(
-        lambda _: f"{ar_location}-docker.pkg.dev/{project_id}/kr-{cluster_name}"
+        lambda _: f"{ar_location}-docker.pkg.dev/{project_id}/kn-{cluster_name}"
       ),
     )
 

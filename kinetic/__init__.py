@@ -33,7 +33,7 @@ absl_logger.propagate = False
 
 # Default to INFO if the user is running a script outside of absl.app.run()
 # This ensures that operations like container building and job status are visible.
-log_level = os.environ.get("KERAS_REMOTE_LOG_LEVEL", "INFO").upper()
+log_level = os.environ.get("KINETIC_LOG_LEVEL", "INFO").upper()
 
 if log_level == "DEBUG":
   logging.set_verbosity(logging.DEBUG)

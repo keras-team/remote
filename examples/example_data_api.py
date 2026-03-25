@@ -6,7 +6,7 @@ import kinetic
 from kinetic import Data
 
 # Setup: create temporary dummy data
-tmp_dir = tempfile.mkdtemp(prefix="kr-data-example-")
+tmp_dir = tempfile.mkdtemp(prefix="kn-data-example-")
 dataset_dir = os.path.join(tmp_dir, "dataset")
 os.makedirs(dataset_dir, exist_ok=True)
 

@@ -58,28 +58,28 @@ Before submitting a pull request, please ensure your changes pass linting and un
   **Prerequisites:**
   - A GCP project with a provisioned GKE cluster (see [Quick Start](../README.md#quick-start))
   - Google Cloud SDK authenticated (`gcloud auth login` and `gcloud auth application-default login`)
-  - GKE credentials configured: `gcloud container clusters get-credentials <KERAS_REMOTE_CLUSTER> --zone <KERAS_REMOTE_ZONE> --project <KERAS_REMOTE_PROJECT>`
+  - GKE credentials configured: `gcloud container clusters get-credentials <KINETIC_CLUSTER> --zone <KINETIC_ZONE> --project <KINETIC_PROJECT>`
   - Test dependencies installed: `pip install -e ".[test,cli]"`
 
   **Required environment variables:**
 
-  | Variable               | Required | Default         | Description                    |
-  | ---------------------- | -------- | --------------- | ------------------------------ |
-  | `E2E_TESTS`            | Yes      | —               | Set to `1` to enable e2e tests |
-  | `KERAS_REMOTE_PROJECT` | Yes      | —               | Google Cloud project ID        |
-  | `KERAS_REMOTE_ZONE`    | No       | `us-central1-a` | GKE cluster zone               |
-  | `KERAS_REMOTE_CLUSTER` | No       | `kinetic`  | GKE cluster name               |
+  | Variable          | Required | Default         | Description                    |
+  | ----------------- | -------- | --------------- | ------------------------------ |
+  | `E2E_TESTS`       | Yes      | —               | Set to `1` to enable e2e tests |
+  | `KINETIC_PROJECT` | Yes      | —               | Google Cloud project ID        |
+  | `KINETIC_ZONE`    | No       | `us-central1-a` | GKE cluster zone               |
+  | `KINETIC_CLUSTER` | No       | `kinetic`        | GKE cluster name               |
 
   **Run all e2e tests:**
 
   ```bash
-  E2E_TESTS=1 KERAS_REMOTE_PROJECT=my-project python -m pytest tests/e2e/ -v -n auto
+  E2E_TESTS=1 KINETIC_PROJECT=my-project python -m pytest tests/e2e/ -v -n auto
   ```
 
   **Run a specific test file:**
 
   ```bash
-  E2E_TESTS=1 KERAS_REMOTE_PROJECT=my-project python -m pytest tests/e2e/cpu_execution_test.py -v
+  E2E_TESTS=1 KINETIC_PROJECT=my-project python -m pytest tests/e2e/cpu_execution_test.py -v
   ```
 
   Drop `-n auto` to run tests serially to make it easier to debug.

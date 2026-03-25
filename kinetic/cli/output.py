@@ -40,9 +40,9 @@ _SUBTITLE_MESSAGES = (
   "Polishing the tensors",
   "Tip: Pass --yes to 'pool add/remove' to skip the confirmation prompt",
   "Summoning the cluster spirits",
-  "Tip: Use cluster= in @run() to pick a cluster (or env KERAS_REMOTE_CLUSTER)",
+  "Tip: Use cluster= in @run() to pick a cluster (or env KINETIC_CLUSTER)",
   "Untangling the neural pathways",
-  "Tip: Set zone= in @run() to pick a GCP zone (or env KERAS_REMOTE_ZONE)",
+  "Tip: Set zone= in @run() to pick a GCP zone (or env KINETIC_ZONE)",
   "Brewing the cloud juice",
   "Tip: Use capture_env_vars=['PREFIX_*'] in @run() to forward env vars to the worker",
   "Wrangling the cloud gremlins",
@@ -58,7 +58,7 @@ _SUBTITLE_MESSAGES = (
   "Teaching the pods to dance",
   "Tip: Use namespace= in @run() to pick a K8s namespace",
   "Downloading more RAM",
-  "Tip: Set KERAS_REMOTE_PROJECT or --project to pick a specific GCP project",
+  "Tip: Set KINETIC_PROJECT or --project to pick a specific GCP project",
 )
 
 

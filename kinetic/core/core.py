@@ -28,14 +28,14 @@ def run(
   Args:
     accelerator: TPU/GPU type (e.g., 'v3-8', 'v5litepod-4', 'l4', 'a100')
     container_image: Custom container image URI (optional)
-    zone: GCP zone (default: from KERAS_REMOTE_ZONE or 'us-central1-a')
-    project: GCP project (default: from KERAS_REMOTE_PROJECT)
+    zone: GCP zone (default: from KINETIC_ZONE or 'us-central1-a')
+    project: GCP project (default: from KINETIC_PROJECT)
     capture_env_vars: List of environment variable names or patterns (ending in *)
       to propagate to the remote environment. Defaults to None.
-    cluster: GKE cluster name (default: from KERAS_REMOTE_CLUSTER)
+    cluster: GKE cluster name (default: from KINETIC_CLUSTER)
     backend: Backend to use ('gke' or 'pathways')
     namespace: Kubernetes namespace (default: None, resolved via
-      KERAS_REMOTE_NAMESPACE env var or 'default')
+      KINETIC_NAMESPACE env var or 'default')
     volumes: Dict mapping absolute mount paths to Data objects, e.g.
       ``{"/data": Data("./dataset/")}``. Data is downloaded to these
       paths on the pod before function execution.
@@ -142,9 +142,9 @@ def _execute_on_gke(
   """Execute function on GKE cluster with GPU/TPU nodes."""
   # Get GKE-specific defaults
   if not cluster:
-    cluster = os.environ.get("KERAS_REMOTE_CLUSTER", DEFAULT_CLUSTER_NAME)
+    cluster = os.environ.get("KINETIC_CLUSTER", DEFAULT_CLUSTER_NAME)
   if not namespace:
-    namespace = os.environ.get("KERAS_REMOTE_NAMESPACE", "default")
+    namespace = os.environ.get("KINETIC_NAMESPACE", "default")
 
   ctx = JobContext.from_params(
     func,
@@ -176,9 +176,9 @@ def _execute_on_pathways(
 ):
   """Execute function on GKE cluster via ML Pathways."""
   if not cluster:
-    cluster = os.environ.get("KERAS_REMOTE_CLUSTER", DEFAULT_CLUSTER_NAME)
+    cluster = os.environ.get("KINETIC_CLUSTER", DEFAULT_CLUSTER_NAME)
   if not namespace:
-    namespace = os.environ.get("KERAS_REMOTE_NAMESPACE", "default")
+    namespace = os.environ.get("KINETIC_NAMESPACE", "default")
 
   ctx = JobContext.from_params(
     func,

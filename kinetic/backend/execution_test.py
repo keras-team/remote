@@ -42,7 +42,7 @@ class TestJobContext(absltest.TestCase):
       project="my-proj",
       cluster_name="my-cluster",
     )
-    self.assertEqual(ctx.bucket_name, "my-proj-kr-my-cluster-jobs")
+    self.assertEqual(ctx.bucket_name, "my-proj-kn-my-cluster-jobs")
     self.assertEqual(ctx.region, "europe-west4")
     self.assertTrue(ctx.display_name.startswith("kinetic-my_train-"))
     self.assertRegex(ctx.job_id, r"^job-[0-9a-f]{8}$")
@@ -69,7 +69,7 @@ class TestJobContext(absltest.TestCase):
   def test_from_params_resolves_zone_from_env(self):
     with mock.patch.dict(
       os.environ,
-      {"KERAS_REMOTE_ZONE": "asia-east1-c", "KERAS_REMOTE_PROJECT": "env-proj"},
+      {"KINETIC_ZONE": "asia-east1-c", "KINETIC_PROJECT": "env-proj"},
     ):
       ctx = JobContext.from_params(
         func=self._make_func(),
@@ -88,7 +88,7 @@ class TestJobContext(absltest.TestCase):
     env = {
       k: v
       for k, v in os.environ.items()
-      if k not in ("KERAS_REMOTE_PROJECT", "GOOGLE_CLOUD_PROJECT")
+      if k not in ("KINETIC_PROJECT", "GOOGLE_CLOUD_PROJECT")
     }
     env["GOOGLE_CLOUD_PROJECT"] = "gc-proj"
     with mock.patch.dict(os.environ, env, clear=True):
@@ -108,7 +108,7 @@ class TestJobContext(absltest.TestCase):
     env = {
       k: v
       for k, v in os.environ.items()
-      if k not in ("KERAS_REMOTE_PROJECT", "GOOGLE_CLOUD_PROJECT")
+      if k not in ("KINETIC_PROJECT", "GOOGLE_CLOUD_PROJECT")
     }
     with (
       mock.patch.dict(os.environ, env, clear=True),

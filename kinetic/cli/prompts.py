@@ -16,7 +16,7 @@ def resolve_project(allow_create=True):
   Validates that the project exists. If *allow_create* is True and it
   doesn't, offers to create it and link a billing account.
   """
-  project = os.environ.get("KERAS_REMOTE_PROJECT")
+  project = os.environ.get("KINETIC_PROJECT")
   if not project:
     prompt_msg = (
       "Enter your GCP project ID (or a new ID to create one)"

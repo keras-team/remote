@@ -64,11 +64,11 @@ class TestGetDefaultZone(parameterized.TestCase):
     ("asia-east1-c", "asia-east1-c"),
   )
   def test_returns_env_var_when_set(self, env_value, expected_zone):
-    with mock.patch.dict(os.environ, {"KERAS_REMOTE_ZONE": env_value}):
+    with mock.patch.dict(os.environ, {"KINETIC_ZONE": env_value}):
       self.assertEqual(get_default_zone(), expected_zone)
 
   def test_returns_default_when_unset(self):
-    env = {k: v for k, v in os.environ.items() if k != "KERAS_REMOTE_ZONE"}
+    env = {k: v for k, v in os.environ.items() if k != "KINETIC_ZONE"}
     with mock.patch.dict(os.environ, env, clear=True):
       self.assertEqual(get_default_zone(), DEFAULT_ZONE)
 

@@ -6,7 +6,7 @@ This demonstrates running remote functions on a GKE cluster with kinetic.
 Prerequisites:
 1. A GKE cluster (CPU or with GPU node pools)
 2. kubectl configured to access the cluster
-3. KERAS_REMOTE_PROJECT environment variable set
+3. KINETIC_PROJECT environment variable set
 
 Setup (CPU cluster - works out of the box):
     ./setup.sh  # Answer 'yes' when prompted for GKE setup
@@ -107,7 +107,7 @@ def train_model_gpu():
 def main():
   """Run examples."""
   print("=" * 60)
-  print("Keras Remote - GKE Examples")
+  print("Kinetic - GKE Examples")
   print("=" * 60)
 
   # Example 1: Simple computation (CPU)
@@ -135,7 +135,7 @@ def main():
 
 if __name__ == "__main__":
   # Prerequisites:
-  # 1. Set KERAS_REMOTE_PROJECT environment variable to your GCP project ID
+  # 1. Set KINETIC_PROJECT environment variable to your GCP project ID
   #    (if `project` param is not provided in the decorator)
   # 2. Ensure your GKE cluster has GPU nodes with the required accelerator type
   main()
