@@ -194,7 +194,7 @@ class TestGenerateDockerfile(parameterized.TestCase):
       category="cpu",
     )
     self.assertIn("COPY requirements.txt", content)
-    self.assertIn("uv pip install --system -r", content)
+    self.assertIn("-r /tmp/requirements.txt", content)
 
   def test_without_requirements(self):
     content = _generate_dockerfile(
@@ -221,6 +221,25 @@ class TestGenerateDockerfile(parameterized.TestCase):
       category="cpu",
     )
     self.assertIn(expected_substring, content)
+
+  def test_single_install_command(self):
+    content = _generate_dockerfile(
+      base_image="python:3.12-slim",
+      has_requirements=True,
+      category="gpu",
+    )
+    # All deps should be resolved in exactly one uv pip install invocation.
+    self.assertEqual(content.count("uv pip install"), 1)
+    # That single command should contain JAX, core deps, and requirements.
+    install_line = [l for l in content.splitlines() if "uv pip install" in l][0]
+    for expected in [
+      "jax[cuda12]",
+      "keras",
+      "cloudpickle",
+      "google-cloud-storage",
+      "-r /tmp/requirements.txt",
+    ]:
+      self.assertIn(expected, install_line)
 
   def test_uses_base_image(self):
     content = _generate_dockerfile(
