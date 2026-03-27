@@ -12,6 +12,8 @@ import click
 from rich.table import Table
 
 from kinetic.cli.constants import (
+  DEFAULT_CLUSTER_NAME,
+  DEFAULT_ZONE,
   LWS_INSTALL_URL,
   REQUIRED_APIS,
   STATE_DIR,
@@ -194,11 +196,14 @@ def _check_config(project, zone, cluster_name):
   results = []
 
   if project:
-    source = "KINETIC_PROJECT" if os.environ.get("KINETIC_PROJECT") else "flag"
-    if os.environ.get("GOOGLE_CLOUD_PROJECT") and not os.environ.get(
-      "KINETIC_PROJECT"
-    ):
+    env_project = os.environ.get("KINETIC_PROJECT")
+    gcp_project = os.environ.get("GOOGLE_CLOUD_PROJECT")
+    if env_project and project == env_project:
+      source = "KINETIC_PROJECT"
+    elif gcp_project and project == gcp_project:
       source = "GOOGLE_CLOUD_PROJECT"
+    else:
+      source = "flag"
     results.append(
       CheckResult("Project ID", CheckStatus.PASS, f"{project} ({source})")
     )
@@ -212,14 +217,24 @@ def _check_config(project, zone, cluster_name):
       )
     )
 
-  zone_source = "KINETIC_ZONE" if os.environ.get("KINETIC_ZONE") else "default"
+  env_zone = os.environ.get("KINETIC_ZONE")
+  if env_zone and zone == env_zone:
+    zone_source = "KINETIC_ZONE"
+  elif zone == DEFAULT_ZONE:
+    zone_source = "default"
+  else:
+    zone_source = "flag"
   results.append(
     CheckResult("Zone", CheckStatus.PASS, f"{zone} ({zone_source})")
   )
 
-  cluster_source = (
-    "KINETIC_CLUSTER" if os.environ.get("KINETIC_CLUSTER") else "default"
-  )
+  env_cluster = os.environ.get("KINETIC_CLUSTER")
+  if env_cluster and cluster_name == env_cluster:
+    cluster_source = "KINETIC_CLUSTER"
+  elif cluster_name == DEFAULT_CLUSTER_NAME:
+    cluster_source = "default"
+  else:
+    cluster_source = "flag"
   results.append(
     CheckResult(
       "Cluster name",
