@@ -47,6 +47,12 @@ demo = [
     "numpy",
     "keras-hub",
 ]
+docs = [
+    "myst_nb",
+    "sphinx",
+    "sphinx_autobuild",
+    "sphinx_book_theme",
+]
 
 [project.scripts]
 kinetic = "kinetic.cli.main:cli"
