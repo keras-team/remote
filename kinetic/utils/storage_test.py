@@ -11,6 +11,7 @@ from absl.testing import absltest, parameterized
 
 from kinetic.constants import get_default_project
 from kinetic.data import Data
+from kinetic.utils import storage as storage_module
 from kinetic.utils.storage import (
   _compute_total_size,
   _upload_directory,
@@ -35,6 +36,7 @@ class _GcsTestBase(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
+    storage_module._cached_clients.clear()
     self.mock_gcs = self.enterContext(
       mock.patch(
         "kinetic.utils.storage.storage.Client",

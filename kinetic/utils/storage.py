@@ -14,6 +14,15 @@ from google.cloud.storage.retry import DEFAULT_RETRY
 from kinetic.constants import get_default_project
 from kinetic.data import Data
 
+_cached_clients: dict[str | None, storage.Client] = {}
+
+
+def _get_client(project: str | None) -> storage.Client:
+  """Return a cached storage client for the given project."""
+  if project not in _cached_clients:
+    _cached_clients[project] = storage.Client(project=project)
+  return _cached_clients[project]
+
 
 def upload_artifacts(
   bucket_name: str,
@@ -33,7 +42,7 @@ def upload_artifacts(
   """
   project = project or get_default_project()
 
-  client = storage.Client(project=project)
+  client = _get_client(project)
   bucket = client.bucket(bucket_name)
 
   # Upload payload
@@ -74,7 +83,7 @@ def download_result(
       Local path to downloaded result file
   """
   project = project or get_default_project()
-  client = storage.Client(project=project)
+  client = _get_client(project)
   bucket = client.bucket(bucket_name)
 
   blob = bucket.blob(f"{job_id}/result.pkl")
@@ -95,7 +104,7 @@ def upload_handle(
 ) -> None:
   """Upload a job handle to Cloud Storage as JSON."""
   project = project or get_default_project()
-  client = storage.Client(project=project)
+  client = _get_client(project)
   bucket = client.bucket(bucket_name)
 
   blob = bucket.blob(f"{job_id}/handle.json")
@@ -112,7 +121,7 @@ def download_handle(
 ) -> dict[str, str]:
   """Download and deserialize a job handle from Cloud Storage."""
   project = project or get_default_project()
-  client = storage.Client(project=project)
+  client = _get_client(project)
   bucket = client.bucket(bucket_name)
 
   blob = bucket.blob(f"{job_id}/handle.json")
@@ -134,7 +143,7 @@ def cleanup_artifacts(
       project: GCP project ID (optional, uses env vars if not provided)
   """
   project = project or get_default_project()
-  client = storage.Client(project=project)
+  client = _get_client(project)
   bucket = client.bucket(bucket_name)
 
   # Delete all blobs with job_id prefix
@@ -182,7 +191,7 @@ def upload_data(
   cache_prefix = f"{namespace_prefix}/data-cache/{content_hash}"
 
   project = project or get_default_project()
-  client = storage.Client(project=project)
+  client = _get_client(project)
   bucket = client.bucket(bucket_name)
 
   # O(1) cache hit check via sentinel blob
