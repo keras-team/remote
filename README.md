@@ -640,6 +640,17 @@ kinetic jobs cleanup <job-id> --no-k8s   # only delete GCS artifacts
 kinetic jobs cleanup <job-id> --no-gcs   # only delete k8s resources
 ```
 
+#### `kinetic doctor`
+
+Diagnose environment, credentials, and infrastructure issues:
+
+```bash
+kinetic doctor
+kinetic doctor --project=my-project --zone=us-central2-b
+```
+
+Runs read-only checks across seven categories — local tools, authentication, configuration, GCP project access, GCP APIs, infrastructure, and Kubernetes — and reports actionable fix hints for any failures. Exits with code 1 if any check fails.
+
 ### Monitoring
 
 #### Google Cloud Console
@@ -700,7 +711,15 @@ gcloud builds list --project=$KINETIC_PROJECT --limit=5
 
 ### Verify Setup
 
-Run `kinetic status` to check the health of your infrastructure. For manual verification:
+Run `kinetic doctor` for a comprehensive diagnostic of your environment, credentials, and infrastructure:
+
+```bash
+kinetic doctor
+```
+
+This checks local tools, authentication, GCP project access, required APIs, cluster health, Kubernetes connectivity, and more — with actionable fix suggestions for any issues found.
+
+For quick infrastructure state, use `kinetic status`. For manual verification:
 
 ```bash
 # Check authentication
