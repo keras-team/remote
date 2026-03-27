@@ -11,13 +11,21 @@ in the CLI layer convert these to ``click.ClickException`` as needed.
 import os
 import shutil
 import subprocess
+import time
 
 from absl import logging
 from kubernetes import config
 
+_credential_cache: dict[tuple[str, str, str], float] = {}
+_CREDENTIAL_CACHE_TTL_SECONDS = 300  # 5 minutes
+
 
 def ensure_credentials(project: str, zone: str, cluster: str) -> None:
   """Ensure all credentials needed for remote execution are available.
+
+  Results are cached per (project, zone, cluster) tuple for 5 minutes
+  to avoid repeated subprocess calls and kubeconfig parsing during
+  tight polling loops (e.g. ``JobHandle.result()``).
 
   Checks and auto-configures credentials in order:
   1. gcloud CLI (must be installed)
@@ -33,10 +41,21 @@ def ensure_credentials(project: str, zone: str, cluster: str) -> None:
   Raises:
       RuntimeError: If a required credential cannot be configured.
   """
+  cache_key = (project, zone, cluster)
+  now = time.monotonic()
+  last_validated = _credential_cache.get(cache_key)
+  if (
+    last_validated is not None
+    and now - last_validated < _CREDENTIAL_CACHE_TTL_SECONDS
+  ):
+    return
+
   ensure_gcloud()
   ensure_gke_auth_plugin()
   ensure_adc()
   ensure_kubeconfig(project, zone, cluster)
+
+  _credential_cache[cache_key] = now
 
 
 def ensure_gcloud() -> None:
