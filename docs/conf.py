@@ -1,4 +1,4 @@
-# Copyright 2024 Google LLC
+# Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,61 +18,61 @@ import os
 import sys
 
 # Import local version of kinetic.
-sys.path.insert(0, os.path.abspath('..'))
+sys.path.insert(0, os.path.abspath(".."))
 
 # -- Project information
 
-project = 'kinetic'
-copyright = '2026, The Keras Team'
-author = 'The Keras Team'
+project = "kinetic"
+copyright = "2026, The Keras Team"
+author = "The Keras Team"
 
-release = ''
-version = ''
+release = ""
+version = ""
 
 
 # -- General configuration
 
 extensions = [
-    'myst_nb',
-    'sphinx.ext.intersphinx',
-    'sphinx.ext.napoleon',
-    'sphinx.ext.autodoc',
-    'sphinx.ext.autosummary',
+  "myst_nb",
+  "sphinx.ext.intersphinx",
+  "sphinx.ext.napoleon",
+  "sphinx.ext.autodoc",
+  "sphinx.ext.autosummary",
 ]
 
 intersphinx_mapping = {
-    'python': ('https://docs.python.org/3/', None),
-    'sphinx': ('https://www.sphinx-doc.org/en/master/', None),
+  "python": ("https://docs.python.org/3/", None),
+  "sphinx": ("https://www.sphinx-doc.org/en/master/", None),
 }
-intersphinx_disabled_domains = ['std']
+intersphinx_disabled_domains = ["std"]
 
-templates_path = ['_templates']
+templates_path = ["_templates"]
 
 # -- Options for HTML output
 
-html_theme = 'sphinx_book_theme'
+html_theme = "sphinx_book_theme"
 html_theme_options = {
-    'show_toc_level': 2,
-    'repository_url': 'https://github.com/keras-team/kinetic',
-    'use_repository_button': True,
-    'navigation_with_keys': False,
-    'show_navbar_depth': 2,
+  "show_toc_level": 2,
+  "repository_url": "https://github.com/keras-team/kinetic",
+  "use_repository_button": True,
+  "navigation_with_keys": False,
+  "show_navbar_depth": 2,
 }
 html_static_path = []
 
 # -- Options for EPUB output
-epub_show_urls = 'footnote'
+epub_show_urls = "footnote"
 
 
 # -- Extension configuration
 
-autodoc_member_order = 'bysource'
+autodoc_member_order = "bysource"
 
 autodoc_default_options = {
-    'members': None,
-    'undoc-members': True,
-    'show-inheritance': True,
-    'special-members': '__call__, __init__',
+  "members": None,
+  "undoc-members": True,
+  "show-inheritance": True,
+  "special-members": "__call__, __init__",
 }
 
 autosummary_generate = True
