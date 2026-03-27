@@ -1,0 +1,1038 @@
+"""kinetic doctor command — diagnose environment and infrastructure health."""
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass
+from enum import Enum
+
+import click
+from rich.table import Table
+
+from kinetic.cli.constants import (
+  LWS_INSTALL_URL,
+  REQUIRED_APIS,
+  STATE_DIR,
+)
+from kinetic.cli.options import common_options
+from kinetic.cli.output import LiveOutputPanel, banner, console
+from kinetic.constants import (
+  get_default_cluster_name,
+  get_default_project,
+  get_default_zone,
+  zone_to_region,
+)
+
+_SUBPROCESS_TIMEOUT = 15
+
+
+class CheckStatus(Enum):
+  """Status of a single diagnostic check."""
+
+  PASS = "pass"
+  FAIL = "fail"
+  WARN = "warn"
+  SKIP = "skip"
+
+
+@dataclass
+class CheckResult:
+  """Result of a single diagnostic check."""
+
+  name: str
+  status: CheckStatus
+  message: str
+  fix_hint: str = ""
+
+
+_STATUS_ICON = {
+  CheckStatus.PASS: "[green]\u2714 PASS[/green]",
+  CheckStatus.FAIL: "[red]\u2718 FAIL[/red]",
+  CheckStatus.WARN: "[yellow]\u25b2 WARN[/yellow]",
+  CheckStatus.SKIP: "[dim]\u2500 SKIP[/dim]",
+}
+
+# Compact status icons for the live progress panel (no Rich markup).
+_PROGRESS_ICON = {
+  CheckStatus.PASS: "\u2714",  # ✔
+  CheckStatus.FAIL: "\u2718",  # ✘
+  CheckStatus.WARN: "\u25b2",  # ▲
+  CheckStatus.SKIP: "\u2500",  # ─
+}
+
+# Section labels inserted before each group in the results table.
+_SECTIONS = (
+  "Local Tools",
+  "Authentication",
+  "Configuration",
+  "GCP Project",
+  "GCP APIs",
+  "Infrastructure",
+  "Kubernetes",
+)
+
+
+# ---------------------------------------------------------------------------
+# Group 1: Local tools
+# ---------------------------------------------------------------------------
+
+
+def _check_tool(name, binary, fix_hint):
+  """Check if a binary is on PATH."""
+  path = shutil.which(binary)
+  if path:
+    return CheckResult(name, CheckStatus.PASS, path)
+  return CheckResult(name, CheckStatus.FAIL, "Not found", fix_hint)
+
+
+def _check_local_tools():
+  """Check gcloud, kubectl, and gke-gcloud-auth-plugin."""
+  return [
+    _check_tool(
+      "gcloud CLI",
+      "gcloud",
+      "Install from: https://cloud.google.com/sdk/docs/install\n"
+      "On macOS: brew install --cask google-cloud-sdk",
+    ),
+    _check_tool(
+      "kubectl",
+      "kubectl",
+      "Install from: https://kubernetes.io/docs/tasks/tools/\n"
+      "Or: gcloud components install kubectl",
+    ),
+    _check_tool(
+      "gke-gcloud-auth-plugin",
+      "gke-gcloud-auth-plugin",
+      "Run: gcloud components install gke-gcloud-auth-plugin\n"
+      "Or install via the package manager for your OS",
+    ),
+  ]
+
+
+# ---------------------------------------------------------------------------
+# Group 2: Authentication
+# ---------------------------------------------------------------------------
+
+
+def _check_adc():
+  """Check Application Default Credentials (read-only)."""
+  try:
+    result = subprocess.run(
+      ["gcloud", "auth", "application-default", "print-access-token"],
+      capture_output=True,
+      timeout=_SUBPROCESS_TIMEOUT,
+    )
+    if result.returncode == 0:
+      return CheckResult("gcloud auth (ADC)", CheckStatus.PASS, "Configured")
+    return CheckResult(
+      "gcloud auth (ADC)",
+      CheckStatus.FAIL,
+      "Not configured",
+      "Run: gcloud auth application-default login\n"
+      "If expired: gcloud auth application-default revoke && "
+      "gcloud auth application-default login\n"
+      "Service account: export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json",
+    )
+  except subprocess.TimeoutExpired:
+    return CheckResult(
+      "gcloud auth (ADC)", CheckStatus.WARN, "Timed out checking ADC"
+    )
+
+
+def _check_gcloud_account():
+  """Check active gcloud account (read-only)."""
+  try:
+    result = subprocess.run(
+      ["gcloud", "config", "get-value", "account"],
+      capture_output=True,
+      text=True,
+      timeout=_SUBPROCESS_TIMEOUT,
+    )
+    account = result.stdout.strip() if result.returncode == 0 else ""
+    if account and account != "(unset)":
+      return CheckResult("gcloud account", CheckStatus.PASS, account)
+    return CheckResult(
+      "gcloud account",
+      CheckStatus.FAIL,
+      "No active account",
+      "Run: gcloud auth login\n"
+      "To switch accounts: gcloud config set account USER@EXAMPLE.COM",
+    )
+  except subprocess.TimeoutExpired:
+    return CheckResult(
+      "gcloud account", CheckStatus.WARN, "Timed out checking account"
+    )
+
+
+def _check_auth(has_gcloud):
+  """Run authentication checks. Skips if gcloud is missing."""
+  if not has_gcloud:
+    return [
+      CheckResult(
+        "gcloud auth (ADC)",
+        CheckStatus.SKIP,
+        "Skipped (requires: gcloud CLI)",
+      ),
+      CheckResult(
+        "gcloud account",
+        CheckStatus.SKIP,
+        "Skipped (requires: gcloud CLI)",
+      ),
+    ]
+  return [_check_adc(), _check_gcloud_account()]
+
+
+# ---------------------------------------------------------------------------
+# Group 3: Configuration
+# ---------------------------------------------------------------------------
+
+
+def _check_config(project, zone, cluster_name):
+  """Check environment variable configuration."""
+  results = []
+
+  if project:
+    source = "KINETIC_PROJECT" if os.environ.get("KINETIC_PROJECT") else "flag"
+    if os.environ.get("GOOGLE_CLOUD_PROJECT") and not os.environ.get(
+      "KINETIC_PROJECT"
+    ):
+      source = "GOOGLE_CLOUD_PROJECT"
+    results.append(
+      CheckResult("Project ID", CheckStatus.PASS, f"{project} ({source})")
+    )
+  else:
+    results.append(
+      CheckResult(
+        "Project ID",
+        CheckStatus.WARN,
+        "Not set",
+        "Set: export KINETIC_PROJECT=your-project-id\nOr pass --project flag",
+      )
+    )
+
+  zone_source = "KINETIC_ZONE" if os.environ.get("KINETIC_ZONE") else "default"
+  results.append(
+    CheckResult("Zone", CheckStatus.PASS, f"{zone} ({zone_source})")
+  )
+
+  cluster_source = (
+    "KINETIC_CLUSTER" if os.environ.get("KINETIC_CLUSTER") else "default"
+  )
+  results.append(
+    CheckResult(
+      "Cluster name",
+      CheckStatus.PASS,
+      f"{cluster_name} ({cluster_source})",
+    )
+  )
+
+  return results
+
+
+# ---------------------------------------------------------------------------
+# Group 4: GCP project access
+# ---------------------------------------------------------------------------
+
+
+def _check_project_access(project):
+  """Check if the GCP project exists and is accessible."""
+  try:
+    result = subprocess.run(
+      ["gcloud", "projects", "describe", project],
+      capture_output=True,
+      timeout=_SUBPROCESS_TIMEOUT,
+    )
+    if result.returncode == 0:
+      return CheckResult("GCP project access", CheckStatus.PASS, project)
+    return CheckResult(
+      "GCP project access",
+      CheckStatus.FAIL,
+      f"Cannot access project '{project}'",
+      f"If project doesn't exist: run 'kinetic up' "
+      f"(it can create the project interactively)\n"
+      f"If access denied: ask a project owner to grant you "
+      f"roles/editor or roles/owner\n"
+      f"Verify at: https://console.cloud.google.com/"
+      f"home/dashboard?project={project}",
+    )
+  except subprocess.TimeoutExpired:
+    return CheckResult("GCP project access", CheckStatus.WARN, "Timed out")
+
+
+def _check_billing(project):
+  """Check if billing is enabled on the project."""
+  try:
+    # --quiet suppresses the interactive prompt that gcloud shows when
+    # the Cloud Billing API (cloudbilling.googleapis.com) is not enabled,
+    # which would otherwise block until timeout.
+    result = subprocess.run(
+      [
+        "gcloud",
+        "billing",
+        "projects",
+        "describe",
+        project,
+        "--format=value(billingEnabled)",
+        "--quiet",
+      ],
+      capture_output=True,
+      text=True,
+      timeout=_SUBPROCESS_TIMEOUT,
+    )
+    if result.returncode == 0 and result.stdout.strip().lower() == "true":
+      return CheckResult("Billing enabled", CheckStatus.PASS, "Enabled")
+
+    stderr = result.stderr.strip() if result.stderr else ""
+    if "cloudbilling" in stderr.lower() or "billing" in stderr.lower():
+      return CheckResult(
+        "Billing enabled",
+        CheckStatus.WARN,
+        "Could not check (Cloud Billing API may not be enabled)",
+        f"Enable the API: gcloud services enable "
+        f"cloudbilling.googleapis.com --project {project}\n"
+        f"Then link a billing account at: https://console.cloud.google.com/"
+        f"billing/linkedaccount?project={project}\n"
+        f"Or: 'kinetic up' will prompt to link billing during setup",
+      )
+
+    return CheckResult(
+      "Billing enabled",
+      CheckStatus.FAIL,
+      "Billing not enabled",
+      f"Link a billing account at: https://console.cloud.google.com/"
+      f"billing/linkedaccount?project={project}\n"
+      f"Or: 'kinetic up' will prompt to link billing during setup",
+    )
+  except subprocess.TimeoutExpired:
+    return CheckResult(
+      "Billing enabled",
+      CheckStatus.WARN,
+      "Timed out (Cloud Billing API may not be enabled)",
+      f"Enable the API: gcloud services enable "
+      f"cloudbilling.googleapis.com --project {project}\n"
+      f"Then link a billing account at: https://console.cloud.google.com/"
+      f"billing/linkedaccount?project={project}",
+    )
+
+
+def _check_gcp_project(has_gcloud, has_adc, project):
+  """Run GCP project checks. Skips if prerequisites are missing."""
+  skip_reason = None
+  if not has_gcloud:
+    skip_reason = "Skipped (requires: gcloud CLI)"
+  elif not has_adc:
+    skip_reason = "Skipped (requires: gcloud auth)"
+  elif not project:
+    skip_reason = "Skipped (requires: Project ID)"
+
+  if skip_reason:
+    return [
+      CheckResult("GCP project access", CheckStatus.SKIP, skip_reason),
+      CheckResult("Billing enabled", CheckStatus.SKIP, skip_reason),
+    ]
+
+  project_result = _check_project_access(project)
+  if project_result.status != CheckStatus.PASS:
+    return [
+      project_result,
+      CheckResult(
+        "Billing enabled",
+        CheckStatus.SKIP,
+        "Skipped (requires: GCP project access)",
+      ),
+    ]
+  return [project_result, _check_billing(project)]
+
+
+# ---------------------------------------------------------------------------
+# Group 5: GCP APIs
+# ---------------------------------------------------------------------------
+
+
+def _check_apis(has_project_access, project):
+  """Check required GCP APIs are enabled."""
+  if not has_project_access:
+    return [
+      CheckResult(
+        f"API: {api}",
+        CheckStatus.SKIP,
+        "Skipped (requires: GCP project access)",
+      )
+      for api in REQUIRED_APIS
+    ]
+
+  # Fetch all enabled APIs in one call.
+  try:
+    result = subprocess.run(
+      [
+        "gcloud",
+        "services",
+        "list",
+        "--enabled",
+        f"--project={project}",
+        "--format=value(config.name)",
+      ],
+      capture_output=True,
+      text=True,
+      timeout=_SUBPROCESS_TIMEOUT,
+    )
+  except subprocess.TimeoutExpired:
+    return [
+      CheckResult(f"API: {api}", CheckStatus.WARN, "Timed out listing APIs")
+      for api in REQUIRED_APIS
+    ]
+
+  if result.returncode != 0:
+    return [
+      CheckResult(
+        f"API: {api}",
+        CheckStatus.WARN,
+        "Could not list enabled APIs",
+      )
+      for api in REQUIRED_APIS
+    ]
+
+  enabled = set(result.stdout.strip().splitlines())
+
+  results = []
+  for api in REQUIRED_APIS:
+    if api in enabled:
+      results.append(CheckResult(f"API: {api}", CheckStatus.PASS, "Enabled"))
+    else:
+      results.append(
+        CheckResult(
+          f"API: {api}",
+          CheckStatus.FAIL,
+          "Not enabled",
+          f"Run: gcloud services enable {api} --project {project}\n"
+          f"Or: 'kinetic up' enables all required APIs automatically",
+        )
+      )
+  return results
+
+
+# ---------------------------------------------------------------------------
+# Group 6: Infrastructure
+# ---------------------------------------------------------------------------
+
+
+def _check_pulumi_state(project, cluster_name):
+  """Check Pulumi state directory for existing stacks."""
+  stacks_dir = os.path.join(STATE_DIR, ".pulumi", "stacks", "kinetic")
+  if not os.path.isdir(stacks_dir):
+    return CheckResult(
+      "Pulumi state",
+      CheckStatus.WARN,
+      f"State directory not found: {STATE_DIR}",
+      f"Run: kinetic up --project {project}",
+    )
+
+  expected = f"{project}-{cluster_name}.json"
+  try:
+    files = [file for file in os.listdir(stacks_dir) if file.endswith(".json")]
+  except OSError:
+    files = []
+
+  if expected in files:
+    stack_name = f"{project}-{cluster_name}"
+    return CheckResult(
+      "Pulumi state", CheckStatus.PASS, f"Stack found: {stack_name}"
+    )
+
+  available = [file.removesuffix(".json") for file in files]
+  if available:
+    stacks_str = ", ".join(available)
+    return CheckResult(
+      "Pulumi state",
+      CheckStatus.WARN,
+      f"Stack '{project}-{cluster_name}' not found. Available: {stacks_str}",
+      f"Check --cluster or KINETIC_CLUSTER value.\n"
+      f"Or run: kinetic up --project {project} --cluster {cluster_name}",
+    )
+  return CheckResult(
+    "Pulumi state",
+    CheckStatus.WARN,
+    "No stacks found",
+    f"Run: kinetic up --project {project}",
+  )
+
+
+def _check_gke_cluster(project, zone, cluster_name):
+  """Check GKE cluster exists and is RUNNING."""
+  try:
+    result = subprocess.run(
+      [
+        "gcloud",
+        "container",
+        "clusters",
+        "describe",
+        cluster_name,
+        f"--zone={zone}",
+        f"--project={project}",
+        "--format=value(status)",
+      ],
+      capture_output=True,
+      text=True,
+      timeout=_SUBPROCESS_TIMEOUT,
+    )
+  except subprocess.TimeoutExpired:
+    return CheckResult("GKE cluster", CheckStatus.WARN, "Timed out")
+
+  if result.returncode != 0:
+    return CheckResult(
+      "GKE cluster",
+      CheckStatus.FAIL,
+      "Cluster not found",
+      f"Run: kinetic up --project {project} --zone {zone} "
+      f"--cluster {cluster_name}",
+    )
+
+  status = result.stdout.strip()
+  if status == "RUNNING":
+    return CheckResult("GKE cluster", CheckStatus.PASS, "RUNNING")
+
+  if status in ("PROVISIONING", "RECONCILING"):
+    return CheckResult(
+      "GKE cluster",
+      CheckStatus.WARN,
+      status,
+      "Cluster is being updated. Wait a few minutes and retry.",
+    )
+  return CheckResult(
+    "GKE cluster",
+    CheckStatus.FAIL,
+    status or "Unknown status",
+    f"Check console: https://console.cloud.google.com/"
+    f"kubernetes/list?project={project}",
+  )
+
+
+def _check_infra(has_project_access, project, zone, cluster_name):
+  """Run infrastructure checks."""
+  results = []
+
+  # Pulumi state can always be checked (filesystem only).
+  if project:
+    results.append(_check_pulumi_state(project, cluster_name))
+  else:
+    results.append(
+      CheckResult(
+        "Pulumi state",
+        CheckStatus.SKIP,
+        "Skipped (requires: Project ID)",
+      )
+    )
+
+  if not has_project_access:
+    results.append(
+      CheckResult(
+        "GKE cluster",
+        CheckStatus.SKIP,
+        "Skipped (requires: GCP project access)",
+      )
+    )
+    return results
+
+  results.append(_check_gke_cluster(project, zone, cluster_name))
+  return results
+
+
+# ---------------------------------------------------------------------------
+# Group 7: Kubernetes
+# ---------------------------------------------------------------------------
+
+
+def _check_kubeconfig(project, zone, cluster_name):
+  """Check kubeconfig context (read-only, no reconfiguration)."""
+  try:
+    from kubernetes import config as k8s_config
+  except ImportError:
+    return CheckResult(
+      "kubeconfig context",
+      CheckStatus.SKIP,
+      "kubernetes Python package not installed",
+    )
+
+  expected = f"gke_{project}_{zone}_{cluster_name}"
+  creds_cmd = (
+    f"gcloud container clusters get-credentials {cluster_name} "
+    f"--zone={zone} --project={project}"
+  )
+
+  try:
+    k8s_config.load_kube_config()
+    _, active = k8s_config.list_kube_config_contexts()
+    if not active:
+      return CheckResult(
+        "kubeconfig context",
+        CheckStatus.FAIL,
+        "No active kubeconfig context",
+        f"Run: {creds_cmd}",
+      )
+    active_cluster = active.get("context", {}).get("cluster", "")
+    if active_cluster == expected:
+      return CheckResult("kubeconfig context", CheckStatus.PASS, expected)
+    return CheckResult(
+      "kubeconfig context",
+      CheckStatus.WARN,
+      f"Active: '{active_cluster}' (expected: '{expected}')",
+      f"Run: {creds_cmd}\n"
+      f"Or switch context: kubectl config use-context {expected}",
+    )
+  except k8s_config.ConfigException:
+    return CheckResult(
+      "kubeconfig context",
+      CheckStatus.FAIL,
+      "No valid kubeconfig found",
+      f"Run: {creds_cmd}",
+    )
+
+
+def _check_k8s_connectivity():
+  """Check Kubernetes cluster reachability."""
+  try:
+    result = subprocess.run(
+      ["kubectl", "cluster-info"],
+      capture_output=True,
+      timeout=_SUBPROCESS_TIMEOUT,
+    )
+    if result.returncode == 0:
+      return CheckResult(
+        "Cluster connectivity", CheckStatus.PASS, "Cluster reachable"
+      )
+    return CheckResult(
+      "Cluster connectivity",
+      CheckStatus.FAIL,
+      "Cannot reach cluster",
+      "If timeout: check network/VPN connection\n"
+      "If unauthorized: re-run gcloud container clusters get-credentials\n"
+      "If cluster is private: ensure you're on an authorized network",
+    )
+  except subprocess.TimeoutExpired:
+    return CheckResult(
+      "Cluster connectivity",
+      CheckStatus.FAIL,
+      "Timed out connecting to cluster",
+      "Check network/VPN connection\n"
+      "If cluster is private: ensure you're on an authorized network",
+    )
+
+
+def _check_node_pools(project, zone, cluster_name):
+  """Check GKE node pool health."""
+  try:
+    result = subprocess.run(
+      [
+        "gcloud",
+        "container",
+        "node-pools",
+        "list",
+        f"--cluster={cluster_name}",
+        f"--zone={zone}",
+        f"--project={project}",
+        "--format=json",
+      ],
+      capture_output=True,
+      text=True,
+      timeout=_SUBPROCESS_TIMEOUT,
+    )
+  except subprocess.TimeoutExpired:
+    return CheckResult("Node pools", CheckStatus.WARN, "Timed out")
+
+  if result.returncode != 0:
+    return CheckResult(
+      "Node pools",
+      CheckStatus.WARN,
+      "Could not list node pools",
+    )
+
+  try:
+    pools = json.loads(result.stdout)
+  except (json.JSONDecodeError, TypeError):
+    return CheckResult(
+      "Node pools", CheckStatus.WARN, "Could not parse node pool data"
+    )
+
+  if not pools:
+    return CheckResult(
+      "Node pools",
+      CheckStatus.WARN,
+      "No node pools found",
+      "Run: kinetic pool add --accelerator <spec>",
+    )
+
+  # Count accelerator pools (exclude default pool).
+  accel_pools = [
+    pool for pool in pools if pool.get("config", {}).get("accelerators")
+  ]
+  unhealthy = []
+  for pool in pools:
+    status = pool.get("status", "UNKNOWN")
+    if status not in ("RUNNING", "RECONCILING", "PROVISIONING"):
+      unhealthy.append(f"{pool.get('name', '?')} ({status})")
+
+  msg_parts = [f"{len(pools)} pool(s)"]
+  if accel_pools:
+    msg_parts.append(f"{len(accel_pools)} with accelerators")
+  else:
+    msg_parts.append("no accelerator pools")
+
+  if unhealthy:
+    return CheckResult(
+      "Node pools",
+      CheckStatus.WARN,
+      f"{', '.join(msg_parts)}. Unhealthy: {', '.join(unhealthy)}",
+      "Delete and re-add unhealthy pools: kinetic pool remove/add",
+    )
+
+  return CheckResult("Node pools", CheckStatus.PASS, ", ".join(msg_parts))
+
+
+def _check_lws_crd():
+  """Check if the LeaderWorkerSet CRD is installed."""
+  try:
+    result = subprocess.run(
+      ["kubectl", "get", "crd", "leaderworkersets.lws.x-k8s.io"],
+      capture_output=True,
+      timeout=_SUBPROCESS_TIMEOUT,
+    )
+    if result.returncode == 0:
+      return CheckResult("LWS CRD", CheckStatus.PASS, "Installed")
+    return CheckResult(
+      "LWS CRD",
+      CheckStatus.WARN,
+      "Not installed (needed for multi-host TPU workloads)",
+      "Run: kinetic up (installs LWS in post-deploy)\n"
+      f"Or manually: kubectl apply --server-side -f {LWS_INSTALL_URL}",
+    )
+  except subprocess.TimeoutExpired:
+    return CheckResult("LWS CRD", CheckStatus.WARN, "Timed out")
+
+
+def _check_quota(project, zone):
+  """Check GCP compute quota for the region (heuristic)."""
+  region = zone_to_region(zone)
+  try:
+    result = subprocess.run(
+      [
+        "gcloud",
+        "compute",
+        "regions",
+        "describe",
+        region,
+        f"--project={project}",
+        "--format=json(quotas)",
+      ],
+      capture_output=True,
+      text=True,
+      timeout=_SUBPROCESS_TIMEOUT,
+    )
+  except subprocess.TimeoutExpired:
+    return CheckResult("GCP quota", CheckStatus.WARN, "Timed out")
+
+  if result.returncode != 0:
+    return CheckResult(
+      "GCP quota", CheckStatus.WARN, "Could not fetch quota info"
+    )
+
+  try:
+    data = json.loads(result.stdout)
+  except (json.JSONDecodeError, TypeError):
+    return CheckResult(
+      "GCP quota", CheckStatus.WARN, "Could not parse quota data"
+    )
+
+  quotas = data.get("quotas", [])
+  gpu_keywords = ("GPU", "NVIDIA", "TPU")
+  warnings = []
+  for q in quotas:
+    metric = q.get("metric", "")
+    if not any(kw in metric for kw in gpu_keywords):
+      continue
+    limit = q.get("limit", 0)
+    usage = q.get("usage", 0)
+    remaining = limit - usage
+    if limit > 0 and remaining <= 0:
+      warnings.append(f"{metric}: {usage}/{limit} (exhausted)")
+
+  if warnings:
+    return CheckResult(
+      "GCP quota",
+      CheckStatus.WARN,
+      "; ".join(warnings),
+      "View and request increases at: "
+      f"https://console.cloud.google.com/iam-admin/quotas?project={project}",
+    )
+
+  return CheckResult(
+    "GCP quota", CheckStatus.PASS, f"Checked accelerator quotas in {region}"
+  )
+
+
+def _check_kubernetes(
+  has_kubectl, has_gke_cluster, project, zone, cluster_name
+):
+  """Run Kubernetes checks."""
+  results = []
+
+  # kubeconfig
+  if not project:
+    results.append(
+      CheckResult(
+        "kubeconfig context",
+        CheckStatus.SKIP,
+        "Skipped (requires: Project ID)",
+      )
+    )
+  elif not has_kubectl:
+    results.append(
+      CheckResult(
+        "kubeconfig context",
+        CheckStatus.SKIP,
+        "Skipped (requires: kubectl)",
+      )
+    )
+  else:
+    results.append(_check_kubeconfig(project, zone, cluster_name))
+
+  kubeconfig_ok = results[-1].status == CheckStatus.PASS if results else False
+
+  # Cluster connectivity
+  if not has_kubectl or not kubeconfig_ok:
+    skip_msg = (
+      "Skipped (requires: kubectl)"
+      if not has_kubectl
+      else ("Skipped (requires: kubeconfig context)")
+    )
+    results.append(
+      CheckResult("Cluster connectivity", CheckStatus.SKIP, skip_msg)
+    )
+  else:
+    results.append(_check_k8s_connectivity())
+
+  connectivity_ok = (
+    results[-1].status == CheckStatus.PASS if len(results) >= 2 else False
+  )
+
+  # Node pools — can check via gcloud even without kubectl
+  if not has_gke_cluster:
+    results.append(
+      CheckResult(
+        "Node pools",
+        CheckStatus.SKIP,
+        "Skipped (requires: GKE cluster)",
+      )
+    )
+  else:
+    results.append(_check_node_pools(project, zone, cluster_name))
+
+  # LWS CRD
+  if not has_kubectl or not connectivity_ok:
+    results.append(
+      CheckResult(
+        "LWS CRD",
+        CheckStatus.SKIP,
+        "Skipped (requires: cluster connectivity)",
+      )
+    )
+  else:
+    results.append(_check_lws_crd())
+
+  # GCP quota
+  if not has_gke_cluster or not project:
+    results.append(
+      CheckResult(
+        "GCP quota",
+        CheckStatus.SKIP,
+        "Skipped (requires: GKE cluster)",
+      )
+    )
+  else:
+    results.append(_check_quota(project, zone))
+
+  return results
+
+
+# ---------------------------------------------------------------------------
+# Output rendering
+# ---------------------------------------------------------------------------
+
+
+def _print_results(groups):
+  """Render grouped results table and fix hints.
+
+  Args:
+      groups: List of ``(section_name, [CheckResult, ...])`` tuples.
+  """
+  all_results = [r for _, checks in groups for r in checks]
+
+  console.print()
+  table = Table(
+    show_header=True,
+    header_style="bold",
+    border_style="blue",
+    title_style="bold blue",
+    pad_edge=True,
+    show_lines=False,
+  )
+  table.add_column("Check", min_width=30)
+  table.add_column("Status", min_width=8, justify="center")
+  table.add_column("Details")
+
+  for section_name, checks in groups:
+    # Section header row.
+    table.add_row()
+    table.add_row(f"[bold blue]{section_name}[/bold blue]", "", "")
+    for r in checks:
+      # Dim the entire row for SKIP results.
+      if r.status == CheckStatus.SKIP:
+        table.add_row(
+          f"  [dim]{r.name}[/dim]",
+          _STATUS_ICON[r.status],
+          f"[dim]{r.message}[/dim]",
+        )
+      else:
+        table.add_row(
+          f"  {r.name}",
+          _STATUS_ICON[r.status],
+          r.message,
+        )
+
+  console.print(table)
+
+  # Fix hints for FAIL/WARN items.
+  hints = [
+    r
+    for r in all_results
+    if r.fix_hint and r.status in (CheckStatus.FAIL, CheckStatus.WARN)
+  ]
+  if hints:
+    console.print()
+    console.print("[bold]Fix suggestions:[/bold]")
+    for i, r in enumerate(hints, 1):
+      icon = "\u2718" if r.status == CheckStatus.FAIL else "\u25b2"
+      style = "red" if r.status == CheckStatus.FAIL else "yellow"
+      console.print(f"\n  [{style}]{icon} {i}. {r.name}[/{style}]")
+      for line in r.fix_hint.splitlines():
+        console.print(f"     {line}")
+
+  # Summary.
+  console.print()
+  total = len(all_results)
+  pass_count = sum(1 for r in all_results if r.status == CheckStatus.PASS)
+  fail_count = sum(1 for r in all_results if r.status == CheckStatus.FAIL)
+  warn_count = sum(1 for r in all_results if r.status == CheckStatus.WARN)
+  skip_count = sum(1 for r in all_results if r.status == CheckStatus.SKIP)
+
+  parts = [f"{total} checks:"]
+  if pass_count:
+    parts.append(f"[green]{pass_count} passed[/green]")
+  if fail_count:
+    parts.append(f"[red]{fail_count} failed[/red]")
+  if warn_count:
+    parts.append(f"[yellow]{warn_count} warnings[/yellow]")
+  if skip_count:
+    parts.append(f"[dim]{skip_count} skipped[/dim]")
+  console.print(", ".join(parts))
+
+  if not fail_count and not warn_count:
+    console.print("[green]All checks passed![/green]")
+  console.print()
+
+
+# ---------------------------------------------------------------------------
+# CLI command
+# ---------------------------------------------------------------------------
+
+
+def _emit_progress(panel, section, results):
+  """Emit progress lines to the live panel for a completed group."""
+  panel.on_output(f"[{section}]")
+  for r in results:
+    panel.on_output(f"  {_PROGRESS_ICON[r.status]} {r.name}")
+
+
+@click.command()
+@common_options
+def doctor(project, zone, cluster_name):
+  """Check environment, credentials, and infrastructure health."""
+  banner("kinetic Doctor")
+
+  # Resolve values without prompting.
+  project = project or get_default_project()
+  zone = zone or get_default_zone()
+  cluster_name = cluster_name or get_default_cluster_name()
+
+  groups = []
+
+  with LiveOutputPanel(
+    "Running diagnostics",
+    transient=True,
+    show_subtitle=False,
+    max_lines=10,
+  ) as panel:
+    # Group 1: Local tools.
+    panel.on_output("Checking local tools...")
+    tool_results = _check_local_tools()
+    groups.append((_SECTIONS[0], tool_results))
+    _emit_progress(panel, _SECTIONS[0], tool_results)
+    has_gcloud = tool_results[0].status == CheckStatus.PASS
+    has_kubectl = tool_results[1].status == CheckStatus.PASS
+
+    # Group 2: Authentication.
+    panel.on_output("Checking authentication...")
+    auth_results = _check_auth(has_gcloud)
+    groups.append((_SECTIONS[1], auth_results))
+    _emit_progress(panel, _SECTIONS[1], auth_results)
+    has_adc = auth_results[0].status == CheckStatus.PASS
+
+    # Group 3: Configuration.
+    config_results = _check_config(project, zone, cluster_name)
+    groups.append((_SECTIONS[2], config_results))
+    _emit_progress(panel, _SECTIONS[2], config_results)
+
+    # Group 4: GCP project.
+    panel.on_output("Checking GCP project access...")
+    project_results = _check_gcp_project(has_gcloud, has_adc, project)
+    groups.append((_SECTIONS[3], project_results))
+    _emit_progress(panel, _SECTIONS[3], project_results)
+    has_project_access = project_results[0].status == CheckStatus.PASS
+
+    # Group 5: GCP APIs.
+    panel.on_output("Checking GCP APIs...")
+    api_results = _check_apis(has_project_access, project)
+    groups.append((_SECTIONS[4], api_results))
+    _emit_progress(panel, _SECTIONS[4], api_results)
+
+    # Group 6: Infrastructure.
+    panel.on_output("Checking infrastructure...")
+    infra_results = _check_infra(
+      has_project_access, project, zone, cluster_name
+    )
+    groups.append((_SECTIONS[5], infra_results))
+    _emit_progress(panel, _SECTIONS[5], infra_results)
+    has_gke_cluster = any(
+      r.name == "GKE cluster" and r.status == CheckStatus.PASS
+      for r in infra_results
+    )
+
+    # Group 7: Kubernetes.
+    panel.on_output("Checking Kubernetes...")
+    k8s_results = _check_kubernetes(
+      has_kubectl, has_gke_cluster, project, zone, cluster_name
+    )
+    groups.append((_SECTIONS[6], k8s_results))
+    _emit_progress(panel, _SECTIONS[6], k8s_results)
+
+    # Mark panel as error if any check failed (turns border yellow).
+    all_results = [r for _, checks in groups for r in checks]
+    if any(r.status == CheckStatus.FAIL for r in all_results):
+      panel.mark_error()
+
+  _print_results(groups)
+
+  all_results = [r for _, checks in groups for r in checks]
+  if any(r.status == CheckStatus.FAIL for r in all_results):
+    sys.exit(1)
