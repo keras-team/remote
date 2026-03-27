@@ -8,6 +8,7 @@ import tempfile
 import threading
 
 from absl import logging
+from google.cloud import exceptions as cloud_exceptions
 from google.cloud import storage
 from google.cloud.storage import transfer_manager
 from google.cloud.storage.retry import DEFAULT_RETRY
@@ -150,19 +151,26 @@ def cleanup_artifacts(
   bucket = client.bucket(bucket_name)
 
   # Delete all blobs with job_id prefix
-  blobs = bucket.list_blobs(prefix=f"{job_id}/")
-  deleted_count = 0
-  for blob in blobs:
-    blob.delete()
-    deleted_count += 1
+  blobs = list(bucket.list_blobs(prefix=f"{job_id}/"))
 
-  if deleted_count > 0:
-    logging.info(
-      "Cleaned up %d artifacts from gs://%s/%s/",
-      deleted_count,
+  if not blobs:
+    return
+
+  try:
+    bucket.delete_blobs(blobs, retry=DEFAULT_RETRY)
+  except cloud_exceptions.NotFound:
+    logging.warning(
+      "Some artifacts could not be deleted from gs://%s/%s/, continuing anyway",
       bucket_name,
       job_id,
+      exc_info=True,
     )
+  logging.info(
+    "Cleaned up %d artifacts from gs://%s/%s/",
+    len(blobs),
+    bucket_name,
+    job_id,
+  )
 
 
 def upload_data(

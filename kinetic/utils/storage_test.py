@@ -13,6 +13,7 @@ from kinetic.constants import get_default_project
 from kinetic.data import Data
 from kinetic.utils import storage as storage_module
 from kinetic.utils.storage import (
+  DEFAULT_RETRY,
   _compute_total_size,
   _upload_directory,
   cleanup_artifacts,
@@ -128,9 +129,9 @@ class TestCleanupArtifacts(_GcsTestBase):
     cleanup_artifacts("my-bucket", "job-abc", project="proj")
 
     mock_bucket.list_blobs.assert_called_once_with(prefix="job-abc/")
-    blob1.delete.assert_called_once()
-    blob2.delete.assert_called_once()
-    blob3.delete.assert_called_once()
+    mock_bucket.delete_blobs.assert_called_once_with(
+      [blob1, blob2, blob3], retry=DEFAULT_RETRY
+    )
 
   def test_no_blobs_no_error(self):
     mock_bucket = self.mock_gcs.bucket.return_value
