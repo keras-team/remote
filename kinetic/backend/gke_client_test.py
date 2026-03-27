@@ -6,10 +6,9 @@ from unittest import mock
 from unittest.mock import MagicMock
 
 from absl.testing import absltest, parameterized
-from kubernetes.config import ConfigException
 from kubernetes.client.rest import ApiException
+from kubernetes.config import ConfigException
 
-from kinetic.job_status import JobStatus
 from kinetic.backend.gke_client import (
   _check_node_pool_exists_cached,
   _check_pod_scheduling,
@@ -20,9 +19,12 @@ from kinetic.backend.gke_client import (
   get_job_pod_name,
   get_job_status,
   job_exists,
-  list_jobs as list_gke_jobs,
   wait_for_job,
 )
+from kinetic.backend.gke_client import (
+  list_jobs as list_gke_jobs,
+)
+from kinetic.job_status import JobStatus
 
 
 class TestParseAccelerator(absltest.TestCase):

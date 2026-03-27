@@ -11,7 +11,7 @@ from kinetic.core.core import run
 
 class TestEnvVarCapture(absltest.TestCase):
   def test_exact_match(self):
-    env = {**os.environ, "MY_VAR": "my_val"}
+    _ = {**os.environ, "MY_VAR": "my_val"}
     mock_handle = MagicMock()
     mock_handle.result.return_value = None
     with (
