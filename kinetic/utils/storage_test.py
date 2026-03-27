@@ -233,7 +233,9 @@ class TestUploadData(_GcsTestBase):
     # Marker written last
     marker_name = f"{expected_prefix}/.cache_marker"
     self.assertIn(marker_name, blobs)
-    blobs[marker_name].upload_from_string.assert_called_once_with("")
+    blobs[marker_name].upload_from_string.assert_called_once_with(
+      "", retry=mock.ANY
+    )
 
   @mock.patch(
     "kinetic.utils.storage.transfer_manager.upload_many_from_filenames",
@@ -261,7 +263,7 @@ class TestUploadData(_GcsTestBase):
     filenames = sorted(mock_upload.call_args[0][1])
     self.assertEqual(filenames, ["train.csv", "val.csv"])
     # Marker written after upload
-    marker_blob.upload_from_string.assert_called_once_with("")
+    marker_blob.upload_from_string.assert_called_once_with("", retry=mock.ANY)
 
   def test_custom_namespace(self):
     tmp = _make_temp_path(self)
