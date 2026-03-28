@@ -135,8 +135,7 @@ def run_gcs_mode():
         "success": False,
         "result": None,
         "exception": RuntimeError(
-          f"Result serialization failed: {serialize_err}\n"
-          f"Original traceback:\n{remote_traceback or 'N/A'}"
+          f"Result serialization failed: {serialize_err}"
         ),
         "traceback": remote_traceback,
       }
