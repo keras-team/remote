@@ -156,6 +156,8 @@ class BaseK8sBackend:
 class GKEBackend(BaseK8sBackend):
   """Backend adapter for standard GKE Jobs."""
 
+  name = "gke"
+
   def validate_preflight(self, ctx: JobContext) -> None:
     """Check if the required node pool exists for the accelerator."""
     gke_client.validate_preflight(
@@ -211,6 +213,8 @@ class GKEBackend(BaseK8sBackend):
 
 class PathwaysBackend(BaseK8sBackend):
   """Backend adapter for ML Pathways using LeaderWorkerSet."""
+
+  name = "pathways"
 
   def validate_preflight(self, ctx: JobContext) -> None:
     """Preflight checks for Pathways (currently same as GKE)."""
@@ -517,7 +521,7 @@ def submit_remote(ctx: JobContext, backend: BaseK8sBackend) -> JobHandle:
 
   handle = JobHandle.from_job_context(
     ctx,
-    backend_name="pathways" if isinstance(backend, PathwaysBackend) else "gke",
+    backend_name=backend.name,
     namespace=backend.namespace,
     k8s_name=backend.get_k8s_name(ctx.job_id),
   )
