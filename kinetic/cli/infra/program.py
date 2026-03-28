@@ -89,6 +89,12 @@ def create_program(config):
       location=region,
       project=project_id,
       force_destroy=True,
+      lifecycle_rules=[
+        gcp.storage.BucketLifecycleRuleArgs(
+          action=gcp.storage.BucketLifecycleRuleActionArgs(type="Delete"),
+          condition=gcp.storage.BucketLifecycleRuleConditionArgs(age=30),
+        ),
+      ],
       opts=pulumi.ResourceOptions(depends_on=enabled_apis),
     )
 
@@ -98,6 +104,12 @@ def create_program(config):
       location=ar_location,
       project=project_id,
       force_destroy=True,
+      lifecycle_rules=[
+        gcp.storage.BucketLifecycleRuleArgs(
+          action=gcp.storage.BucketLifecycleRuleActionArgs(type="Delete"),
+          condition=gcp.storage.BucketLifecycleRuleConditionArgs(age=30),
+        ),
+      ],
       opts=pulumi.ResourceOptions(depends_on=enabled_apis),
     )
 
