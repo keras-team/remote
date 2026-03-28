@@ -188,7 +188,7 @@ def cleanup_job(
       return
 
   # Foreground deletion is async; poll until the resource is gone.
-  max_attempts = max(1, timeout // poll_interval)
+  max_attempts = int(max(1, timeout // poll_interval))
   for _ in range(max_attempts):
     if not job_exists(job_name, namespace):
       return
