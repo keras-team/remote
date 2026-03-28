@@ -4,6 +4,7 @@ This module consolidates the common execution logic shared between different
 backend implementations, reducing code duplication and improving maintainability.
 """
 
+import abc
 import concurrent.futures
 import inspect
 import os
@@ -115,25 +116,30 @@ class JobContext:
     )
 
 
-class BaseK8sBackend:
+class BaseK8sBackend(abc.ABC):
   """Base class for Kubernetes-based backends."""
+
+  @property
+  @abc.abstractmethod
+  def name(self) -> str:
+    """The unique backend identifier, e.g., 'gke' or 'pathways'."""
 
   def __init__(self, cluster: str, namespace: str = "default"):
     self.cluster = cluster
     self.namespace = namespace
 
-  def validate_preflight(self, ctx: JobContext) -> None:
+  def validate_preflight(self, ctx: JobContext) -> None:  # noqa: B027
     """Perform preflight checks before building container or uploading artifacts."""
-    pass
 
+  @abc.abstractmethod
   def submit_job(self, ctx: JobContext) -> Any:
     """Submit a job to the backend. Returns backend-specific job handle."""
-    raise NotImplementedError
 
+  @abc.abstractmethod
   def wait_for_job(self, job: Any, ctx: JobContext) -> None:
     """Wait for job completion. Raises RuntimeError if job fails."""
-    raise NotImplementedError
 
+  @abc.abstractmethod
   def cleanup_job(
     self,
     job: Any,
@@ -141,16 +147,15 @@ class BaseK8sBackend:
     timeout: float = 180,
     poll_interval: float = 2,
   ) -> None:
-    """Optional cleanup after job completion."""
-    raise NotImplementedError
+    """Clean up backend resources after job completion."""
 
+  @abc.abstractmethod
   def get_k8s_name(self, job_id: str) -> str:
     """Return the backend-specific Kubernetes resource name."""
-    raise NotImplementedError
 
+  @abc.abstractmethod
   def job_exists(self, job_name: str) -> bool:
     """Return whether the Kubernetes resource currently exists."""
-    raise NotImplementedError
 
 
 class GKEBackend(BaseK8sBackend):
