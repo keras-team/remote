@@ -58,7 +58,7 @@ html_theme_options = {
   "repository_url": "https://github.com/keras-team/kinetic",
   "use_repository_button": True,
   "navigation_with_keys": False,
-  "show_navbar_depth": 1,
+  "show_navbar_depth": 2,
 }
 html_static_path = ["_static"]
 html_css_files = [

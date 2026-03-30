@@ -63,10 +63,6 @@ management required.
     # Executes on TPU v6e-8, returns the result
     final_loss = train_model()
 
-.. code-block:: shell
-
-    $ python main.py
-
 
 How It Works
 ------------
