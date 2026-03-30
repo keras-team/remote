@@ -23,6 +23,7 @@ dependencies = [
     "google-cloud-storage>=3.9",
     "google-cloud-build>=3.24",
     "kubernetes>=35.0",
+    "pyopenssl",
 ]
 
 [project.optional-dependencies]

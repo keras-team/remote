@@ -1,34 +1,55 @@
-Kinetic: Run Keras and JAX workloads on cloud TPUs and GPUs
-=============================================================
+Kinetic: Run ML workloads on cloud TPUs and GPUs
+================================================
 
 .. toctree::
-   :maxdepth: 2
    :caption: Documentation
    :hidden:
 
    getting_started
-   usage
+   architecture
    troubleshooting
 
 .. toctree::
-   :maxdepth: 2
+   :caption: Guides
+   :hidden:
+
+   guides/keras_training
+   guides/data
+   guides/dependencies
+   guides/env_vars
+   guides/llm_finetuning
+   guides/distributed_training
+   guides/configuration
+
+.. toctree::
    :caption: Reference
    :hidden:
 
    api
    cli
+   accelerators
 
 .. toctree::
-   :maxdepth: 1
+   :caption: Advanced Topics
+   :hidden:
+
+   advanced/async_jobs
+   advanced/clusters
+   advanced/containers
+
+.. toctree::
    :caption: Community
    :hidden:
 
    contributing
    code-of-conduct
 
-Run Keras and JAX workloads on cloud TPUs and GPUs with a simple decorator. No infrastructure management required.
+Kinetic is a library that enables running Python functions seamlessly on cloud
+TPUs and GPUs using a simple decorator: ``@kinetic.run``. No infrastructure
+management required.
 
 .. code-block:: python
+   :emphasize-lines: 3
 
     import kinetic
 
@@ -42,6 +63,11 @@ Run Keras and JAX workloads on cloud TPUs and GPUs with a simple decorator. No i
     # Executes on TPU v6e-8, returns the result
     final_loss = train_model()
 
+.. code-block:: shell
+
+    $ python main.py
+
+
 How It Works
 ------------
 
@@ -52,9 +78,7 @@ When you call a decorated function, Kinetic handles the entire remote execution 
 3. **Runs the job** on a GKE cluster with the requested accelerator (TPU or GPU).
 4. **Returns the result** to your local machine.
 
-Indices and tables
-==================
+Get Started
+-----------
 
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+Follow `this guide <getting_started.md>`__ to get started.

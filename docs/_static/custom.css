@@ -1,0 +1,18 @@
+/* Reduce vertical spacing in the left sidebar navigation */
+.bd-links li > a,
+.bd-links li > label {
+    padding-top: 0.3rem !important;
+    padding-bottom: 0.3rem !important;
+    line-height: 1.3 !important;
+}
+
+.bd-links .nav-link {
+    padding-top: 0.3rem !important;
+    padding-bottom: 0.3rem !important;
+}
+
+/* Adjust the spacing between sections in the sidebar */
+.bd-links .caption {
+    margin-top: 0.75rem !important;
+    margin-bottom: 0.25rem !important;
+}

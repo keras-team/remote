@@ -57,3 +57,5 @@ echo $KINETIC_PROJECT
 gcloud services list --enabled --project=$KINETIC_PROJECT \
     | grep -E "(cloudbuild|artifactregistry|storage|container)"
 ```
+
+TODO: Mention `kinetic doctor` here too.

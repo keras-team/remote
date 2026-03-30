@@ -3,8 +3,8 @@
 ## Prerequisites
 
 - Python 3.11+
-- Google Cloud SDK (`gcloud`) — [install guide](https://cloud.google.com/sdk/docs/install)
-- A Google Cloud project with billing enabled
+- Google Cloud SDK (`gcloud`) — [install here](https://cloud.google.com/sdk/docs/install)
+- A Google Cloud project with [billing enabled](https://docs.cloud.google.com/billing/docs/how-to/modify-project)
 
 Authenticate with Google Cloud:
 
@@ -13,23 +13,30 @@ gcloud auth login
 gcloud auth application-default login
 ```
 
-> **Note:** The Pulumi CLI (used for infrastructure provisioning) is bundled and managed automatically. It will be installed to `~/.kinetic/pulumi` on first use if not already present.
+Set your GCP project ID so the library knows where to run jobs:
+
+```bash
+export KINETIC_PROJECT="your-project-id"
+```
+
+Add this to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.) to persist it. See :doc:`guides/configuration` for the full list of environment variables.
 
 ## Install
 
 ```bash
-git clone https://github.com/keras-team/kinetic.git
-cd kinetic
-pip install -e ".[cli]"
+pip install keras-kinetic
 ```
 
 This installs both the `@kinetic.run()` decorator and the `kinetic` CLI for managing infrastructure.
 
-> If your GKE cluster and Artifact Registry are already provisioned, you can install without the CLI: `pip install -e .`
+> **Note:** The [Pulumi](https://www.pulumi.com/) CLI (used for infrastructure
+> provisioning) is bundled and managed automatically. It will be installed to
+> `~/.kinetic/pulumi` on first use if not already present.
 
 ## Provision Infrastructure
 
-Run the one-time setup to create the required cloud resources:
+If you are not the first Kinetic user in your org, you can skip this section.
+Otherwise, run the one-time setup step to create a cluster for Kinetic:
 
 ```bash
 kinetic up
@@ -48,24 +55,14 @@ You can also run non-interactively:
 kinetic up --project=my-project --accelerator=t4 --yes
 ```
 
-> **Cleanup reminder:** When you're done, run `kinetic down` to tear down all resources and avoid ongoing charges. See [CLI Commands](cli.rst).
-
-## Configure
-
-Set your project ID so the library knows where to run jobs:
-
-```bash
-export KINETIC_PROJECT="your-project-id"
-```
-
-Add this to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.) to persist it. See :doc:`usage` for the full list of environment variables.
+> **Cleanup reminder:** When you're done, run `kinetic down` to tear down all resources and avoid ongoing charges. See [CLI Command here](cli.rst#kinetic-down).
 
 ## Run Your First Job
 
 ```python
 import kinetic
 
-@kinetic.run(accelerator="v6e-8")
+@kinetic.run(accelerator="v5litepod-1")
 def hello_tpu():
     import jax
     return f"Running on {jax.devices()}"
