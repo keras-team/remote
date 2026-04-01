@@ -196,7 +196,7 @@ class TestSubmitOnBackend(absltest.TestCase):
       result = func()
 
       self.assertEqual(result, 123)
-      mock_handle.result.assert_called_once_with()
+      mock_handle.result.assert_called_once_with(stream_logs=True)
 
 
 if __name__ == "__main__":

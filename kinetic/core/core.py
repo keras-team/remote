@@ -131,7 +131,7 @@ def _make_decorator(
         )
 
       handle = submit_remote(ctx, backend_inst)
-      return handle.result() if sync else handle
+      return handle.result(stream_logs=True) if sync else handle
 
     return wrapper
 
