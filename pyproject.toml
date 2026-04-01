@@ -24,6 +24,7 @@ dependencies = [
     "google-cloud-build>=3.24",
     "google-cloud-container>=2.3",
     "kubernetes>=35.0",
+    "orbax-checkpoint",
 ]
 
 [project.optional-dependencies]

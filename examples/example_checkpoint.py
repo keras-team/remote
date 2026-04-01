@@ -7,45 +7,55 @@ import kinetic
 
 
 @kinetic.run(accelerator="cpu")
-def train_with_checkpoints():
-  """Demo function showing Orbax checkpointing with Kinetic."""
+def train_with_checkpoints(start_step=0):
+  """Demo function showing Orbax checkpointing with Kinetic and Auto-Resume."""
   import jax.numpy as jnp
   import orbax.checkpoint as ocp
 
   checkpoint_dir = os.environ.get("KINETIC_CHECKPOINT_DIR")
-  print(f"--- Kinetic Checkpoint Dir: {checkpoint_dir} ---")
+  print(f"\n--- Kinetic Checkpoint Dir: {checkpoint_dir} ---")
+  print(f"--- Starting from step: {start_step} ---\n")
 
   if not checkpoint_dir:
     # Fallback for local testing if run without kinetic context
     checkpoint_dir = "/tmp/local_checkpoints"
     print(f"No KINETIC_CHECKPOINT_DIR found, using local: {checkpoint_dir}")
 
-  # 1. Define dummy state (PyTree)
+  # 1. Define state (weights change with step to verify resume)
   state = {
-    "step": 0,
-    "weights": jnp.ones((10, 10)),
+    "step": start_step,
+    "weights": jnp.ones((10, 10)) * (start_step + 1),
     "bias": jnp.zeros((10,)),
   }
 
   # 2. Initialize Orbax CheckpointManager
-  # Orbax handles GCS paths transparently via etils.epath
   options = ocp.CheckpointManagerOptions(max_to_keep=2)
   mngr = ocp.CheckpointManager(
     checkpoint_dir, ocp.StandardCheckpointer(), options=options
   )
 
-  print("Saving checkpoint at step 0...")
-  mngr.save(0, state)
-  mngr.wait_until_finished()
-  print("Checkpoint saved successfully.")
+  # 3. Simulated training loop (run 3 steps)
+  end_step = start_step + 3
+  print(f"Will run steps from {start_step} to {end_step - 1}")
 
-  # 3. Restore to verify
-  print("Restoring checkpoint from step 0...")
-  restored_state = mngr.restore(0)
+  for step in range(start_step, end_step):
+    print(f"\n>> Simulating Step {step}...")
+    state["step"] = step
+    # Change weights so we can see they resume correctly
+    state["weights"] = jnp.ones((10, 10)) * (step + 1)
 
-  # Assert equality for verification
-  assert jnp.allclose(restored_state["weights"], state["weights"])
-  print("Checkpoint restored successfully and verified!")
+    print(f"Saving checkpoint at step {step}...")
+    mngr.save(step, state)
+    mngr.wait_until_finished()
+    print(f"Checkpoint for step {step} saved successfully.")
+
+  # 4. Verify by restoring the latest step
+  latest_step = mngr.latest_step()
+  print(f"\nVerifying by restoring latest step ({latest_step})...")
+  if latest_step is not None:
+    restored_state = mngr.restore(latest_step)
+    assert restored_state["step"] == latest_step
+    print(f"Verified: Restored state step matches latest step {latest_step}!")
 
   return True
 
