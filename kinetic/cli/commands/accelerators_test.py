@@ -25,6 +25,15 @@ def _make_state(node_pools=None, stack=_SENTINEL):
   )
 
 
+_LIVE_ARGS = [
+  "--project",
+  "test-project",
+  "--zone",
+  "us-central1-a",
+  "--live",
+]
+
+
 class AcceleratorsDefaultTest(absltest.TestCase):
   def setUp(self):
     super().setUp()
@@ -74,7 +83,7 @@ class AcceleratorsLiveTest(absltest.TestCase):
     )
     self.mock_load.return_value = _make_state(node_pools=[pool])
 
-    result = self.runner.invoke(accelerators, ["--live"])
+    result = self.runner.invoke(accelerators, _LIVE_ARGS)
 
     self.assertEqual(result.exit_code, 0, result.output)
     self.assertIn("provisioned", result.output)
@@ -87,7 +96,7 @@ class AcceleratorsLiveTest(absltest.TestCase):
     )
     self.mock_load.return_value = _make_state(node_pools=[pool])
 
-    result = self.runner.invoke(accelerators, ["--live"])
+    result = self.runner.invoke(accelerators, _LIVE_ARGS)
 
     self.assertEqual(result.exit_code, 0, result.output)
     self.assertIn("provisioned", result.output)
@@ -95,7 +104,7 @@ class AcceleratorsLiveTest(absltest.TestCase):
   def test_live_no_cluster_still_lists(self):
     self.mock_load.return_value = _make_state(stack=None)
 
-    result = self.runner.invoke(accelerators, ["--live"])
+    result = self.runner.invoke(accelerators, _LIVE_ARGS)
 
     self.assertEqual(result.exit_code, 0, result.output)
     self.assertIn("GPUs", result.output)
@@ -104,7 +113,7 @@ class AcceleratorsLiveTest(absltest.TestCase):
   def test_live_load_failure_still_lists(self):
     self.mock_load.side_effect = RuntimeError("boom")
 
-    result = self.runner.invoke(accelerators, ["--live"])
+    result = self.runner.invoke(accelerators, _LIVE_ARGS)
 
     self.assertEqual(result.exit_code, 0, result.output)
     self.assertIn("GPUs", result.output)
