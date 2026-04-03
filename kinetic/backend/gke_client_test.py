@@ -173,6 +173,47 @@ class TestWaitForJob(absltest.TestCase):
     ):
       wait_for_job(self._make_mock_job())
 
+  def test_failure_includes_pod_details(self):
+    mock_batch = MagicMock()
+    mock_status = MagicMock()
+    mock_status.status.succeeded = None
+    mock_status.status.failed = 1
+    mock_batch.read_namespaced_job_status.return_value = mock_status
+
+    pod = MagicMock()
+    pod.metadata.name = "kinetic-job-abc-xyz"
+    terminated = MagicMock()
+    terminated.exit_code = 1
+    terminated.reason = "Error"
+    terminated.message = None
+    cs = MagicMock()
+    cs.state.terminated = terminated
+    cs.last_state.terminated = None
+    pod.status.container_statuses = [cs]
+
+    mock_core = MagicMock()
+    mock_core.list_namespaced_pod.return_value.items = [pod]
+    mock_core.read_namespaced_pod_log.return_value = "ImportError: no module named foo\n"
+
+    with (
+      mock.patch(
+        "kinetic.backend.gke_client._batch_v1",
+        return_value=mock_batch,
+      ),
+      mock.patch(
+        "kinetic.backend.k8s_utils.core_v1",
+        return_value=mock_core,
+      ),
+    ):
+      try:
+        wait_for_job(self._make_mock_job())
+        self.fail("Expected RuntimeError")
+      except RuntimeError as e:
+        msg = str(e)
+        self.assertIn("GKE job kinetic-job-abc failed", msg)
+        self.assertIn("exit code 1", msg)
+        self.assertIn("ImportError", msg)
+
   def test_timeout_raises(self):
     mock_batch = MagicMock()
     mock_status = MagicMock()

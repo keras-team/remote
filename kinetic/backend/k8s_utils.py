@@ -131,6 +131,55 @@ def print_pod_logs(core_v1_client, job_name, namespace):
         logging.info("Pod %s logs:\n%s", pod.metadata.name, logs)
 
 
+def _pod_exit_summary(pod):
+  """Extract exit code and termination reason from a pod's container statuses."""
+  for cs in pod.status.container_statuses or []:
+    terminated = getattr(cs.state, "terminated", None)
+    if terminated is None:
+      terminated = getattr(getattr(cs, "last_state", None), "terminated", None)
+    if terminated is None:
+      continue
+    parts = []
+    if terminated.exit_code is not None:
+      parts.append(f"exit code {terminated.exit_code}")
+    if terminated.reason:
+      parts.append(terminated.reason)
+    if terminated.message:
+      parts.append(terminated.message.rstrip())
+    if parts:
+      return ", ".join(parts)
+  return None
+
+
+def collect_pod_failure_details(core_v1_client, job_name, namespace, tail=30):
+  """Build a failure summary from pod status and logs.
+
+  Returns a string with exit info and a log tail, or empty string
+  if nothing useful could be retrieved.
+  """
+  sections = []
+  try:
+    pods = list_job_pods(core_v1_client, job_name, namespace)
+  except ApiException:
+    return ""
+
+  for pod in pods:
+    pod_name = pod.metadata.name
+    summary = _pod_exit_summary(pod)
+    if summary:
+      sections.append(f"  {pod_name}: {summary}")
+
+    with suppress(ApiException):
+      logs = core_v1_client.read_namespaced_pod_log(
+        pod_name, namespace, tail_lines=tail
+      )
+      if logs and logs.strip():
+        sections.append(f"  --- {pod_name} logs (last {tail} lines) ---")
+        sections.append(logs.rstrip())
+
+  return "\n".join(sections)
+
+
 def _get_cluster_info() -> tuple[str, str, str] | None:
   """Extract project, location, and cluster name from kubeconfig context.
 

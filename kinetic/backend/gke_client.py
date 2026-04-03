@@ -129,9 +129,15 @@ def wait_for_job(job, namespace="default", timeout=3600, poll_interval=10):
         return "success"
 
       if job_status.status.failed and job_status.status.failed >= 1:
-        # Get pod logs for debugging
+        # Log full pod output, then build a concise error with the tail.
         k8s_utils.print_pod_logs(core_v1, job_name, namespace)
-        raise RuntimeError(f"GKE job {job_name} failed")
+        details = k8s_utils.collect_pod_failure_details(
+          core_v1, job_name, namespace
+        )
+        msg = f"GKE job {job_name} failed"
+        if details:
+          msg += f"\n{details}"
+        raise RuntimeError(msg)
 
       # Check for pod scheduling issues
       k8s_utils.check_pod_scheduling(
