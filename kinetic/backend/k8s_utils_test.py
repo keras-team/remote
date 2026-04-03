@@ -368,6 +368,7 @@ class TestCollectPodFailureDetails(absltest.TestCase):
     mock_core = MagicMock()
     pod = MagicMock()
     pod.metadata.name = "test-pod"
+    pod.status.phase = "Failed"
     cs = MagicMock()
     cs.state.terminated = None
     cs.last_state.terminated = None
@@ -378,6 +379,22 @@ class TestCollectPodFailureDetails(absltest.TestCase):
     result = collect_pod_failure_details(mock_core, "job-1", "default")
     self.assertIn("some output", result)
     self.assertNotIn("exit code", result)
+
+  def test_skips_non_failed_pods(self):
+    mock_core = MagicMock()
+    running_pod = MagicMock()
+    running_pod.metadata.name = "running-pod"
+    running_pod.status.phase = "Running"
+    cs = MagicMock()
+    cs.state.terminated = None
+    cs.last_state.terminated = None
+    running_pod.status.container_statuses = [cs]
+
+    mock_core.list_namespaced_pod.return_value.items = [running_pod]
+
+    result = collect_pod_failure_details(mock_core, "job-1", "default")
+    self.assertEqual(result, "")
+    mock_core.read_namespaced_pod_log.assert_not_called()
 
 
 class TestCheckPodScheduling(parameterized.TestCase):

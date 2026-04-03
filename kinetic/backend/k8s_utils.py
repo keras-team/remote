@@ -163,9 +163,18 @@ def collect_pod_failure_details(core_v1_client, job_name, namespace, tail=30):
   except ApiException:
     return ""
 
+  fetched = 0
   for pod in pods:
-    pod_name = pod.metadata.name
     summary = _pod_exit_summary(pod)
+    if not summary and pod.status.phase != "Failed":
+      continue
+
+    if fetched >= 5:
+      sections.append("  ... (additional failed pods omitted)")
+      break
+
+    fetched += 1
+    pod_name = pod.metadata.name
     if summary:
       sections.append(f"  {pod_name}: {summary}")
 
