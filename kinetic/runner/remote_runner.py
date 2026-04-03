@@ -5,7 +5,7 @@ This script runs on the remote TPU/GPU and executes the user's function.
 Artifacts are downloaded from and uploaded to Cloud Storage (GCS).
 """
 
-import inspect
+
 import os
 import pickle
 import shutil
@@ -88,22 +88,7 @@ def main():
       resolve_volumes(volumes, storage_client)
     args, kwargs = resolve_data_refs(args, kwargs, storage_client)
 
-    # Check if function accepts start_step
 
-    sig = inspect.signature(func)
-    if "start_step" in sig.parameters:
-      checkpoint_dir = os.environ.get("KINETIC_CHECKPOINT_DIR")
-      if checkpoint_dir:
-        logging.info("Checking for checkpoints in %s", checkpoint_dir)
-        latest_step = _get_latest_step_from_gcs(checkpoint_dir, storage_client)
-        if latest_step is not None:
-          next_step = latest_step + 1
-          logging.info(
-            "Found latest step: %d. Injecting start_step=%d.",
-            latest_step,
-            next_step,
-          )
-          kwargs["start_step"] = next_step
 
     # Execute function and capture result
     logging.info("Executing %s()", func.__name__)
@@ -290,38 +275,7 @@ def _upload_to_gcs(client, local_path, gcs_path):
   blob.upload_from_filename(local_path)
 
 
-def _get_latest_step_from_gcs(
-  checkpoint_dir: str, storage_client
-) -> int | None:
-  """Scan GCS for the latest saved step directory."""
-  if not checkpoint_dir.startswith("gs://"):
-    return None
 
-  parts = checkpoint_dir.replace("gs://", "").split("/", 1)
-  bucket_name = parts[0]
-  prefix = parts[1].rstrip("/") if len(parts) > 1 else ""
-
-  bucket = storage_client.bucket(bucket_name)
-  # List with delimiter="/" allows us to find subdirectories (prefixes)
-  iterator = bucket.list_blobs(prefix=prefix + "/", delimiter="/")
-
-  # Dry run the iterator to populate prefixes
-  for _ in iterator:
-    pass
-
-  steps = []
-  for pref in iterator.prefixes:
-    # pref is like "prefix/0/"
-    rel_path = pref[len(prefix) + 1 :]
-    dir_name = rel_path.rstrip("/")
-    if dir_name.isdigit():
-      steps.append(int(dir_name))
-    elif dir_name.startswith("step_") and dir_name[5:].isdigit():
-      steps.append(int(dir_name[5:]))
-
-  if steps:
-    return max(steps)
-  return None
 
 
 if __name__ == "__main__":

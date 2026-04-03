@@ -7,34 +7,43 @@ import kinetic
 
 
 @kinetic.run(accelerator="cpu")
-def train_with_checkpoints(start_step=0):
+def train_with_checkpoints():
   """Demo function showing Orbax checkpointing with Kinetic and Auto-Resume."""
   import jax.numpy as jnp
   import orbax.checkpoint as ocp
 
   checkpoint_dir = os.environ.get("KINETIC_CHECKPOINT_DIR")
   print(f"\n--- Kinetic Checkpoint Dir: {checkpoint_dir} ---")
-  print(f"--- Starting from step: {start_step} ---\n")
 
   if not checkpoint_dir:
     # Fallback for local testing if run without kinetic context
     checkpoint_dir = "/tmp/local_checkpoints"
     print(f"No KINETIC_CHECKPOINT_DIR found, using local: {checkpoint_dir}")
 
-  # 1. Define state (weights change with step to verify resume)
-  state = {
-    "step": start_step,
-    "weights": jnp.ones((10, 10)) * (start_step + 1),
-    "bias": jnp.zeros((10,)),
-  }
-
-  # 2. Initialize Orbax CheckpointManager
+  # Initialize Orbax CheckpointManager
   options = ocp.CheckpointManagerOptions(max_to_keep=2)
   mngr = ocp.CheckpointManager(
     checkpoint_dir, ocp.StandardCheckpointer(), options=options
   )
 
-  # 3. Simulated training loop (run 3 steps)
+  # Orbax handles discovery + restore natively
+  latest = mngr.latest_step()
+  if latest is not None:
+    print(f"Found latest checkpoint for step {latest}. Restoring...")
+    state = mngr.restore(latest)
+    start_step = latest + 1
+  else:
+    print("No checkpoint found. Starting from scratch (step 0).")
+    state = {
+      "step": 0,
+      "weights": jnp.ones((10, 10)),
+      "bias": jnp.zeros((10,)),
+    }
+    start_step = 0
+
+  print(f"--- Starting from step: {start_step} ---\n")
+
+  # Simulated training loop (run 3 steps)
   end_step = start_step + 3
   print(f"Will run steps from {start_step} to {end_step - 1}")
 
@@ -49,7 +58,7 @@ def train_with_checkpoints(start_step=0):
     mngr.wait_until_finished()
     print(f"Checkpoint for step {step} saved successfully.")
 
-  # 4. Verify by restoring the latest step
+  # Verify by restoring the latest step
   latest_step = mngr.latest_step()
   print(f"\nVerifying by restoring latest step ({latest_step})...")
   if latest_step is not None:
