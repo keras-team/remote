@@ -41,19 +41,29 @@ class Data:
   """A reference to data that should be available on the remote pod.
 
   Wraps a local file/directory path or a GCS URI. When passed as a function
-  argument or used in the ``volumes`` decorator parameter, Data is resolved
+  argument or used in the `volumes` decorator parameter, Data is resolved
   to a plain filesystem path on the remote side. The user's function code
   never needs to know about Data — it just receives paths.
 
+  By default, data is downloaded into the container before execution.
+  Pass `fuse=True` to lazily mount data from GCS via the GCS FUSE CSI
+  driver instead — useful for large datasets where only a subset of files
+  are read at runtime.
+
   Args:
       path: Local file/directory path (absolute or relative) or GCS URI
-            (``gs://bucket/prefix``).
+            (`gs://bucket/prefix`).
+      fuse: If `True`, mount the data via GCS FUSE instead of
+            downloading it. The data is read on demand — only files
+            that are actually opened are fetched from cloud storage.
+            Requires the GCS FUSE CSI driver addon on the GKE cluster
+            (`kinetic up` enables it by default).
 
   .. note::
 
       For GCS URIs, a trailing slash indicates a directory (prefix).
-      ``Data("gs://my-bucket/dataset/")`` is treated as a directory,
-      while ``Data("gs://my-bucket/dataset")`` is treated as a single
+      `Data("gs://my-bucket/dataset/")` is treated as a directory,
+      while `Data("gs://my-bucket/dataset")` is treated as a single
       object. If you intend to reference a GCS directory, always
       include the trailing slash.
 
@@ -70,6 +80,12 @@ class Data:
 
       # GCS single object
       Data("gs://my-bucket/datasets/weights.h5")
+
+      # FUSE-mounted directory (lazy loading)
+      Data("./large_dataset/", fuse=True)
+
+      # FUSE-mounted GCS data
+      Data("gs://my-bucket/datasets/imagenet/", fuse=True)
   """
 
   def __init__(self, path: str, fuse: bool = False):
@@ -213,7 +229,7 @@ def _warn_if_missing_trailing_slash(path: str) -> None:
     )
 
 
-def _make_data_ref(
+def make_data_ref(
   gcs_uri: str,
   is_dir: bool,
   mount_path: str | None = None,

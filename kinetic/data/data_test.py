@@ -7,7 +7,7 @@ from unittest import mock
 
 from absl.testing import absltest
 
-from kinetic.data import Data, _make_data_ref, is_data_ref
+from kinetic.data import Data, is_data_ref, make_data_ref
 from kinetic.data.data import _PARALLEL_HASH_THRESHOLD, parse_gcs_uri
 
 
@@ -351,23 +351,23 @@ class TestContentHash(absltest.TestCase):
 
 class TestMakeDataRef(absltest.TestCase):
   def test_basic_ref(self):
-    ref = _make_data_ref("gs://b/prefix", True)
+    ref = make_data_ref("gs://b/prefix", True)
     self.assertTrue(ref["__data_ref__"])
     self.assertEqual(ref["gcs_uri"], "gs://b/prefix")
     self.assertTrue(ref["is_dir"])
     self.assertIsNone(ref["mount_path"])
 
   def test_with_mount_path(self):
-    ref = _make_data_ref("gs://b/p", False, mount_path="/data")
+    ref = make_data_ref("gs://b/p", False, mount_path="/data")
     self.assertEqual(ref["mount_path"], "/data")
     self.assertFalse(ref["is_dir"])
 
   def test_fuse_default_false(self):
-    ref = _make_data_ref("gs://b/p", True)
+    ref = make_data_ref("gs://b/p", True)
     self.assertFalse(ref["fuse"])
 
   def test_fuse_true(self):
-    ref = _make_data_ref("gs://b/p", True, mount_path="/data", fuse=True)
+    ref = make_data_ref("gs://b/p", True, mount_path="/data", fuse=True)
     self.assertTrue(ref["fuse"])
     self.assertEqual(ref["mount_path"], "/data")
 

@@ -25,7 +25,7 @@ from kinetic.constants import (
   zone_to_region,
 )
 from kinetic.credentials import ensure_credentials
-from kinetic.data import _make_data_ref
+from kinetic.data import make_data_ref
 from kinetic.infra import container_builder
 from kinetic.jobs import JobHandle
 from kinetic.utils import packager, storage
@@ -350,7 +350,7 @@ def _process_volumes(
   for mount_path, data_obj in ctx.volumes.items():
     gcs_uri = storage.upload_data(ctx.bucket_name, data_obj, ctx.project)
     volume_refs.append(
-      _make_data_ref(
+      make_data_ref(
         gcs_uri, data_obj.is_dir, mount_path=mount_path, fuse=data_obj.fuse
       )
     )
@@ -394,11 +394,11 @@ def _process_data_args(
           "read_only": True,
         }
       )
-      ref_map[id(data_obj)] = _make_data_ref(
+      ref_map[id(data_obj)] = make_data_ref(
         gcs_uri, data_obj.is_dir, mount_path=mount_path, fuse=True
       )
     else:
-      ref_map[id(data_obj)] = _make_data_ref(gcs_uri, data_obj.is_dir)
+      ref_map[id(data_obj)] = make_data_ref(gcs_uri, data_obj.is_dir)
     if not data_obj.is_gcs:
       _maybe_exclude(data_obj.path, caller_path, exclude_paths)
 
