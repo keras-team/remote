@@ -60,8 +60,8 @@ def _load_provisioned(project, zone, cluster_name):
     state = load_state(project, zone, cluster_name, allow_missing=True)
     if state.stack is not None and state.node_pools:
       return _get_provisioned_names(state.node_pools)
-  except (RuntimeError, FileNotFoundError):
-    warning("Could not load cluster state.")
+  except (RuntimeError, FileNotFoundError) as e:
+    warning(f"Could not load cluster state: {e}")
   return set()
 
 
