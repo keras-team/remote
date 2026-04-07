@@ -164,6 +164,13 @@ def _check_adc():
       "Run: gcloud auth application-default revoke && "
       "gcloud auth application-default login",
     )
+  except google.auth.exceptions.TransportError as e:
+    return CheckResult(
+      "Application Default Credentials",
+      CheckStatus.FAIL,
+      f"Transport error: {e}",
+      "Check your network connection and SSL/TLS configuration.",
+    )
 
   if isinstance(creds, google.oauth2.service_account.Credentials):
     cred_label = "Service account"
