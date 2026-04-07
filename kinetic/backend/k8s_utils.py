@@ -100,7 +100,7 @@ def build_gcs_fuse_v1_volumes(
   """Like :func:`build_gcs_fuse_volumes` but returns kubernetes-client V1 objects.
 
   This is a convenience wrapper for backends that build pod specs using
-  the ``kubernetes`` Python client (e.g. GKE Jobs).
+  the `kubernetes` Python client (e.g. GKE Jobs).
   """
   annotations, vol_dicts, mount_dicts = build_gcs_fuse_volumes(
     fuse_volume_specs

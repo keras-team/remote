@@ -283,8 +283,8 @@ class PathwaysBackend(BaseK8sBackend):
 def _find_requirements(start_dir: str) -> Optional[str]:
   """Search up directory tree for requirements.txt or pyproject.toml.
 
-  At each directory level, ``requirements.txt`` is preferred over
-  ``pyproject.toml``.  The first match found while walking towards the
+  At each directory level, `requirements.txt` is preferred over
+  `pyproject.toml`.  The first match found while walking towards the
   filesystem root is returned.
   """
   search_dir = start_dir
@@ -375,7 +375,7 @@ def _process_data_args(
   """Upload Data objects found in function args and build ref map + FUSE specs.
 
   Returns:
-      Tuple of (ref_map, fuse_specs).  ref_map is keyed by ``id(data_obj)``.
+      Tuple of (ref_map, fuse_specs).  ref_map is keyed by `id(data_obj)`.
   """
   ref_map = {}
   fuse_specs = []
@@ -552,7 +552,7 @@ def submit_remote(ctx: JobContext, backend: BaseK8sBackend) -> JobHandle:
   via the returned handle.
 
   Returns:
-      A ``JobHandle`` representing the submitted job.
+      A `JobHandle` representing the submitted job.
   """
 
   prepare_execution(ctx, backend)

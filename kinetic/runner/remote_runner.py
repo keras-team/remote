@@ -210,7 +210,7 @@ def _resolve_fuse_single_file(mount_path: str) -> str | None:
   data refs the mount is scoped to the hash directory containing the
   file, so a flat listing is sufficient.
 
-  Returns the file path, or ``None`` if no data file is found.
+  Returns the file path, or `None` if no data file is found.
   """
   try:
     entries = os.listdir(mount_path)

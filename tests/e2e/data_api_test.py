@@ -153,7 +153,7 @@ class TestDataCaching(absltest.TestCase):
 
 @skip_unless_e2e()
 class TestVolumes(absltest.TestCase):
-  """Data declared in the ``volumes`` decorator parameter."""
+  """Data declared in the `volumes` decorator parameter."""
 
   def test_volume_at_fixed_path(self):
     """Volume data is available at the declared mount path."""
@@ -384,10 +384,10 @@ class TestNestedData(absltest.TestCase):
 
 @skip_unless_e2e()
 class TestFuseVolumes(absltest.TestCase):
-  """Data declared with ``fuse=True`` — mounted via GCS FUSE CSI driver.
+  """Data declared with `fuse=True` — mounted via GCS FUSE CSI driver.
 
   These tests require the GCS FUSE CSI driver addon to be enabled on the
-  GKE cluster (``kinetic up`` enables it by default).
+  GKE cluster (`kinetic up` enables it by default).
   """
 
   def test_fuse_volume_local_data(self):
@@ -468,7 +468,7 @@ class TestFuseVolumes(absltest.TestCase):
 
 @skip_unless_e2e()
 class TestFuseDataArgs(absltest.TestCase):
-  """Data objects with ``fuse=True`` passed as function arguments."""
+  """Data objects with `fuse=True` passed as function arguments."""
 
   def test_fuse_data_arg_directory(self):
     """A FUSE data arg resolves to a readable path (auto-mounted)."""
