@@ -8,12 +8,11 @@ import sys
 from dataclasses import dataclass
 from enum import Enum
 
+import click
 import google.auth
 import google.auth.exceptions
 import google.oauth2.credentials
 import google.oauth2.service_account
-
-import click
 from google.api_core import exceptions as google_exceptions
 from google.cloud import (
   artifactregistry_v1,
