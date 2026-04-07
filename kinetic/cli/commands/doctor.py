@@ -9,6 +9,17 @@ from dataclasses import dataclass
 from enum import Enum
 
 import click
+from google.api_core import exceptions as google_exceptions
+from google.cloud import (
+  artifactregistry_v1,
+  billing_v1,
+  compute_v1,
+  container_v1,
+  iam_admin_v1,
+  resourcemanager_v3,
+  service_usage_v1,
+  storage,
+)
 from rich.table import Table
 
 from kinetic.cli.constants import (
@@ -257,64 +268,42 @@ def _check_config(project, zone, cluster_name):
 def _check_project_access(project):
   """Check if the GCP project exists and is accessible."""
   try:
-    result = subprocess.run(
-      ["gcloud", "projects", "describe", project],
-      capture_output=True,
-      timeout=_SUBPROCESS_TIMEOUT,
-    )
-    if result.returncode == 0:
-      return CheckResult("GCP project access", CheckStatus.PASS, project)
+    client = resourcemanager_v3.ProjectsClient()
+    client.get_project(name=f"projects/{project}")
+    return CheckResult("GCP project access", CheckStatus.PASS, project)
+  except google_exceptions.NotFound:
     return CheckResult(
       "GCP project access",
       CheckStatus.FAIL,
-      f"Cannot access project '{project}'",
+      f"Project '{project}' not found",
       f"If project doesn't exist: run 'kinetic up' "
       f"(it can create the project interactively)\n"
-      f"If access denied: ask a project owner to grant you "
-      f"roles/editor or roles/owner\n"
       f"Verify at: https://console.cloud.google.com/"
       f"home/dashboard?project={project}",
     )
-  except subprocess.TimeoutExpired:
-    return CheckResult("GCP project access", CheckStatus.WARN, "Timed out")
+  except google_exceptions.PermissionDenied as exc:
+    return CheckResult(
+      "GCP project access",
+      CheckStatus.FAIL,
+      f"Permission denied for project '{project}'",
+      f"Ask a project owner to grant you roles/editor or roles/owner\n"
+      f"Detail: {exc}",
+    )
+  except Exception as exc:
+    return CheckResult(
+      "GCP project access",
+      CheckStatus.WARN,
+      f"Could not check: {exc}",
+    )
 
 
 def _check_billing(project):
   """Check if billing is enabled on the project."""
   try:
-    # --quiet suppresses the interactive prompt that gcloud shows when
-    # the Cloud Billing API (cloudbilling.googleapis.com) is not enabled,
-    # which would otherwise block until timeout.
-    result = subprocess.run(
-      [
-        "gcloud",
-        "billing",
-        "projects",
-        "describe",
-        project,
-        "--format=value(billingEnabled)",
-        "--quiet",
-      ],
-      capture_output=True,
-      text=True,
-      timeout=_SUBPROCESS_TIMEOUT,
-    )
-    if result.returncode == 0 and result.stdout.strip().lower() == "true":
+    client = billing_v1.CloudBillingClient()
+    info = client.get_project_billing_info(name=f"projects/{project}")
+    if info.billing_enabled:
       return CheckResult("Billing enabled", CheckStatus.PASS, "Enabled")
-
-    stderr = result.stderr.strip() if result.stderr else ""
-    if "cloudbilling" in stderr.lower() or "billing" in stderr.lower():
-      return CheckResult(
-        "Billing enabled",
-        CheckStatus.WARN,
-        "Could not check (Cloud Billing API may not be enabled)",
-        f"Enable the API: gcloud services enable "
-        f"cloudbilling.googleapis.com --project {project}\n"
-        f"Then link a billing account at: https://console.cloud.google.com/"
-        f"billing/linkedaccount?project={project}\n"
-        f"Or: 'kinetic up' will prompt to link billing during setup",
-      )
-
     return CheckResult(
       "Billing enabled",
       CheckStatus.FAIL,
@@ -323,15 +312,22 @@ def _check_billing(project):
       f"billing/linkedaccount?project={project}\n"
       f"Or: 'kinetic up' will prompt to link billing during setup",
     )
-  except subprocess.TimeoutExpired:
+  except google_exceptions.PermissionDenied:
     return CheckResult(
       "Billing enabled",
       CheckStatus.WARN,
-      "Timed out (Cloud Billing API may not be enabled)",
+      "Could not check (insufficient permissions or Billing API not enabled)",
       f"Enable the API: gcloud services enable "
       f"cloudbilling.googleapis.com --project {project}\n"
       f"Then link a billing account at: https://console.cloud.google.com/"
-      f"billing/linkedaccount?project={project}",
+      f"billing/linkedaccount?project={project}\n"
+      f"Or: 'kinetic up' will prompt to link billing during setup",
+    )
+  except Exception as exc:
+    return CheckResult(
+      "Billing enabled",
+      CheckStatus.WARN,
+      f"Could not check: {exc}",
     )
 
 
@@ -383,36 +379,24 @@ def _check_apis(has_project_access, project):
 
   # Fetch all enabled APIs in one call.
   try:
-    result = subprocess.run(
-      [
-        "gcloud",
-        "services",
-        "list",
-        "--enabled",
-        f"--project={project}",
-        "--format=value(config.name)",
-      ],
-      capture_output=True,
-      text=True,
-      timeout=_SUBPROCESS_TIMEOUT,
+    client = service_usage_v1.ServiceUsageClient()
+    enabled = set()
+    request = service_usage_v1.ListServicesRequest(
+      parent=f"projects/{project}",
+      filter="state:ENABLED",
     )
-  except subprocess.TimeoutExpired:
-    return [
-      CheckResult(f"API: {api}", CheckStatus.WARN, "Timed out listing APIs")
-      for api in REQUIRED_APIS
-    ]
-
-  if result.returncode != 0:
+    for service in client.list_services(request=request):
+      # service.config.name is the API name (e.g. "compute.googleapis.com").
+      enabled.add(service.config.name)
+  except Exception as exc:
     return [
       CheckResult(
         f"API: {api}",
         CheckStatus.WARN,
-        "Could not list enabled APIs",
+        f"Could not list enabled APIs: {exc}",
       )
       for api in REQUIRED_APIS
     ]
-
-  enabled = set(result.stdout.strip().splitlines())
 
   results = []
   for api in REQUIRED_APIS:
@@ -439,125 +423,98 @@ def _check_apis(has_project_access, project):
 def _check_service_account(project, sa_id, display_label):
   """Check if a GCP service account exists."""
   email = f"{sa_id}@{project}.iam.gserviceaccount.com"
+  name = f"projects/{project}/serviceAccounts/{email}"
   try:
-    result = subprocess.run(
-      [
-        "gcloud",
-        "iam",
-        "service-accounts",
-        "describe",
-        email,
-        f"--project={project}",
-        "--format=value(email)",
-      ],
-      capture_output=True,
-      text=True,
-      timeout=_SUBPROCESS_TIMEOUT,
-    )
-    if result.returncode == 0:
-      return CheckResult(display_label, CheckStatus.PASS, email)
+    client = iam_admin_v1.IAMClient()
+    client.get_service_account(name=name)
+    return CheckResult(display_label, CheckStatus.PASS, email)
+  except google_exceptions.NotFound:
     return CheckResult(
       display_label,
       CheckStatus.FAIL,
       f"Not found: {email}",
       "Run: kinetic up (creates all service accounts)",
     )
-  except subprocess.TimeoutExpired:
-    return CheckResult(display_label, CheckStatus.WARN, "Timed out")
+  except Exception as exc:
+    return CheckResult(
+      display_label,
+      CheckStatus.WARN,
+      f"Could not check: {exc}",
+    )
 
 
 def _check_ar_repo(project, cluster_name, ar_location):
   """Check Artifact Registry repository exists."""
   repo_id = f"kn-{cluster_name}"
+  repo_name = (
+    f"projects/{project}/locations/{ar_location}/repositories/{repo_id}"
+  )
   try:
-    result = subprocess.run(
-      [
-        "gcloud",
-        "artifacts",
-        "repositories",
-        "describe",
-        repo_id,
-        f"--location={ar_location}",
-        f"--project={project}",
-        "--format=value(name)",
-      ],
-      capture_output=True,
-      text=True,
-      timeout=_SUBPROCESS_TIMEOUT,
+    client = artifactregistry_v1.ArtifactRegistryClient()
+    client.get_repository(
+      request=artifactregistry_v1.GetRepositoryRequest(name=repo_name),
     )
-    if result.returncode == 0:
-      return CheckResult(
-        "Artifact Registry",
-        CheckStatus.PASS,
-        f"{ar_location}-docker.pkg.dev/{project}/{repo_id}",
-      )
+    return CheckResult(
+      "Artifact Registry",
+      CheckStatus.PASS,
+      f"{ar_location}-docker.pkg.dev/{project}/{repo_id}",
+    )
+  except google_exceptions.NotFound:
     return CheckResult(
       "Artifact Registry",
       CheckStatus.FAIL,
       f"Repository '{repo_id}' not found in {ar_location}",
       "Run: kinetic up (creates the container registry)",
     )
-  except subprocess.TimeoutExpired:
-    return CheckResult("Artifact Registry", CheckStatus.WARN, "Timed out")
+  except Exception as exc:
+    return CheckResult(
+      "Artifact Registry",
+      CheckStatus.WARN,
+      f"Could not check: {exc}",
+    )
 
 
 def _check_storage_bucket(project, bucket_name, label):
   """Check a GCS bucket exists."""
   try:
-    result = subprocess.run(
-      [
-        "gcloud",
-        "storage",
-        "buckets",
-        "describe",
-        f"gs://{bucket_name}",
-        f"--project={project}",
-        "--format=value(name)",
-      ],
-      capture_output=True,
-      text=True,
-      timeout=_SUBPROCESS_TIMEOUT,
-    )
-    if result.returncode == 0:
-      return CheckResult(label, CheckStatus.PASS, f"gs://{bucket_name}")
+    client = storage.Client(project=project)
+    client.get_bucket(bucket_name)
+    return CheckResult(label, CheckStatus.PASS, f"gs://{bucket_name}")
+  except google_exceptions.NotFound:
     return CheckResult(
       label,
       CheckStatus.FAIL,
       f"Bucket not found: {bucket_name}",
       "Run: kinetic up (creates required storage buckets)",
     )
-  except subprocess.TimeoutExpired:
-    return CheckResult(label, CheckStatus.WARN, "Timed out")
+  except Exception as exc:
+    return CheckResult(
+      label,
+      CheckStatus.WARN,
+      f"Could not check: {exc}",
+    )
 
 
 def _check_vpc_network(project, cluster_name):
   """Check VPC network exists."""
   network_name = f"kn-{cluster_name}"
   try:
-    result = subprocess.run(
-      [
-        "gcloud",
-        "compute",
-        "networks",
-        "describe",
-        network_name,
-        f"--project={project}",
-        "--format=value(name)",
-      ],
-      capture_output=True,
-      text=True,
-      timeout=_SUBPROCESS_TIMEOUT,
-    )
-    if result.returncode == 0:
-      return CheckResult("VPC network", CheckStatus.PASS, network_name)
+    client = compute_v1.NetworksClient()
+    client.get(project=project, network=network_name)
+    return CheckResult("VPC network", CheckStatus.PASS, network_name)
+  except google_exceptions.NotFound:
     return CheckResult(
       "VPC network",
       CheckStatus.FAIL,
       f"Network '{network_name}' not found",
       "Run: kinetic up (creates VPC and Cloud NAT)",
     )
-  except subprocess.TimeoutExpired:
-    return CheckResult("VPC network", CheckStatus.WARN, "Timed out")
+  except Exception as exc:
+    return CheckResult(
+      "VPC network",
+      CheckStatus.WARN,
+      f"Could not check: {exc}",
+    )
 
 
 def _check_cloud_nat(project, cluster_name, zone):
@@ -566,29 +523,15 @@ def _check_cloud_nat(project, cluster_name, zone):
   router_name = f"kn-{cluster_name}-router"
   nat_name = f"kn-{cluster_name}-nat"
   try:
-    result = subprocess.run(
-      [
-        "gcloud",
-        "compute",
-        "routers",
-        "nats",
-        "describe",
-        nat_name,
-        f"--router={router_name}",
-        f"--region={region}",
-        f"--project={project}",
-        "--format=value(name)",
-      ],
-      capture_output=True,
-      text=True,
-      timeout=_SUBPROCESS_TIMEOUT,
-    )
-    if result.returncode == 0:
-      return CheckResult(
-        "Cloud NAT",
-        CheckStatus.PASS,
-        f"{nat_name} (router: {router_name})",
-      )
+    client = compute_v1.RoutersClient()
+    router = client.get(project=project, region=region, router=router_name)
+    for nat in router.nats:
+      if nat.name == nat_name:
+        return CheckResult(
+          "Cloud NAT",
+          CheckStatus.PASS,
+          f"{nat_name} (router: {router_name})",
+        )
     return CheckResult(
       "Cloud NAT",
       CheckStatus.FAIL,
@@ -596,8 +539,20 @@ def _check_cloud_nat(project, cluster_name, zone):
       "Run: kinetic up (creates Cloud Router and NAT)\n"
       "Without NAT, private nodes cannot pull images or reach the internet",
     )
-  except subprocess.TimeoutExpired:
-    return CheckResult("Cloud NAT", CheckStatus.WARN, "Timed out")
+  except google_exceptions.NotFound:
+    return CheckResult(
+      "Cloud NAT",
+      CheckStatus.FAIL,
+      f"Router '{router_name}' not found in {region}",
+      "Run: kinetic up (creates Cloud Router and NAT)\n"
+      "Without NAT, private nodes cannot pull images or reach the internet",
+    )
+  except Exception as exc:
+    return CheckResult(
+      "Cloud NAT",
+      CheckStatus.WARN,
+      f"Could not check: {exc}",
+    )
 
 
 def _check_gcp_resources(has_project_access, project, zone, cluster_name):
@@ -686,25 +641,28 @@ def _check_pulumi_state(project, cluster_name):
 def _check_gke_cluster(project, zone, cluster_name):
   """Check GKE cluster exists and is RUNNING."""
   try:
-    result = subprocess.run(
-      [
-        "gcloud",
-        "container",
-        "clusters",
-        "describe",
-        cluster_name,
-        f"--zone={zone}",
-        f"--project={project}",
-        "--format=value(status)",
-      ],
-      capture_output=True,
-      text=True,
-      timeout=_SUBPROCESS_TIMEOUT,
+    client = container_v1.ClusterManagerClient()
+    name = f"projects/{project}/locations/{zone}/clusters/{cluster_name}"
+    cluster = client.get_cluster(name=name)
+    # Status enum: PROVISIONING=1, RUNNING=2, RECONCILING=3, etc.
+    status = container_v1.Cluster.Status(cluster.status).name
+    if status == "RUNNING":
+      return CheckResult("GKE cluster", CheckStatus.PASS, "RUNNING")
+    if status in ("PROVISIONING", "RECONCILING"):
+      return CheckResult(
+        "GKE cluster",
+        CheckStatus.WARN,
+        status,
+        "Cluster is being updated. Wait a few minutes and retry.",
+      )
+    return CheckResult(
+      "GKE cluster",
+      CheckStatus.FAIL,
+      status or "Unknown status",
+      f"Check console: https://console.cloud.google.com/"
+      f"kubernetes/list?project={project}",
     )
-  except subprocess.TimeoutExpired:
-    return CheckResult("GKE cluster", CheckStatus.WARN, "Timed out")
-
-  if result.returncode != 0:
+  except google_exceptions.NotFound:
     return CheckResult(
       "GKE cluster",
       CheckStatus.FAIL,
@@ -712,25 +670,12 @@ def _check_gke_cluster(project, zone, cluster_name):
       f"Run: kinetic up --project {project} --zone {zone} "
       f"--cluster {cluster_name}",
     )
-
-  status = result.stdout.strip()
-  if status == "RUNNING":
-    return CheckResult("GKE cluster", CheckStatus.PASS, "RUNNING")
-
-  if status in ("PROVISIONING", "RECONCILING"):
+  except Exception as exc:
     return CheckResult(
       "GKE cluster",
       CheckStatus.WARN,
-      status,
-      "Cluster is being updated. Wait a few minutes and retry.",
+      f"Could not check: {exc}",
     )
-  return CheckResult(
-    "GKE cluster",
-    CheckStatus.FAIL,
-    status or "Unknown status",
-    f"Check console: https://console.cloud.google.com/"
-    f"kubernetes/list?project={project}",
-  )
 
 
 def _check_infra(has_project_access, project, zone, cluster_name):
@@ -851,41 +796,18 @@ def _check_node_pools(project, zone, cluster_name):
       Tuple of (CheckResult, has_gpu_pools) so callers can decide
       whether GPU-specific checks (e.g. NVIDIA drivers) apply.
   """
+  healthy_statuses = {"RUNNING", "RECONCILING", "PROVISIONING"}
   try:
-    result = subprocess.run(
-      [
-        "gcloud",
-        "container",
-        "node-pools",
-        "list",
-        f"--cluster={cluster_name}",
-        f"--zone={zone}",
-        f"--project={project}",
-        "--format=json",
-      ],
-      capture_output=True,
-      text=True,
-      timeout=_SUBPROCESS_TIMEOUT,
-    )
-  except subprocess.TimeoutExpired:
-    return CheckResult("Node pools", CheckStatus.WARN, "Timed out"), False
-
-  if result.returncode != 0:
+    client = container_v1.ClusterManagerClient()
+    parent = f"projects/{project}/locations/{zone}/clusters/{cluster_name}"
+    response = client.list_node_pools(parent=parent)
+    pools = list(response.node_pools)
+  except Exception as exc:
     return (
       CheckResult(
         "Node pools",
         CheckStatus.WARN,
-        "Could not list node pools",
-      ),
-      False,
-    )
-
-  try:
-    pools = json.loads(result.stdout)
-  except (json.JSONDecodeError, TypeError):
-    return (
-      CheckResult(
-        "Node pools", CheckStatus.WARN, "Could not parse node pool data"
+        f"Could not list node pools: {exc}",
       ),
       False,
     )
@@ -902,20 +824,18 @@ def _check_node_pools(project, zone, cluster_name):
     )
 
   # Count accelerator pools (exclude default pool).
-  accel_pools = [
-    pool for pool in pools if pool.get("config", {}).get("accelerators")
-  ]
+  accel_pools = [pool for pool in pools if pool.config.accelerators]
   # Detect GPU pools by checking for nvidia accelerator types.
   has_gpu_pools = any(
-    "nvidia" in acc.get("acceleratorType", "").lower()
+    "nvidia" in acc.accelerator_type.lower()
     for pool in accel_pools
-    for acc in pool.get("config", {}).get("accelerators", [])
+    for acc in pool.config.accelerators
   )
   unhealthy = []
   for pool in pools:
-    status = pool.get("status", "UNKNOWN")
-    if status not in ("RUNNING", "RECONCILING", "PROVISIONING"):
-      unhealthy.append(f"{pool.get('name', '?')} ({status})")
+    status_name = container_v1.NodePool.Status(pool.status).name
+    if status_name not in healthy_statuses:
+      unhealthy.append(f"{pool.name} ({status_name})")
 
   msg_parts = [f"{len(pools)} pool(s)"]
   if accel_pools:
@@ -1296,46 +1216,20 @@ def _check_quota(project, zone):
   """Check GCP compute quota for the region (heuristic)."""
   region = zone_to_region(zone)
   try:
-    result = subprocess.run(
-      [
-        "gcloud",
-        "compute",
-        "regions",
-        "describe",
-        region,
-        f"--project={project}",
-        "--format=json(quotas)",
-      ],
-      capture_output=True,
-      text=True,
-      timeout=_SUBPROCESS_TIMEOUT,
-    )
-  except subprocess.TimeoutExpired:
-    return CheckResult("GCP quota", CheckStatus.WARN, "Timed out")
-
-  if result.returncode != 0:
+    client = compute_v1.RegionsClient()
+    region_info = client.get(project=project, region=region)
+  except Exception as exc:
     return CheckResult(
-      "GCP quota", CheckStatus.WARN, "Could not fetch quota info"
+      "GCP quota", CheckStatus.WARN, f"Could not fetch quota info: {exc}"
     )
 
-  try:
-    data = json.loads(result.stdout)
-  except (json.JSONDecodeError, TypeError):
-    return CheckResult(
-      "GCP quota", CheckStatus.WARN, "Could not parse quota data"
-    )
-
-  quotas = data.get("quotas", [])
   gpu_keywords = ("GPU", "NVIDIA", "TPU")
   quota_list = []
-  for q in quotas:
-    metric = q.get("metric", "")
-    if not any(kw in metric for kw in gpu_keywords):
+  for q in region_info.quotas:
+    if not any(kw in q.metric for kw in gpu_keywords):
       continue
-    limit = q.get("limit", 0)
-    usage = q.get("usage", 0)
-    if limit > 0:
-      quota_list.append((metric, usage, limit))
+    if q.limit > 0:
+      quota_list.append((q.metric, q.usage, q.limit))
 
   # Sort: non-zero usage first, then by name
   quota_list.sort(key=lambda x: (x[1] == 0, x[0]))
