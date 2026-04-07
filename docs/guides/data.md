@@ -90,9 +90,10 @@ Decision table:
 
 ## FUSE mounting
 
-`fuse=True` mounts the data through the GCS FUSE CSI driver instead of
-downloading it. Your function still receives a filesystem path; reads
-stream on demand from GCS.
+`fuse=True` mounts the data through the
+[GCS FUSE CSI driver](https://cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/cloud-storage-fuse-csi-driver)
+instead of downloading it. Your function still receives a filesystem
+path; reads stream on demand from GCS.
 
 ```python
 @kinetic.run(
@@ -135,6 +136,11 @@ train(Data("./labels.csv"))  # downloaded function-argument data
 
 **Prerequisites:** FUSE mounting needs the GCS FUSE CSI driver addon on
 the GKE cluster. `kinetic up` enables it by default.
+
+For a runnable end-to-end walkthrough covering volume mounts, single
+files, multiple FUSE volumes, and mixed FUSE/downloaded data in the same
+job, see
+[`examples/example_fuse.py`](https://github.com/keras-team/kinetic/blob/main/examples/example_fuse.py).
 
 ## How it caches
 
