@@ -11,7 +11,7 @@ import kinetic
 
 
 @kinetic.run(
-  accelerator="v5litepod-2x4",
+  accelerator="tpu-v5litepod-2x4",
   cluster="keras-team-dogfood",
   project="keras-team-gcp",
   backend="pathways",

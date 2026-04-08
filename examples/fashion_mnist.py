@@ -1,7 +1,7 @@
 import kinetic
 
 
-@kinetic.run(accelerator="v5litepod-1")
+@kinetic.run(accelerator="tpu-v5litepod-1")
 def train_fashion_mnist():
   import keras
   import numpy as np

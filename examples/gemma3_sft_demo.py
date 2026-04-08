@@ -6,7 +6,7 @@ from kinetic import core as kinetic
 
 
 @kinetic.run(
-  accelerator="v5litepod-1", capture_env_vars=["KAGGLE_*", "GOOGLE_CLOUD_*"]
+  accelerator="tpu-v5litepod-1", capture_env_vars=["KAGGLE_*", "GOOGLE_CLOUD_*"]
 )
 def train_gemma():
   # Data for SFT

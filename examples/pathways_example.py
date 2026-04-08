@@ -11,7 +11,7 @@ import kinetic
 
 # A simple model that will be executed remotely on pathways
 @kinetic.run(
-  accelerator="v6e-16", backend="pathways", cluster="keras-team-dogfood"
+  accelerator="tpu-v6e-16", backend="pathways", cluster="keras-team-dogfood"
 )
 def train_simple_model():
   import jax

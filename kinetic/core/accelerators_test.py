@@ -299,6 +299,77 @@ class TestParseNormalizationAndErrors(absltest.TestCase):
       parse_accelerator("unknown")
 
 
+class TestParseDashPrefix(absltest.TestCase):
+  """Dash-prefixed forms (gpu-l4, tpu-v3-8) are equivalent to colon forms."""
+
+  def test_gpu_dash_bare(self):
+    result = parse_accelerator("gpu-l4")
+    self.assertIsInstance(result, GpuConfig)
+    self.assertEqual(result.name, "l4")
+    self.assertEqual(result.count, 1)
+
+  def test_gpu_dash_multi(self):
+    result = parse_accelerator("gpu-a100x4")
+    self.assertIsInstance(result, GpuConfig)
+    self.assertEqual(result.name, "a100")
+    self.assertEqual(result.count, 4)
+
+  def test_gpu_dash_hyphenated_name(self):
+    result = parse_accelerator("gpu-a100-80gb")
+    self.assertIsInstance(result, GpuConfig)
+    self.assertEqual(result.name, "a100-80gb")
+    self.assertEqual(result.count, 1)
+
+  def test_gpu_dash_dynamic_count(self):
+    result = parse_accelerator("gpu-4")
+    self.assertIsInstance(result, GpuConfig)
+    self.assertEqual(result.name, "h100")
+    self.assertEqual(result.count, 4)
+
+  def test_tpu_dash_bare(self):
+    result = parse_accelerator("tpu-v5litepod")
+    self.assertIsInstance(result, TpuConfig)
+    self.assertEqual(result.name, "v5litepod")
+    self.assertEqual(result.chips, 4)
+
+  def test_tpu_dash_chips(self):
+    result = parse_accelerator("tpu-v3-4")
+    self.assertIsInstance(result, TpuConfig)
+    self.assertEqual(result.name, "v3")
+    self.assertEqual(result.chips, 4)
+
+  def test_tpu_dash_topology(self):
+    result = parse_accelerator("tpu-v5litepod-2x2")
+    self.assertIsInstance(result, TpuConfig)
+    self.assertEqual(result.name, "v5litepod")
+    self.assertEqual(result.chips, 4)
+    self.assertEqual(result.topology, "2x2")
+
+  def test_tpu_dash_alias(self):
+    result = parse_accelerator("tpu-v5e-8")
+    self.assertIsInstance(result, TpuConfig)
+    self.assertEqual(result.name, "v5litepod")
+    self.assertEqual(result.chips, 8)
+
+  def test_tpu_dash_dynamic_count(self):
+    result = parse_accelerator("tpu-8")
+    self.assertIsInstance(result, TpuConfig)
+    self.assertEqual(result.name, "v6e")
+    self.assertEqual(result.chips, 8)
+
+  def test_gpu_dash_with_spot(self):
+    result = parse_accelerator("gpu-l4:spot")
+    self.assertIsInstance(result, GpuConfig)
+    self.assertTrue(result.spot)
+    self.assertEqual(result.name, "l4")
+
+  def test_tpu_dash_with_spot(self):
+    result = parse_accelerator("tpu-v6e-8:spot")
+    self.assertIsInstance(result, TpuConfig)
+    self.assertTrue(result.spot)
+    self.assertEqual(result.name, "v6e")
+
+
 class TestGetCategory(absltest.TestCase):
   def test_cpu(self):
     self.assertEqual(get_category("cpu"), "cpu")

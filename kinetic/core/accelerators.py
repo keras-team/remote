@@ -255,12 +255,13 @@ def parse_accelerator(accel_str: str, spot: bool = False) -> Accelerator:
   Accepted formats:
       - Generic: "gpu", "tpu", "cpu" (resolves to defaults)
       - Dynamic Count: "gpu:4", "tpu:8", "cpu:8" (assigns most capable hardware matching the count)
-      - Explicit GPU Name: "gpu:l4", "l4", "gpu:a100-80gb" (resolves to 1 instance of the specified GPU)
-      - Multi-GPU Name: "gpu:a100x4", "a100x4", "gpu:l4-2" (resolves to N instances of the specified GPU)
-      - Explicit TPU Name: "tpu:v5litepod", "v5litepod" (resolves to the default topology/chips for the TPU)
-      - Explicit TPU Topology/Chips: "tpu:v3-8", "tpu:v5litepod-2x2", "v3-8" (resolves to the specified TPU slice)
+      - Explicit GPU Name: "gpu-l4", "gpu:l4", "l4" (resolves to 1 instance of the specified GPU)
+      - Multi-GPU Name: "gpu-a100x4", "gpu:a100x4", "a100x4" (resolves to N instances of the specified GPU)
+      - Explicit TPU Name: "tpu-v5litepod", "tpu:v5litepod", "v5litepod" (resolves to default topology/chips)
+      - Explicit TPU Topology/Chips: "tpu-v3-8", "tpu:v3-8", "v3-8" (resolves to the specified TPU slice)
 
-  Note: Prefixes ('gpu:' and 'tpu:') are recommended for complete disambiguation but are completely optional.
+  Note: Prefixes ('gpu-'/'gpu:' and 'tpu-'/'tpu:') are recommended for
+  disambiguation but are completely optional.
 
   Dynamic Resolution:
       When using generic formats like "gpu:<N>" or "tpu:<N>", the parser
@@ -273,6 +274,13 @@ def parse_accelerator(accel_str: str, spot: bool = False) -> Accelerator:
   if s.endswith(":spot"):
     spot = True
     s = s[:-5]
+
+  # Normalize dash-prefixed forms (gpu-l4, tpu-v3-8) to colon-prefixed
+  # forms (gpu:l4, tpu:v3-8) so the rest of the parser handles both.
+  if s.startswith("gpu-"):
+    s = "gpu:" + s[4:]
+  elif s.startswith("tpu-"):
+    s = "tpu:" + s[4:]
 
   if s == "cpu" or (s.startswith("cpu:") and s[4:].isdigit()):
     return None
