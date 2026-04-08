@@ -204,7 +204,11 @@ def _create_service_accounts(
     "node-sa",
     node_sa,
     project_id,
-    ["roles/logging.logWriter", "roles/monitoring.metricWriter"],
+    [
+      "roles/logging.logWriter",
+      "roles/monitoring.metricWriter",
+      "roles/container.defaultNodeServiceAccount",
+    ],
     bucket_pairs,
     repo,
     ar_location,
