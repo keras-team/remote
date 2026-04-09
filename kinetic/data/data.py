@@ -41,19 +41,29 @@ class Data:
   """A reference to data that should be available on the remote pod.
 
   Wraps a local file/directory path or a GCS URI. When passed as a function
-  argument or used in the ``volumes`` decorator parameter, Data is resolved
+  argument or used in the `volumes` decorator parameter, Data is resolved
   to a plain filesystem path on the remote side. The user's function code
   never needs to know about Data — it just receives paths.
 
+  By default, data is downloaded into the container before execution.
+  Pass `fuse=True` to lazily mount data from GCS via the GCS FUSE CSI
+  driver instead — useful for large datasets where only a subset of files
+  are read at runtime.
+
   Args:
       path: Local file/directory path (absolute or relative) or GCS URI
-            (``gs://bucket/prefix``).
+            (`gs://bucket/prefix`).
+      fuse: If `True`, mount the data via GCS FUSE instead of
+            downloading it. The data is read on demand — only files
+            that are actually opened are fetched from cloud storage.
+            Requires the GCS FUSE CSI driver addon on the GKE cluster
+            (`kinetic up` enables it by default).
 
   .. note::
 
       For GCS URIs, a trailing slash indicates a directory (prefix).
-      ``Data("gs://my-bucket/dataset/")`` is treated as a directory,
-      while ``Data("gs://my-bucket/dataset")`` is treated as a single
+      `Data("gs://my-bucket/dataset/")` is treated as a directory,
+      while `Data("gs://my-bucket/dataset")` is treated as a single
       object. If you intend to reference a GCS directory, always
       include the trailing slash.
 
@@ -70,12 +80,19 @@ class Data:
 
       # GCS single object
       Data("gs://my-bucket/datasets/weights.h5")
+
+      # FUSE-mounted directory (lazy loading)
+      Data("./large_dataset/", fuse=True)
+
+      # FUSE-mounted GCS data
+      Data("gs://my-bucket/datasets/imagenet/", fuse=True)
   """
 
-  def __init__(self, path: str):
+  def __init__(self, path: str, fuse: bool = False):
     if not path:
       raise ValueError("Data path must not be empty")
     self._raw_path = path
+    self._fuse = fuse
     if self.is_gcs:
       self._resolved_path = path
       _warn_if_missing_trailing_slash(path)
@@ -90,6 +107,10 @@ class Data:
   @property
   def path(self) -> str:
     return self._resolved_path
+
+  @property
+  def fuse(self) -> bool:
+    return self._fuse
 
   @property
   def is_gcs(self) -> bool:
@@ -186,6 +207,8 @@ class Data:
     return h.hexdigest()
 
   def __repr__(self):
+    if self._fuse:
+      return f"Data({self._raw_path!r}, fuse=True)"
     return f"Data({self._raw_path!r})"
 
 
@@ -206,8 +229,11 @@ def _warn_if_missing_trailing_slash(path: str) -> None:
     )
 
 
-def _make_data_ref(
-  gcs_uri: str, is_dir: bool, mount_path: str | None = None
+def make_data_ref(
+  gcs_uri: str,
+  is_dir: bool,
+  mount_path: str | None = None,
+  fuse: bool = False,
 ) -> dict[str, object]:
   """Create a serializable data reference dict.
 
@@ -219,9 +245,29 @@ def _make_data_ref(
     "gcs_uri": gcs_uri,
     "is_dir": is_dir,
     "mount_path": mount_path,
+    "fuse": fuse,
   }
 
 
 def is_data_ref(obj: object) -> bool:
   """Check if an object is a serialized data reference."""
   return isinstance(obj, dict) and obj.get("__data_ref__") is True
+
+
+def parse_gcs_uri(gcs_uri: str) -> tuple[str, str]:
+  """Parse a GCS URI into (bucket_name, prefix).
+
+  Args:
+      gcs_uri: A URI like `gs://my-bucket/some/prefix/`.
+
+  Returns:
+      Tuple of `(bucket_name, prefix)` where prefix has no
+      leading or trailing slashes. For `gs://my-bucket/some/prefix/`,
+      returns `("my-bucket", "some/prefix")`. For `gs://my-bucket`,
+      returns `("my-bucket", "")`.
+  """
+  stripped = gcs_uri[len("gs://") :] if gcs_uri.startswith("gs://") else gcs_uri
+  parts = stripped.split("/", 1)
+  bucket = parts[0]
+  prefix = parts[1].strip("/") if len(parts) > 1 else ""
+  return bucket, prefix

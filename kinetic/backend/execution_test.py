@@ -12,9 +12,13 @@ import cloudpickle
 from absl.testing import absltest
 
 from kinetic.backend.execution import (
+  _FUSE_DATA_MOUNT_PREFIX,
   JobContext,
   _find_requirements,
   _prepare_artifacts,
+  _process_volumes,
+  _requirements_uri,
+  _upload_artifacts,
   submit_remote,
 )
 from kinetic.data import Data
@@ -231,6 +235,106 @@ class TestFindRequirements(absltest.TestCase):
     )
 
 
+class TestPrepareArtifactsFuse(absltest.TestCase):
+  """Tests for FUSE volume handling in _prepare_artifacts."""
+
+  def _make_func(self):
+    def my_train():
+      return 42
+
+    return my_train
+
+  def _make_ctx(self, volumes=None, args=(), kwargs=None):
+    return JobContext(
+      func=self._make_func(),
+      args=args,
+      kwargs=kwargs or {},
+      env_vars={},
+      accelerator="cpu",
+      container_image=None,
+      zone="us-central1-a",
+      project="proj",
+      cluster_name="kinetic-cluster",
+      volumes=volumes,
+    )
+
+  @mock.patch("kinetic.backend.execution.storage.upload_data")
+  @mock.patch("kinetic.backend.execution.packager.zip_working_dir")
+  def test_fuse_volume_creates_fuse_spec(self, _zip, mock_upload):
+    mock_upload.return_value = "gs://bucket/hash/"
+    tmp = _make_temp_path(self)
+    data_dir = tmp / "dataset"
+    data_dir.mkdir()
+    (data_dir / "train.csv").write_text("data")
+
+    ctx = self._make_ctx(volumes={"/data": Data(str(data_dir), fuse=True)})
+    _prepare_artifacts(ctx, str(tmp))
+
+    self.assertIsNotNone(ctx.fuse_volume_specs)
+    self.assertLen(ctx.fuse_volume_specs, 1)
+    spec = ctx.fuse_volume_specs[0]
+    self.assertEqual(spec["gcs_uri"], "gs://bucket/hash/")
+    self.assertEqual(spec["mount_path"], "/data")
+    self.assertTrue(spec["is_dir"])
+    self.assertTrue(spec["read_only"])
+
+  @mock.patch("kinetic.backend.execution.storage.upload_data")
+  @mock.patch("kinetic.backend.execution.packager.zip_working_dir")
+  def test_non_fuse_volume_no_fuse_specs(self, _zip, mock_upload):
+    mock_upload.return_value = "gs://bucket/hash/"
+    tmp = _make_temp_path(self)
+    data_dir = tmp / "dataset"
+    data_dir.mkdir()
+    (data_dir / "train.csv").write_text("data")
+
+    ctx = self._make_ctx(volumes={"/data": Data(str(data_dir))})
+    _prepare_artifacts(ctx, str(tmp))
+
+    self.assertIsNone(ctx.fuse_volume_specs)
+
+  @mock.patch("kinetic.backend.execution.storage.upload_data")
+  @mock.patch("kinetic.backend.execution.packager.zip_working_dir")
+  def test_fuse_data_arg_creates_auto_mount(self, _zip, mock_upload):
+    mock_upload.return_value = "gs://bucket/hash/"
+    tmp = _make_temp_path(self)
+
+    fuse_data = Data("gs://bucket/dataset/", fuse=True)
+    ctx = self._make_ctx(args=(fuse_data,))
+    _prepare_artifacts(ctx, str(tmp))
+
+    self.assertIsNotNone(ctx.fuse_volume_specs)
+    self.assertLen(ctx.fuse_volume_specs, 1)
+    spec = ctx.fuse_volume_specs[0]
+    self.assertEqual(spec["mount_path"], "/_kinetic/fuse-data/0")
+    self.assertTrue(spec["is_dir"])
+    self.assertTrue(spec["read_only"])
+
+  @mock.patch("kinetic.backend.execution.storage.upload_data")
+  @mock.patch("kinetic.backend.execution.packager.zip_working_dir")
+  def test_mixed_fuse_and_non_fuse_volumes(self, _zip, mock_upload):
+    mock_upload.return_value = "gs://bucket/hash/"
+    tmp = _make_temp_path(self)
+    data_dir = tmp / "dataset"
+    data_dir.mkdir()
+    (data_dir / "train.csv").write_text("data")
+    config_dir = tmp / "config"
+    config_dir.mkdir()
+    (config_dir / "cfg.json").write_text("{}")
+
+    ctx = self._make_ctx(
+      volumes={
+        "/data": Data(str(data_dir), fuse=True),
+        "/config": Data(str(config_dir)),
+      }
+    )
+    _prepare_artifacts(ctx, str(tmp))
+
+    # Only the fuse volume should be in fuse_volume_specs
+    self.assertIsNotNone(ctx.fuse_volume_specs)
+    self.assertLen(ctx.fuse_volume_specs, 1)
+    self.assertEqual(ctx.fuse_volume_specs[0]["mount_path"], "/data")
+
+
 class TestPrepareArtifacts(absltest.TestCase):
   def _make_working_dir(self):
     """Create a temp working directory with some source files."""
@@ -380,6 +484,104 @@ class TestPrepareArtifacts(absltest.TestCase):
     )
 
 
+class TestUploadArtifactsRequirementsFlag(absltest.TestCase):
+  """Tests that _upload_artifacts returns the correct has_requirements flag."""
+
+  def _make_ctx(self, requirements_path=None, container_image=None):
+    def train():
+      return 1
+
+    return JobContext(
+      func=train,
+      args=(),
+      kwargs={},
+      env_vars={},
+      accelerator="v6e-8",
+      container_image=container_image,
+      zone="us-central1-a",
+      project="proj",
+      cluster_name="cluster",
+      payload_path="/tmp/payload.pkl",
+      context_path="/tmp/context.zip",
+      requirements_path=requirements_path,
+    )
+
+  @mock.patch("kinetic.backend.execution.storage.upload_artifacts")
+  @mock.patch(
+    "kinetic.backend.execution.container_builder.prepare_requirements_content",
+    return_value=None,
+  )
+  def test_returns_false_when_content_is_none(self, mock_prepare, mock_upload):
+    """has_requirements is False when prepare_requirements_content returns None."""
+    ctx = self._make_ctx(
+      requirements_path="/tmp/requirements.txt", container_image="prebuilt"
+    )
+    has_requirements = _upload_artifacts(ctx)
+    self.assertFalse(has_requirements)
+
+  @mock.patch("kinetic.backend.execution.storage.upload_artifacts")
+  @mock.patch(
+    "kinetic.backend.execution.container_builder.prepare_requirements_content",
+    return_value=None,
+  )
+  def test_requirements_uri_returns_none_when_path_cleared(
+    self, mock_prepare, mock_upload
+  ):
+    """_requirements_uri returns None after caller clears requirements_path."""
+    ctx = self._make_ctx(
+      requirements_path="/tmp/requirements.txt", container_image="prebuilt"
+    )
+    has_requirements = _upload_artifacts(ctx)
+    if not has_requirements:
+      ctx.requirements_path = None
+    self.assertIsNone(_requirements_uri(ctx))
+
+  @mock.patch("kinetic.backend.execution.storage.upload_artifacts")
+  @mock.patch(
+    "kinetic.backend.execution.container_builder.prepare_requirements_content",
+    return_value="numpy==1.26\n",
+  )
+  def test_returns_true_when_content_exists(self, mock_prepare, mock_upload):
+    """has_requirements is True when prepare_requirements_content returns content."""
+    ctx = self._make_ctx(
+      requirements_path="/tmp/requirements.txt", container_image="prebuilt"
+    )
+    has_requirements = _upload_artifacts(ctx)
+    self.assertTrue(has_requirements)
+
+  @mock.patch("kinetic.backend.execution.storage.upload_artifacts")
+  @mock.patch(
+    "kinetic.backend.execution.container_builder.prepare_requirements_content",
+    return_value="numpy==1.26\n",
+  )
+  def test_requirements_uri_returned_when_content_exists(
+    self, mock_prepare, mock_upload
+  ):
+    """_requirements_uri returns a GCS URI when requirements content exists."""
+    ctx = self._make_ctx(
+      requirements_path="/tmp/requirements.txt", container_image="prebuilt"
+    )
+    _upload_artifacts(ctx)
+    self.assertEqual(
+      _requirements_uri(ctx),
+      f"gs://{ctx.bucket_name}/{ctx.job_id}/requirements.txt",
+    )
+
+  @mock.patch("kinetic.backend.execution.storage.upload_artifacts")
+  def test_non_prebuilt_skips_filtering(self, mock_upload):
+    """Non-prebuilt mode does not call prepare_requirements_content."""
+    ctx = self._make_ctx(
+      requirements_path="/tmp/requirements.txt",
+      container_image="gcr.io/my-proj/custom:latest",
+    )
+    with mock.patch(
+      "kinetic.backend.execution.container_builder.prepare_requirements_content"
+    ) as mock_prepare:
+      has_requirements = _upload_artifacts(ctx)
+      mock_prepare.assert_not_called()
+    self.assertTrue(has_requirements)
+
+
 class TestSubmitRemote(absltest.TestCase):
   def _make_ctx(self):
     def train():
@@ -491,6 +693,59 @@ class TestSubmitRemote(absltest.TestCase):
     mock_cleanup.assert_called_once_with(
       ctx.bucket_name, ctx.job_id, project=ctx.project
     )
+
+
+class TestProcessVolumesReservedPath(absltest.TestCase):
+  """Tests that _process_volumes rejects mount paths under the reserved prefix."""
+
+  def _make_ctx(self, volumes):
+    ctx = MagicMock()
+    ctx.volumes = volumes
+    ctx.bucket_name = "test-bucket"
+    ctx.project = "test-project"
+    return ctx
+
+  def _make_data_stub(self, *, is_gcs=True, is_dir=False, fuse=False):
+    obj = MagicMock()
+    obj.is_gcs = is_gcs
+    obj.is_dir = is_dir
+    obj.fuse = fuse
+    obj.path = "gs://b/p"
+    return obj
+
+  def test_rejects_direct_child_of_reserved_prefix(self):
+    mount_path = f"{_FUSE_DATA_MOUNT_PREFIX}/0"
+    ctx = self._make_ctx({mount_path: self._make_data_stub()})
+
+    with self.assertRaises(ValueError) as cm:
+      _process_volumes(ctx, "/tmp/caller", set())
+    self.assertIn(mount_path, str(cm.exception))
+
+  def test_rejects_nested_path_under_reserved_prefix(self):
+    mount_path = f"{_FUSE_DATA_MOUNT_PREFIX}/42/sub"
+    ctx = self._make_ctx({mount_path: self._make_data_stub()})
+
+    with self.assertRaises(ValueError) as cm:
+      _process_volumes(ctx, "/tmp/caller", set())
+    self.assertIn(mount_path, str(cm.exception))
+
+  @mock.patch("kinetic.backend.execution.storage.upload_data")
+  def test_allows_non_reserved_path(self, mock_upload):
+    mock_upload.return_value = "gs://test-bucket/data/hash"
+    ctx = self._make_ctx({"/mnt/my-data": self._make_data_stub()})
+
+    volume_refs, _ = _process_volumes(ctx, "/tmp/caller", set())
+    self.assertLen(volume_refs, 1)
+
+  @mock.patch("kinetic.backend.execution.storage.upload_data")
+  def test_allows_similar_but_distinct_prefix(self, mock_upload):
+    mock_upload.return_value = "gs://test-bucket/data/hash"
+    ctx = self._make_ctx(
+      {f"{_FUSE_DATA_MOUNT_PREFIX}-extra": self._make_data_stub()}
+    )
+
+    volume_refs, _ = _process_volumes(ctx, "/tmp/caller", set())
+    self.assertLen(volume_refs, 1)
 
 
 if __name__ == "__main__":

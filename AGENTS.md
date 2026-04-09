@@ -68,7 +68,7 @@ kinetic/
 
 ## Data API
 
-The `Data` class (`kinetic.Data`) declares data dependencies for remote functions. It accepts local file/directory paths or GCS URIs (`gs://...`).
+The `Data` class (`kinetic.Data`) declares data dependencies for remote functions. Constructor: `Data(path: str, fuse: bool = False)`. Accepts local file/directory paths or GCS URIs (`gs://...`).
 
 ### Two usage patterns
 
@@ -92,6 +92,20 @@ def train():
 
 Both patterns can be combined. `Data` objects can also be nested inside lists, dicts, and other containers — they are recursively discovered and resolved.
 
+### FUSE mounting (`fuse=True`)
+
+Passing `fuse=True` mounts data via the GCS FUSE CSI driver instead of downloading. Useful for large datasets where only a subset is read at runtime. Works with both function arguments and volumes.
+
+```python
+# Volume — mounted at a fixed path, lazily loaded from GCS
+@kinetic.run(accelerator="v5e-4", volumes={"/data": Data("./dataset/", fuse=True)})
+
+# Function argument — auto-mounted, path passed to function
+train(Data("gs://my-bucket/dataset/", fuse=True))
+```
+
+The function receives plain string paths in both cases — `fuse=True` only changes the transport mechanism (lazy mount vs eager download).
+
 ### Content-addressed caching
 
 Local `Data` objects are content-hashed (SHA-256 over sorted file contents). Uploads go to `gs://{bucket}/{namespace}/data-cache/{hash}/`. A `.cache_marker` sentinel enables O(1) cache-hit checks. Identical data is uploaded only once.
@@ -101,14 +115,31 @@ Local `Data` objects are content-hashed (SHA-256 over sorted file contents). Upl
 During `_prepare_artifacts()`:
 
 1. Upload `Data` from `volumes` and function args via `storage.upload_data()` (content-addressed)
-2. Replace `Data` objects in args/kwargs with serializable `__data_ref__` dicts
-3. Local `Data` paths inside the caller directory are auto-excluded from `context.zip`
+2. For `fuse=True` Data, build FUSE volume specs (stored on `ctx.fuse_volume_specs`)
+3. Replace `Data` objects in args/kwargs with serializable `__data_ref__` dicts (contain `gcs_uri`, `is_dir`, `mount_path`, `fuse`)
+4. Local `Data` paths inside the caller directory are auto-excluded from `context.zip`
 
 On the remote pod (`remote_runner.py`):
 
-1. `resolve_volumes()` — download volume data to mount paths
+1. `resolve_volumes()` — download non-FUSE volume data to mount paths; skip FUSE volumes (already mounted by K8s CSI driver)
 2. `resolve_data_refs()` — recursively resolve `__data_ref__` dicts in args/kwargs to local paths
 3. Single-file `Data` resolves to the file path; directory `Data` resolves to the directory path
+4. FUSE single-file refs are resolved via `_resolve_fuse_single_file()` which locates the file inside the mount directory
+
+### FUSE internals
+
+GCS FUSE can only mount directories, not individual files. The system handles this transparently:
+
+**Mount scoping** (`k8s_utils.build_gcs_fuse_volumes`): Each FUSE spec becomes a CSI ephemeral volume with `only-dir` set to scope the mount to a specific GCS prefix. For single files, the parent directory is mounted. The GKE GCS FUSE sidecar is auto-injected via the `gke-gcsfuse/volumes: "true"` pod annotation.
+
+**URI divergence for uploaded single files**: `upload_data()` returns a directory-level URI (`gs://bucket/ns/data-cache/{hash}`) since the hash prefix is a directory. But FUSE needs a file-level URI so `dirname()` scopes `only-dir` to the hash directory (not the entire `data-cache/` tree). The helper `_fuse_gcs_uri()` in `execution.py` appends the filename for non-GCS single files. The data ref retains the directory-level URI for download compatibility.
+
+**Two backend integrations**:
+
+- GKE (`gke_client.py`): Uses `build_gcs_fuse_v1_volumes()` which returns `kubernetes.client` V1 objects
+- Pathways (`pathways_client.py`): Uses `build_gcs_fuse_volumes()` which returns plain dicts for the LWS manifest
+
+**Cache markers**: Stored at `{namespace}/data-markers/{hash}` — a separate prefix from `data-cache/` — so they never appear inside FUSE-mounted directories.
 
 ## Conventions
 

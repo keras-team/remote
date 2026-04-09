@@ -9,6 +9,7 @@ from kubernetes.client.rest import ApiException
 
 from kinetic.backend import k8s_utils
 from kinetic.backend.log_streaming import LogStreamer
+from kinetic.cli.constants import KINETIC_KSA_NAME
 from kinetic.core import accelerators
 from kinetic.credentials import invalidate_credential_cache
 from kinetic.job_status import JobStatus
@@ -65,6 +66,8 @@ def submit_pathways_job(
   bucket_name,
   namespace="default",
   spot=False,
+  requirements_uri=None,
+  fuse_volume_specs=None,
 ):
   """Submit a LeaderWorkerSet to GKE cluster.
 
@@ -76,6 +79,8 @@ def submit_pathways_job(
       job_id: Unique job identifier
       bucket_name: GCS bucket name for artifacts
       namespace: Kubernetes namespace (default: "default")
+      requirements_uri: Optional GCS URI to requirements.txt for runtime
+          install (prebuilt image mode).
 
   Returns:
       dict: The created LeaderWorkerSet object
@@ -103,6 +108,8 @@ def submit_pathways_job(
     num_workers=num_workers,
     namespace=namespace,
     version=lws_version,
+    requirements_uri=requirements_uri,
+    fuse_volume_specs=fuse_volume_specs,
   )
 
   custom_api = _custom_api()
@@ -418,6 +425,8 @@ def _create_lws_spec(
   num_workers,
   namespace,
   version=LWS_VERSION,
+  requirements_uri=None,
+  fuse_volume_specs=None,
 ):
   """Create a LeaderWorkerSet manifest."""
 
@@ -444,6 +453,14 @@ def _create_lws_spec(
       entry["value"] = t["value"]
     tolerations.append(entry)
 
+  container_args = [
+    f"gs://{bucket_name}/{job_id}/context.zip",
+    f"gs://{bucket_name}/{job_id}/payload.pkl",
+    f"gs://{bucket_name}/{job_id}/result.pkl",
+  ]
+  if requirements_uri:
+    container_args.append(requirements_uri)
+
   pod_template = {
     "metadata": {
       "labels": {
@@ -453,16 +470,13 @@ def _create_lws_spec(
       }
     },
     "spec": {
+      "serviceAccountName": KINETIC_KSA_NAME,
       "containers": [
         {
           "name": "kinetic-worker",
           "image": container_uri,
           "command": ["python3", "-u", "/app/remote_runner.py"],
-          "args": [
-            f"gs://{bucket_name}/{job_id}/context.zip",
-            f"gs://{bucket_name}/{job_id}/payload.pkl",
-            f"gs://{bucket_name}/{job_id}/result.pkl",
-          ],
+          "args": container_args,
           "env": env_vars,
           "resources": {
             "limits": {
@@ -482,6 +496,19 @@ def _create_lws_spec(
 
   if accel_config.get("node_selector"):
     pod_template["spec"]["nodeSelector"] = accel_config["node_selector"]
+
+  # GCS FUSE CSI volumes (lazy-mounted from GCS via the CSI driver).
+  fuse_annotations, fuse_vols, fuse_mounts = k8s_utils.build_gcs_fuse_volumes(
+    fuse_volume_specs
+  )
+  if fuse_annotations:
+    pod_template["metadata"].setdefault("annotations", {}).update(
+      fuse_annotations
+    )
+    pod_template["spec"].setdefault("volumes", []).extend(fuse_vols)
+    pod_template["spec"]["containers"][0].setdefault("volumeMounts", []).extend(
+      fuse_mounts
+    )
 
   return {
     "apiVersion": f"{LWS_GROUP}/{version}",

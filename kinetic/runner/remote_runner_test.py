@@ -16,6 +16,7 @@ from kinetic.runner.remote_runner import (
   _DOWNLOAD_BATCH_SIZE,
   _download_data,
   _download_from_gcs,
+  _install_requirements,
   _upload_to_gcs,
   main,
   resolve_data_refs,
@@ -89,7 +90,7 @@ class TestDownloadData(absltest.TestCase):
       )
     )
 
-  def test_downloads_files_skips_marker(self):
+  def test_downloads_files_skips_directory_entries(self):
     tmp = _make_temp_path(self)
     target = tmp / "output"
 
@@ -100,16 +101,12 @@ class TestDownloadData(absltest.TestCase):
     blob_data = MagicMock()
     blob_data.name = "prefix/hash/train.csv"
 
-    blob_marker = MagicMock()
-    blob_marker.name = "prefix/hash/.cache_marker"
-
     blob_dir = MagicMock()
     blob_dir.name = "prefix/hash/"
 
     mock_bucket.list_blobs.return_value = [
       blob_dir,
       blob_data,
-      blob_marker,
     ]
 
     ref = {
@@ -341,6 +338,53 @@ class TestResolveDataRefs(absltest.TestCase):
     self.assertIsInstance(kwargs["data"], str)
     self.assertEqual(kwargs["lr"], 0.01)
 
+  def test_fuse_single_file_resolves_to_file_path(self):
+    """FUSE-mounted single file ref resolves to the actual file, not dir."""
+    tmp = _make_temp_path(self)
+    mount_dir = tmp / "fuse-mount"
+    mount_dir.mkdir()
+    (mount_dir / "config.json").write_text("{}")
+
+    ref = {
+      "__data_ref__": True,
+      "gcs_uri": "gs://b/path/to/config.json",
+      "is_dir": False,
+      "mount_path": str(mount_dir),
+      "fuse": True,
+    }
+
+    args, _ = resolve_data_refs((ref,), {}, MagicMock())
+
+    self.assertTrue(args[0].endswith("config.json"))
+    self.assertFalse(os.path.isdir(args[0]))
+
+  def test_fuse_directory_returns_mount_path(self):
+    """FUSE-mounted directory ref returns the mount path unchanged."""
+    ref = {
+      "__data_ref__": True,
+      "gcs_uri": "gs://b/data/train/",
+      "is_dir": True,
+      "mount_path": "/tmp/fuse-data/0",
+      "fuse": True,
+    }
+
+    args, _ = resolve_data_refs((ref,), {}, MagicMock())
+
+    self.assertEqual(args[0], "/tmp/fuse-data/0")
+
+  def test_non_fuse_mount_returns_mount_path(self):
+    """Non-FUSE mounted ref returns the mount path unchanged."""
+    ref = {
+      "__data_ref__": True,
+      "gcs_uri": "gs://b/cache/hash",
+      "is_dir": False,
+      "mount_path": "/data/config",
+    }
+
+    args, _ = resolve_data_refs((ref,), {}, MagicMock())
+
+    self.assertEqual(args[0], "/data/config")
+
 
 class TestResolveVolumes(absltest.TestCase):
   def test_downloads_to_mount_path(self):
@@ -394,6 +438,76 @@ class TestResolveVolumes(absltest.TestCase):
 
     self.assertTrue(os.path.isdir(path1))
     self.assertTrue(os.path.isdir(path2))
+
+  def test_fuse_volume_skips_download(self):
+    mock_client = MagicMock()
+    refs = [
+      {
+        "__data_ref__": True,
+        "gcs_uri": "gs://b/data/",
+        "is_dir": True,
+        "mount_path": "/data",
+        "fuse": True,
+      }
+    ]
+
+    with mock.patch("kinetic.runner.remote_runner._download_data") as mock_dl:
+      resolve_volumes(refs, mock_client)
+
+    mock_dl.assert_not_called()
+
+  def test_mixed_fuse_and_download_volumes(self):
+    tmp = _make_temp_path(self)
+    download_path = str(tmp / "downloaded")
+
+    mock_client = MagicMock()
+    mock_bucket = MagicMock()
+    mock_client.bucket.return_value = mock_bucket
+    mock_bucket.list_blobs.return_value = []
+
+    refs = [
+      {
+        "__data_ref__": True,
+        "gcs_uri": "gs://b/fuse-data/",
+        "is_dir": True,
+        "mount_path": "/fuse-mount",
+        "fuse": True,
+      },
+      {
+        "__data_ref__": True,
+        "gcs_uri": "gs://b/download-data/",
+        "is_dir": True,
+        "mount_path": download_path,
+      },
+    ]
+
+    resolve_volumes(refs, mock_client)
+
+    # Download path should have been created by _download_data
+    self.assertTrue(os.path.isdir(download_path))
+
+  def test_fuse_volume_without_fuse_key_downloads(self):
+    """Old-format refs without 'fuse' key still download (backward compat)."""
+    tmp = _make_temp_path(self)
+    mount_path = str(tmp / "data")
+
+    mock_client = MagicMock()
+    mock_bucket = MagicMock()
+    mock_client.bucket.return_value = mock_bucket
+    mock_bucket.list_blobs.return_value = []
+
+    refs = [
+      {
+        "__data_ref__": True,
+        "gcs_uri": "gs://b/data/",
+        "is_dir": True,
+        "mount_path": mount_path,
+      }
+    ]
+
+    resolve_volumes(refs, mock_client)
+
+    self.assertTrue(os.path.isdir(mount_path))
 
 
 class TestMain(absltest.TestCase):
@@ -608,6 +722,146 @@ class TestMain(absltest.TestCase):
     self.assertEqual(exit_code, 0)
     self.assertTrue(result["success"])
     self.assertEqual(result["result"], 42)
+
+
+class TestInstallRequirements(absltest.TestCase):
+  def test_successful_install(self):
+    mock_client = MagicMock()
+    tmp = _make_temp_path(self)
+    req_path = tmp / "requirements.txt"
+    req_path.write_text("numpy==1.26\n")
+
+    def fake_download(client, gcs_path, local_path):
+      shutil.copy(str(req_path), local_path)
+
+    with (
+      mock.patch(
+        "kinetic.runner.remote_runner._download_from_gcs",
+        side_effect=fake_download,
+      ),
+      mock.patch(
+        "kinetic.runner.remote_runner.subprocess.run",
+      ) as mock_run,
+    ):
+      mock_run.return_value = MagicMock(returncode=0, stderr="", stdout="")
+      _install_requirements(mock_client, "gs://bucket/requirements.txt")
+
+    mock_run.assert_called_once()
+    args = mock_run.call_args[0][0]
+    self.assertEqual(args[:4], ["uv", "pip", "install", "--system"])
+
+  def test_failed_install_raises(self):
+    mock_client = MagicMock()
+    tmp = _make_temp_path(self)
+    req_path = tmp / "requirements.txt"
+    req_path.write_text("nonexistent-package\n")
+
+    def fake_download(client, gcs_path, local_path):
+      shutil.copy(str(req_path), local_path)
+
+    with (
+      mock.patch(
+        "kinetic.runner.remote_runner._download_from_gcs",
+        side_effect=fake_download,
+      ),
+      mock.patch(
+        "kinetic.runner.remote_runner.subprocess.run",
+      ) as mock_run,
+    ):
+      mock_run.return_value = MagicMock(
+        returncode=1, stderr="ERROR: package not found"
+      )
+      with self.assertRaisesRegex(RuntimeError, "Failed to install"):
+        _install_requirements(mock_client, "gs://bucket/requirements.txt")
+
+  def test_empty_requirements_skipped(self):
+    mock_client = MagicMock()
+    tmp = _make_temp_path(self)
+    req_path = tmp / "requirements.txt"
+    req_path.write_text("")
+
+    def fake_download(client, gcs_path, local_path):
+      shutil.copy(str(req_path), local_path)
+
+    with (
+      mock.patch(
+        "kinetic.runner.remote_runner._download_from_gcs",
+        side_effect=fake_download,
+      ),
+      mock.patch(
+        "kinetic.runner.remote_runner.subprocess.run",
+      ) as mock_run,
+    ):
+      _install_requirements(mock_client, "gs://bucket/requirements.txt")
+
+    mock_run.assert_not_called()
+
+
+class TestMainWithRequirements(absltest.TestCase):
+  def setUp(self):
+    super().setUp()
+    original_path = sys.path[:]
+    self.addCleanup(setattr, sys, "path", original_path)
+
+  def test_4th_arg_triggers_install(self):
+    """When a 4th arg is provided, _install_requirements is called."""
+
+    def add(a, b):
+      return a + b
+
+    tmp_path = _make_temp_path(self)
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+
+    context_zip = src_dir / "context.zip"
+    with zipfile.ZipFile(context_zip, "w") as z:
+      z.writestr("dummy.py", "x = 1")
+
+    payload = {"func": add, "args": (2, 3), "kwargs": {}, "env_vars": {}}
+    payload_pkl = src_dir / "payload.pkl"
+    with open(payload_pkl, "wb") as f:
+      cloudpickle.dump(payload, f)
+
+    mock_client = MagicMock()
+
+    def fake_download(client, gcs_path, local_path):
+      if "context.zip" in gcs_path:
+        shutil.copy(str(context_zip), local_path)
+      elif "payload.pkl" in gcs_path:
+        shutil.copy(str(payload_pkl), local_path)
+
+    with (
+      mock.patch(
+        "sys.argv",
+        [
+          "remote_runner.py",
+          "gs://bucket/context.zip",
+          "gs://bucket/payload.pkl",
+          "gs://bucket/result.pkl",
+          "gs://bucket/requirements.txt",
+        ],
+      ),
+      mock.patch(
+        "kinetic.runner.remote_runner._download_from_gcs",
+        side_effect=fake_download,
+      ),
+      mock.patch(
+        "kinetic.runner.remote_runner._upload_to_gcs",
+      ),
+      mock.patch(
+        "kinetic.runner.remote_runner.storage.Client",
+        return_value=mock_client,
+      ),
+      mock.patch(
+        "kinetic.runner.remote_runner._install_requirements",
+      ) as mock_install,
+      self.assertRaises(SystemExit),
+    ):
+      main()
+
+    mock_install.assert_called_once_with(
+      mock_client, "gs://bucket/requirements.txt"
+    )
 
 
 class TestMainArgValidation(absltest.TestCase):
