@@ -278,9 +278,9 @@ def parse_accelerator(accel_str: str, spot: bool = False) -> Accelerator:
   # Normalize dash-prefixed forms (gpu-l4, tpu-v3-8) to colon-prefixed
   # forms (gpu:l4, tpu:v3-8) so the rest of the parser handles both.
   if s.startswith("gpu-"):
-    s = "gpu:" + s[4:]
+    s = "gpu:" + s.removeprefix("gpu-")
   elif s.startswith("tpu-"):
-    s = "tpu:" + s[4:]
+    s = "tpu:" + s.removeprefix("tpu-")
 
   if s == "cpu" or (s.startswith("cpu:") and s[4:].isdigit()):
     return None

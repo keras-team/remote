@@ -53,10 +53,10 @@ def simple_computation(x, y):
   return result
 
 
-# Example 2: Keras model training on CPU
+# Example 2: Keras model training on TPU
 @kinetic.run(accelerator="tpu-v6e-2x4", spot=True)
-def train_simple_model_cpu():
-  """Train a simple Keras model on remote CPU."""
+def train_simple_model_tpu():
+  """Train a simple Keras model on remote TPU."""
 
   # Create a simple model
   model = keras.Sequential(
@@ -74,7 +74,7 @@ def train_simple_model_cpu():
   y_train = np.random.randn(1000, 1)
 
   # Train the model
-  print("Training model on CPU...")
+  print("Training model on TPU...")
   history = model.fit(x_train, y_train, epochs=5, batch_size=32, verbose=1)
 
   print(f"Final loss: {history.history['loss'][-1]}")
@@ -119,7 +119,7 @@ def main():
   # Example 2: Model training on CPU
   print("\n--- Example 2: Keras Model Training (CPU) ---")
   print("Training a simple model on CPU...")
-  final_loss = train_simple_model_cpu()
+  final_loss = train_simple_model_tpu()
   print(f"Model trained. Final loss: {final_loss}")
 
   # Example 3: GPU training (requires GPU node pool)
