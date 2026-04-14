@@ -81,4 +81,4 @@ kinetic pool add --accelerator h100 --reservation my-h100-reservation
 - [ ] **Rely on defaults:** Let Kinetic's default `--min-nodes 0` configuration automatically scale your infrastructure down when you step away from your desk.
 - [ ] **Utilize Spot capacity:** Use `--spot` for long-running pretraining jobs, ensuring you regularly save model weights to Cloud Storage.
 - [ ] **Prune inactive pools:** Actively review your existing infrastructure by running `kinetic pool list` and drop idle pools using `kinetic pool remove <pool_name>`.
-- [ ] **Tear down unused clusters:** If you are not using Kinetic for days or weeks at a time, remove the entire underlying cluster via `kinetic down` to avoid baseline control plane charges.
+- [ ] **Tear down unused clusters:** If you are not using Kinetic for days or weeks at a time, remove the entire underlying cluster via `kinetic down` to avoid baseline control plane charges. **Warning:** This will also delete your Cloud Storage buckets and any saved job data.
