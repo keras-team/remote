@@ -41,10 +41,7 @@ extensions = [
   "sphinx.ext.autosummary",
   "sphinx.ext.viewcode",
   "sphinx_llm.txt",
-  "sphinxcontrib.googleanalytics",
 ]
-
-googleanalytics_id = "G-134NR8C6KG"
 
 intersphinx_mapping = {
   "python": ("https://docs.python.org/3/", None),
@@ -58,6 +55,9 @@ templates_path = ["_templates"]
 
 html_theme = "sphinx_book_theme"
 html_theme_options = {
+  "analytics": {
+      "google_analytics_id": "G-134NR8C6KG",
+  },
   "show_toc_level": 2,
   "repository_url": "https://github.com/keras-team/kinetic",
   "use_repository_button": True,
