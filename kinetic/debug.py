@@ -14,8 +14,13 @@ from absl import logging
 from kinetic.job_status import JobStatus
 from kinetic.utils import storage
 
+# 5678 is the default port that debugpy listens on,
+# and it's the port VS Code's Python debugger extension
+# auto-fills when generating an "attach" launch
+# configuration. Using it means most users won't need
+# to change any port settings — VS Code just works out
+# of the box.
 DEBUGPY_PORT = 5678
-DEBUGPY_READY_SIGNAL = "[DEBUGPY] Ready"
 
 _TERMINAL_STATUSES = frozenset(
   {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.NOT_FOUND}
@@ -105,35 +110,40 @@ def print_attach_instructions(local_port, working_dir=None):
           uses a placeholder.
   """
   local_root = working_dir or "${workspaceFolder}"
-  instructions = (
-    "\n"
-    "=" * 50 + "\n"
-    "  Connect your debugger (VS Code)\n"
-    "=" * 50 + "\n"
-    "\n"
-    "Add to your launch.json:\n"
-    "\n"
-    "  {\n"
-    '    "name": "Kinetic Debug",\n'
-    '    "type": "debugpy",\n'
-    '    "request": "attach",\n'
-    f'    "connect": {{"host": "localhost", "port": {local_port}}},\n'
-    '    "pathMappings": [\n'
-    "      {\n"
-    f'        "localRoot": "{local_root}",\n'
-    '        "remoteRoot": "/tmp/workspace"\n'
-    "      }\n"
-    "    ]\n"
-    "  }\n"
-    "\n"
-    f"Then press F5 in VS Code to attach to localhost:{local_port}.\n"
-    "\n"
-    "The debugger will break inside the Kinetic runner, just before\n"
-    "your function is called. Press Step Into (F11) to enter your\n"
-    "function, or Step Over (F10) to execute it without stepping.\n"
-    "=" * 50 + "\n"
-  )
-  logging.info(instructions)
+  # Use print() rather than logging.info() — these are user-facing
+  # instructions that must appear exactly once on stdout.  The logging
+  # subsystem can duplicate messages when multiple handlers are
+  # registered (common in notebooks and IDE integrations).
+  lines = [
+    "",
+    "=" * 50,
+    "  Connect your debugger (VS Code)",
+    "=" * 50,
+    "",
+    "Add to your launch.json:",
+    "",
+    "  {",
+    '    "name": "Kinetic Debug",',
+    '    "type": "debugpy",',
+    '    "request": "attach",',
+    f'    "connect": {{"host": "localhost", "port": {local_port}}},',
+    '    "pathMappings": [',
+    "      {",
+    f'        "localRoot": "{local_root}",',
+    '        "remoteRoot": "/tmp/workspace"',
+    "      }",
+    "    ]",
+    "  }",
+    "",
+    f"Then press F5 in VS Code to attach to localhost:{local_port}.",
+    "",
+    "The debugger will break inside the Kinetic runner, just before",
+    "your function is called. Press Step Into (F11) to enter your",
+    "function, or Step Over (F10) to execute it without stepping.",
+    "=" * 50,
+    "",
+  ]
+  print("\n".join(lines))  # noqa: T201
 
 
 def wait_for_debug_server(handle, timeout=300, poll_interval=5):
