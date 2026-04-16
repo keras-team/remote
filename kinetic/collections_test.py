@@ -1083,8 +1083,6 @@ class TestFailuresCaching(absltest.TestCase):
     """After results(cleanup=True), failures() should return cached failures."""
     handle = _make_batch_handle(2)
 
-    call_count = [0]
-
     def mock_status(self_handle):
       return JobStatus.SUCCEEDED
 
@@ -1098,9 +1096,9 @@ class TestFailuresCaching(absltest.TestCase):
       mock.patch.object(JobHandle, "status", mock_status),
       mock.patch.object(JobHandle, "result", mock_result),
       mock.patch("kinetic.collections.time.sleep"),
+      self.assertRaises(BatchError),
     ):
-      with self.assertRaises(BatchError):
-        handle.results(cleanup=True)
+      handle.results(cleanup=True)
 
     # After cleanup, live status would be NOT_FOUND, but cached
     # failures should still report the failed job.
@@ -1137,9 +1135,9 @@ class TestFailuresCaching(absltest.TestCase):
       mock.patch.object(JobHandle, "status", return_value=JobStatus.SUCCEEDED),
       mock.patch.object(JobHandle, "result", mock_result),
       mock.patch("kinetic.collections.time.sleep"),
+      self.assertRaises(BatchError),
     ):
-      with self.assertRaises(BatchError):
-        handle.results()
+      handle.results()
 
     first_call = handle.failures()
     first_call.clear()
