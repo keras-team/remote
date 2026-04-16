@@ -5,6 +5,7 @@ including port-forwarding orchestration and VS Code attach configuration.
 """
 
 import contextlib
+import os
 import subprocess
 import tempfile
 import time
@@ -66,6 +67,10 @@ def start_port_forward(pod_name, namespace, local_port, remote_port):
   )
 
   # Capture stderr to a temp file so failures are diagnosable.
+  # delete=False because we need the file to survive until
+  # cleanup_port_forward() can read any mid-session errors
+  # (e.g. cluster disconnect, pod eviction). The file is
+  # explicitly unlinked there after logging its contents.
   stderr_file = tempfile.NamedTemporaryFile(  # noqa: SIM115
     mode="w+", prefix="kinetic-pf-", suffix=".log", delete=False
   )
@@ -151,7 +156,7 @@ def print_attach_instructions(local_port, working_dir=None):
   print("\n".join(lines))  # noqa: T201
 
 
-def wait_for_debug_server(handle, timeout=300, poll_interval=5):
+def wait_for_debug_server(handle, timeout=600, poll_interval=5):
   """Poll GCS sentinel until the debugpy server confirms readiness.
 
   Logs progress as the job transitions through states so the user
@@ -205,7 +210,7 @@ def wait_for_debug_server(handle, timeout=300, poll_interval=5):
 
 
 def cleanup_port_forward(proc):
-  """Terminate a port-forward subprocess and close its stderr file.
+  """Terminate a port-forward subprocess, log any stderr, and clean up.
 
   Args:
       proc: The subprocess.Popen returned by start_port_forward().
@@ -218,4 +223,9 @@ def cleanup_port_forward(proc):
   stderr_file = getattr(proc, "_stderr_file", None)
   if stderr_file is not None:
     with contextlib.suppress(Exception):
+      stderr_file.seek(0)
+      stderr_output = stderr_file.read().strip()
+      if stderr_output:
+        logging.warning("port-forward stderr: %s", stderr_output)
       stderr_file.close()
+      os.unlink(stderr_file.name)

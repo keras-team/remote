@@ -245,17 +245,20 @@ def _start_debug_server(port):
   debugpy.listen(("0.0.0.0", port))
 
   try:
-    # Always write GCS sentinel derived strictly from the execution result URI
-    parts = sys.argv[3].replace("gs://", "").split("/")
-    bucket_name = parts[0]
-    job_id = parts[1]
-    blob = storage.Client().bucket(bucket_name).blob(f"{job_id}/.debug_ready")
-    blob.upload_from_string("")
-    logging.info(
-      "Published debugpy GCS sentinel to gs://%s/%s/.debug_ready",
-      bucket_name,
-      job_id,
-    )
+    # Signal readiness via a GCS sentinel so the local client can detect it.
+    # Use env vars set by the pod spec rather than parsing sys.argv.
+    bucket_name = os.environ.get("GCS_BUCKET")
+    job_id = os.environ.get("JOB_ID")
+    if not bucket_name or not job_id:
+      logging.warning("GCS_BUCKET or JOB_ID not set; skipping debug sentinel.")
+    else:
+      blob = storage.Client().bucket(bucket_name).blob(f"{job_id}/.debug_ready")
+      blob.upload_from_string("")
+      logging.info(
+        "Published debugpy GCS sentinel to gs://%s/%s/.debug_ready",
+        bucket_name,
+        job_id,
+      )
   except cloud_exceptions.GoogleCloudError as e:
     logging.warning("Failed to publish debug readiness sentinel to GCS: %s", e)
 
