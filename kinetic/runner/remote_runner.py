@@ -222,7 +222,10 @@ def _install_debugger():
   logging.info("debugpy installed successfully")
 
 
-_DEBUG_WAIT_TIMEOUT_DEFAULT = 600  # 10 minutes
+# Fallback if KINETIC_DEBUG_WAIT_TIMEOUT env var is not set.
+# The pod spec normally propagates DEBUG_WAIT_TIMEOUT from
+# kinetic.debug as the env var, keeping both sides in sync.
+_DEBUG_WAIT_TIMEOUT_DEFAULT = 600
 
 
 def _start_debug_server(port):

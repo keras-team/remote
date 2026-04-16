@@ -23,6 +23,12 @@ from kinetic.utils import storage
 # of the box.
 DEBUGPY_PORT = 5678
 
+# Single source of truth for the debugger attach timeout (seconds).
+# Covers pod scheduling + debugpy install + time for the user to
+# attach.  Propagated to the pod via the KINETIC_DEBUG_WAIT_TIMEOUT
+# env var so remote_runner.py uses the same value.
+DEBUG_WAIT_TIMEOUT = 600
+
 _TERMINAL_STATUSES = frozenset(
   {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.NOT_FOUND}
 )
@@ -156,7 +162,7 @@ def print_attach_instructions(local_port, working_dir=None):
   print("\n".join(lines))  # noqa: T201
 
 
-def wait_for_debug_server(handle, timeout=600, poll_interval=5):
+def wait_for_debug_server(handle, timeout=DEBUG_WAIT_TIMEOUT, poll_interval=5):
   """Poll GCS sentinel until the debugpy server confirms readiness.
 
   Logs progress as the job transitions through states so the user

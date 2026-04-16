@@ -12,7 +12,7 @@ from kinetic.backend import k8s_utils
 from kinetic.backend.log_streaming import LogStreamer
 from kinetic.cli.constants import KINETIC_KSA_NAME
 from kinetic.credentials import invalidate_credential_cache
-from kinetic.debug import DEBUGPY_PORT
+from kinetic.debug import DEBUG_WAIT_TIMEOUT, DEBUGPY_PORT
 from kinetic.job_status import JobStatus
 
 
@@ -345,6 +345,10 @@ def _create_job_spec(
       [
         client.V1EnvVar(name="KINETIC_DEBUG", value="1"),
         client.V1EnvVar(name="PYTHONBREAKPOINT", value="debugpy.breakpoint"),
+        client.V1EnvVar(
+          name="KINETIC_DEBUG_WAIT_TIMEOUT",
+          value=str(DEBUG_WAIT_TIMEOUT),
+        ),
       ]
     )
 

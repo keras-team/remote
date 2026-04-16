@@ -13,7 +13,7 @@ from kinetic.backend.log_streaming import LogStreamer
 from kinetic.cli.constants import KINETIC_KSA_NAME
 from kinetic.core import accelerators
 from kinetic.credentials import invalidate_credential_cache
-from kinetic.debug import DEBUGPY_PORT
+from kinetic.debug import DEBUG_WAIT_TIMEOUT, DEBUGPY_PORT
 from kinetic.job_status import JobStatus
 
 LWS_GROUP = "leaderworkerset.x-k8s.io"
@@ -524,6 +524,10 @@ def _create_lws_spec(
       [
         {"name": "KINETIC_DEBUG", "value": "1"},
         {"name": "PYTHONBREAKPOINT", "value": "debugpy.breakpoint"},
+        {
+          "name": "KINETIC_DEBUG_WAIT_TIMEOUT",
+          "value": str(DEBUG_WAIT_TIMEOUT),
+        },
       ]
     )
     leader_container["ports"] = [
