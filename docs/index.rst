@@ -2,30 +2,38 @@ Kinetic: Run ML workloads on cloud TPUs and GPUs
 ================================================
 
 .. toctree::
-   :caption: Documentation
+   :caption: Start Here
    :hidden:
 
    getting_started
-   architecture
+   guides/execution_modes
    troubleshooting
+   guides/faq
 
 .. toctree::
-   :caption: Guides
+   :caption: Core Workflows
    :hidden:
 
-   guides/execution_modes
    guides/keras_training
    guides/jax_training
-   guides/pytorch_training
+   advanced/async_jobs
    guides/data
+   guides/checkpointing
    guides/dependencies
    guides/env_vars
-   guides/llm_finetuning
-   guides/distributed_training
-   guides/checkpointing
-   guides/cost_optimization
    guides/examples
-   guides/faq
+
+.. toctree::
+   :caption: Scaling and Operations
+   :hidden:
+
+   guides/cost_optimization
+   advanced/clusters
+   guides/distributed_training
+   guides/llm_finetuning
+   guides/pytorch_training
+   advanced/containers
+   advanced/reservations
 
 .. toctree::
    :caption: Reference
@@ -37,26 +45,18 @@ Kinetic: Run ML workloads on cloud TPUs and GPUs
    configuration
 
 .. toctree::
-   :caption: Advanced Topics
+   :caption: Contributing
    :hidden:
 
-   advanced/async_jobs
-   advanced/clusters
-   advanced/containers
-
-.. toctree::
-   :caption: Community
-   :hidden:
-
+   architecture
    contributing
    code-of-conduct
 
-Kinetic is a library that enables running Python functions seamlessly on cloud
-TPUs and GPUs using a simple decorator: ``@kinetic.run``. No infrastructure
-management required.
+Run any Python function on a cloud TPU or GPU with one decorator. No
+infrastructure to wire up, no images to build by hand, no multi-host
+boilerplate.
 
 .. code-block:: python
-   :emphasize-lines: 3
 
     import kinetic
 
@@ -67,21 +67,63 @@ management required.
         model.fit(x_train, y_train)
         return model.history.history["loss"][-1]
 
-    # Executes on tpu-v6e-8, returns the result
-    final_loss = train_model()
+    final_loss = train_model()  # runs on a TPU v6e-8 slice
 
+Start here
+----------
 
-How It Works
-------------
+Three entry points cover what most new users need first:
 
-When you call a decorated function, Kinetic handles the entire remote execution pipeline:
+.. list-table::
+   :widths: 33 33 34
+   :header-rows: 1
 
-1. **Packages** your function, local code, and data dependencies.
-2. **Builds a container** with your dependencies via Cloud Build.
-3. **Runs the job** on a GKE cluster with the requested accelerator (TPU or GPU).
-4. **Returns the result** to your local machine.
+   * - Your first run
+     - Long-running jobs
+     - Data and checkpoints
+   * - Install, point at a cluster, and run a real Keras job in minutes.
+       :doc:`Getting Started <getting_started>`.
+     - Switch from blocking ``run()`` to detached ``submit()`` for jobs
+       that take hours. :doc:`Detached Jobs <advanced/async_jobs>`.
+     - Ship local files in, write durable artifacts back out via
+       ``KINETIC_OUTPUT_DIR``. :doc:`Data <guides/data>` and
+       :doc:`Checkpointing <guides/checkpointing>`.
 
-Get Started
------------
+How Kinetic works
+-----------------
 
-Follow the :doc:`getting_started` guide to get started.
+Five short phases on every job:
+
+1. **Discover.** Your function, working directory, and ``Data(...)``
+   arguments are captured. ``requirements.txt`` or ``pyproject.toml``
+   is read.
+2. **Build or fetch.** A container image is produced — built with your
+   dependencies (bundled mode) or pulled from a published base
+   (prebuilt mode). See :doc:`Execution Modes <guides/execution_modes>`.
+3. **Schedule.** A Kubernetes resource (a ``Job`` for single-host
+   workloads, a ``LeaderWorkerSet`` for multi-host TPU jobs on the
+   Pathways backend) is submitted to your GKE cluster. The autoscaler
+   provisions accelerator nodes if needed.
+4. **Run.** Your function executes inside the pod with
+   ``KINETIC_OUTPUT_DIR`` set; logs stream back to your terminal.
+5. **Collect.** The return value is serialized to GCS and pulled back
+   to your local process. ``@kinetic.run()`` cleans up the pod and GCS
+   artifacts as soon as the result is collected. ``@kinetic.submit()``
+   leaves the pod running until you call ``.result()`` or ``.cleanup()``
+   on the returned ``JobHandle`` — important to remember on expensive
+   accelerators.
+
+Choose your execution mode
+--------------------------
+
+Three modes control how dependencies get into the container:
+
+- **Bundled** (default) — Kinetic builds a custom image with your deps
+  baked in. Best for stable workflows and reproducible runs.
+- **Prebuilt** — pulls a published base image, installs your deps at
+  pod startup. Best for fast iteration when deps change often.
+- **Custom image** — bring your own image URI. Best when you need
+  custom system libraries or a corporate-vetted base.
+
+See :doc:`Execution Modes <guides/execution_modes>` for the full
+recommendation matrix and per-mode startup expectations.
