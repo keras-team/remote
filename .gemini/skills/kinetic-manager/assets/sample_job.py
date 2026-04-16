@@ -5,7 +5,6 @@ from absl import logging
 import kinetic
 from kinetic import Data
 
-
 # Optional: Set your Keras backend
 os.environ["KERAS_BACKEND"] = "jax"
 
