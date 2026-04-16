@@ -59,6 +59,7 @@ def save_payload(
   env_vars: dict[str, str],
   output_path: str,
   volumes: list[dict[str, Any]] | None = None,
+  working_dir: str | None = None,
 ) -> None:
   """Serialize a function call payload with cloudpickle.
 
@@ -72,6 +73,7 @@ def save_payload(
       env_vars: Environment variables to set on the remote pod.
       output_path: Destination path for the pickle file.
       volumes: Optional list of volume data-ref dicts.
+      working_dir: Optional client-side working directory to preserve.
   """
   payload: dict[str, Any] = {
     "func": func,
@@ -81,6 +83,8 @@ def save_payload(
   }
   if volumes:
     payload["volumes"] = volumes
+  if working_dir:
+    payload["working_dir"] = working_dir
   with open(output_path, "wb") as f:
     cloudpickle.dump(payload, f)
 

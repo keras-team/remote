@@ -31,6 +31,7 @@ def main():
 
   Usage: python remote_runner.py <context_gcs> <payload_gcs> <result_gcs> [requirements_gcs]
   """
+  logging.set_verbosity(logging.INFO)
 
   if len(sys.argv) < 4:
     logging.error(
@@ -79,6 +80,15 @@ def main():
     logging.info("Loading function payload")
     with open(payload_path, "rb") as f:
       payload = cloudpickle.load(f)
+
+    # Reconstruct client path parity for debugpy exact file mappings
+    working_dir_client = payload.get("working_dir")
+    if working_dir_client and not os.path.exists(working_dir_client):
+      try:
+        os.makedirs(os.path.dirname(working_dir_client), exist_ok=True)
+        os.symlink(workspace_dir, working_dir_client)
+      except Exception as e:
+        logging.warning("Failed to symlink client working dir: %s", e)
 
     func = payload["func"]
     args = payload["args"]

@@ -467,6 +467,7 @@ def _prepare_artifacts(ctx: JobContext, tmpdir: str) -> None:
     ctx.env_vars,
     ctx.payload_path,
     volumes=volume_refs or None,
+    working_dir=ctx.working_dir,
   )
   logging.info("Payload serialized to %s", ctx.payload_path)
 
