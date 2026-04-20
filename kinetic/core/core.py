@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 import os
+import sys
 import warnings
 from typing import Any, Callable
 
@@ -52,6 +53,26 @@ def _capture_env(capture_env_vars):
     elif pattern in os.environ:
       env_vars[pattern] = os.environ[pattern]
   return env_vars
+
+
+def _require_interactive_terminal():
+  """Raise if stdin is not a TTY and KINETIC_NO_TTY_DEBUG is not set.
+
+  ``run(debug=True)`` blocks waiting for a VS Code debugger to attach.
+  Without a TTY (CI, cron, nohup, piped input), no one can attach and
+  the job hangs for ``DEBUG_WAIT_TIMEOUT`` before falling through.
+  Fail fast with a clear message instead.  Set
+  ``KINETIC_NO_TTY_DEBUG=1`` to override (useful for automated tests).
+  """
+  if os.environ.get("KINETIC_NO_TTY_DEBUG") == "1":
+    return
+  if not sys.stdin.isatty():
+    raise RuntimeError(
+      "debug=True requires an interactive terminal but stdin is not a TTY. "
+      "Either remove debug=True, switch to kinetic.submit(debug=True) and "
+      "call handle.debug_attach() from an interactive session, or set "
+      "KINETIC_NO_TTY_DEBUG=1 to override."
+    )
 
 
 def _resolve_backend_name(accelerator, backend, spot=False):
@@ -150,6 +171,7 @@ def _make_decorator(
 
       if sync:
         if debug:
+          _require_interactive_terminal()
           pf_proc = handle.debug_attach(working_dir=ctx.working_dir)
           try:
             return handle.result(stream_logs=False, cleanup=False)

@@ -7,7 +7,7 @@ from rich.table import Table
 
 from kinetic.cli.options import cleanup_options, common_options, jobs_options
 from kinetic.cli.output import banner, console, success, warning
-from kinetic.debug import cleanup_port_forward
+from kinetic.debug import DEBUGPY_PORT, cleanup_port_forward
 from kinetic.job_status import JobStatus
 from kinetic.jobs import attach, list_jobs
 
@@ -174,7 +174,7 @@ def cancel(
 @click.option(
   "--port",
   type=int,
-  default=5678,
+  default=DEBUGPY_PORT,
   help="Local port for debugpy port-forwarding.",
 )
 @common_options

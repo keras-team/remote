@@ -108,7 +108,11 @@ def main():
     debugger_attached = False
     if is_debug:
       _install_debugger()
-      debugger_attached = _start_debug_server(5678)
+      # Port is propagated from kinetic.debug.DEBUGPY_PORT via the pod spec
+      # so there's a single source of truth. Fall back to 5678 (debugpy's
+      # default and VS Code's auto-fill) if the env var is missing.
+      debug_port = int(os.environ.get("KINETIC_DEBUG_PORT", 5678))
+      debugger_attached = _start_debug_server(debug_port)
 
     # Execute function and capture result
     logging.info("Executing %s()", func.__name__)

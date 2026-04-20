@@ -349,6 +349,7 @@ def _create_job_spec(
           name="KINETIC_DEBUG_WAIT_TIMEOUT",
           value=str(DEBUG_WAIT_TIMEOUT),
         ),
+        client.V1EnvVar(name="KINETIC_DEBUG_PORT", value=str(DEBUGPY_PORT)),
       ]
     )
 

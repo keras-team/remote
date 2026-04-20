@@ -528,6 +528,7 @@ def _create_lws_spec(
           "name": "KINETIC_DEBUG_WAIT_TIMEOUT",
           "value": str(DEBUG_WAIT_TIMEOUT),
         },
+        {"name": "KINETIC_DEBUG_PORT", "value": str(DEBUGPY_PORT)},
       ]
     )
     leader_container["ports"] = [
