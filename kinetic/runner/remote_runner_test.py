@@ -18,6 +18,7 @@ from kinetic.runner.remote_runner import (
   _download_from_gcs,
   _install_requirements,
   _upload_to_gcs,
+  _wait_for_leader_ready_sentinel,
   main,
   resolve_data_refs,
   resolve_volumes,
@@ -878,6 +879,39 @@ class TestMainArgValidation(absltest.TestCase):
       with self.assertRaises(SystemExit) as cm:
         main()
       self.assertEqual(cm.exception.code, 1)
+
+
+class TestLeaderReadySentinel(absltest.TestCase):
+  """Workers must fail loudly (not hang) if the leader never signals."""
+
+  def test_wait_raises_when_sentinel_never_appears(self):
+    mock_client = MagicMock()
+    mock_bucket = MagicMock()
+    mock_blob = MagicMock()
+    mock_blob.exists.return_value = False
+    mock_client.bucket.return_value = mock_bucket
+    mock_bucket.blob.return_value = mock_blob
+
+    with (
+      mock.patch.dict(
+        os.environ,
+        {
+          "GCS_BUCKET": "bkt",
+          "JOB_ID": "job-abc",
+          # Negative so leader_timeout + 60 buffer yields a small positive
+          # timeout that elapses quickly after one poll.
+          "KINETIC_DEBUG_WAIT_TIMEOUT": "-59",
+        },
+        clear=False,
+      ),
+      mock.patch(
+        "kinetic.runner.remote_runner.storage.Client",
+        return_value=mock_client,
+      ),
+      mock.patch("kinetic.runner.remote_runner.time.sleep"),
+      self.assertRaisesRegex(RuntimeError, "Leader did not signal readiness"),
+    ):
+      _wait_for_leader_ready_sentinel()
 
 
 if __name__ == "__main__":

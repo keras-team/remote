@@ -515,8 +515,11 @@ def _create_lws_spec(
       fuse_mounts
     )
 
-  # When debugging, create a separate leader template with debug env vars
-  # and port. Workers run normally without the debugger.
+  # When debugging, create separate leader and worker templates.
+  # Leader runs debugpy; workers wait for the leader to signal readiness
+  # before calling the user function, otherwise they race ahead and
+  # hang trying to join JAX's distributed runtime while the leader is
+  # paused at debugpy.
   if debug:
     leader_template = copy.deepcopy(pod_template)
     leader_container = leader_template["spec"]["containers"][0]
@@ -534,8 +537,21 @@ def _create_lws_spec(
     leader_container["ports"] = [
       {"containerPort": DEBUGPY_PORT, "name": "debugpy"},
     ]
+
+    worker_template = copy.deepcopy(pod_template)
+    worker_container = worker_template["spec"]["containers"][0]
+    worker_container["env"].extend(
+      [
+        {"name": "KINETIC_DEBUG_WAIT_LEADER", "value": "1"},
+        {
+          "name": "KINETIC_DEBUG_WAIT_TIMEOUT",
+          "value": str(DEBUG_WAIT_TIMEOUT),
+        },
+      ]
+    )
   else:
     leader_template = pod_template
+    worker_template = pod_template
 
   return {
     "apiVersion": f"{LWS_GROUP}/{version}",
@@ -551,7 +567,7 @@ def _create_lws_spec(
         "size": num_workers + 1,  # 1 leader + N workers
         "restartPolicy": "RecreateGroupOnPodRestart",
         "leaderTemplate": leader_template,
-        "workerTemplate": pod_template,
+        "workerTemplate": worker_template,
       },
     },
   }
