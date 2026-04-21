@@ -34,6 +34,8 @@ Kinetic: Run ML workloads on cloud TPUs and GPUs
    guides/pytorch_training
    advanced/containers
    advanced/reservations
+   guides/examples
+   guides/faq
 
 .. toctree::
    :caption: Reference
