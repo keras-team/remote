@@ -1,10 +1,14 @@
 """kinetic jobs command group — inspect and manage async jobs."""
 
+import time
+
 import click
 from rich.table import Table
 
 from kinetic.cli.options import cleanup_options, common_options, jobs_options
 from kinetic.cli.output import banner, console, success, warning
+from kinetic.debug import DEBUGPY_PORT, cleanup_port_forward
+from kinetic.job_status import JobStatus
 from kinetic.jobs import attach, list_jobs
 
 
@@ -163,6 +167,40 @@ def cancel(
     cleanup_poll_interval=cleanup_poll_interval,
   )
   success(f"Cancelled {job_id}")
+
+
+@jobs.command()
+@click.argument("job_id")
+@click.option(
+  "--port",
+  type=int,
+  default=DEBUGPY_PORT,
+  help="Local port for debugpy port-forwarding.",
+)
+@common_options
+def debug(job_id, port, project, zone, cluster_name):
+  """Attach a debugger to a running debug-enabled job.
+
+  Sets up kubectl port-forward and prints VS Code attach configuration.
+  Blocks until Ctrl+C or the job completes, then tears down the tunnel.
+  """
+  handle = _attach(job_id, project, cluster_name)
+  if not handle.debug:
+    raise click.ClickException(
+      f"Job {job_id} was not submitted with debug=True. "
+      "Resubmit with debug=True to enable debugging."
+    )
+  pf_proc = handle.debug_attach(local_port=port)
+  terminal = frozenset(
+    {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.NOT_FOUND}
+  )
+  try:
+    while handle.status() not in terminal:
+      time.sleep(5)
+  except KeyboardInterrupt:
+    pass
+  finally:
+    cleanup_port_forward(pf_proc)
 
 
 @jobs.command()

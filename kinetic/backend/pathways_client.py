@@ -1,5 +1,6 @@
 """Pathways (LeaderWorkerSet) job submission for kinetic."""
 
+import copy
 import functools
 import time
 
@@ -12,6 +13,7 @@ from kinetic.backend.log_streaming import LogStreamer
 from kinetic.cli.constants import KINETIC_KSA_NAME
 from kinetic.core import accelerators
 from kinetic.credentials import invalidate_credential_cache
+from kinetic.debug import DEBUG_WAIT_TIMEOUT, DEBUGPY_PORT
 from kinetic.job_status import JobStatus
 
 LWS_GROUP = "leaderworkerset.x-k8s.io"
@@ -68,6 +70,7 @@ def submit_pathways_job(
   spot=False,
   requirements_uri=None,
   fuse_volume_specs=None,
+  debug=False,
 ):
   """Submit a LeaderWorkerSet to GKE cluster.
 
@@ -110,6 +113,7 @@ def submit_pathways_job(
     version=lws_version,
     requirements_uri=requirements_uri,
     fuse_volume_specs=fuse_volume_specs,
+    debug=debug,
   )
 
   custom_api = _custom_api()
@@ -427,6 +431,7 @@ def _create_lws_spec(
   version=LWS_VERSION,
   requirements_uri=None,
   fuse_volume_specs=None,
+  debug=False,
 ):
   """Create a LeaderWorkerSet manifest."""
 
@@ -510,6 +515,44 @@ def _create_lws_spec(
       fuse_mounts
     )
 
+  # When debugging, create separate leader and worker templates.
+  # Leader runs debugpy; workers wait for the leader to signal readiness
+  # before calling the user function, otherwise they race ahead and
+  # hang trying to join JAX's distributed runtime while the leader is
+  # paused at debugpy.
+  if debug:
+    leader_template = copy.deepcopy(pod_template)
+    leader_container = leader_template["spec"]["containers"][0]
+    leader_container["env"].extend(
+      [
+        {"name": "KINETIC_DEBUG", "value": "1"},
+        {"name": "PYTHONBREAKPOINT", "value": "debugpy.breakpoint"},
+        {
+          "name": "KINETIC_DEBUG_WAIT_TIMEOUT",
+          "value": str(DEBUG_WAIT_TIMEOUT),
+        },
+        {"name": "KINETIC_DEBUG_PORT", "value": str(DEBUGPY_PORT)},
+      ]
+    )
+    leader_container["ports"] = [
+      {"containerPort": DEBUGPY_PORT, "name": "debugpy"},
+    ]
+
+    worker_template = copy.deepcopy(pod_template)
+    worker_container = worker_template["spec"]["containers"][0]
+    worker_container["env"].extend(
+      [
+        {"name": "KINETIC_DEBUG_WAIT_LEADER", "value": "1"},
+        {
+          "name": "KINETIC_DEBUG_WAIT_TIMEOUT",
+          "value": str(DEBUG_WAIT_TIMEOUT),
+        },
+      ]
+    )
+  else:
+    leader_template = pod_template
+    worker_template = pod_template
+
   return {
     "apiVersion": f"{LWS_GROUP}/{version}",
     "kind": "LeaderWorkerSet",
@@ -523,8 +566,8 @@ def _create_lws_spec(
       "leaderWorkerTemplate": {
         "size": num_workers + 1,  # 1 leader + N workers
         "restartPolicy": "RecreateGroupOnPodRestart",
-        "leaderTemplate": pod_template,
-        "workerTemplate": pod_template,
+        "leaderTemplate": leader_template,
+        "workerTemplate": worker_template,
       },
     },
   }

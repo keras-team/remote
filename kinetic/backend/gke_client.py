@@ -12,6 +12,7 @@ from kinetic.backend import k8s_utils
 from kinetic.backend.log_streaming import LogStreamer
 from kinetic.cli.constants import KINETIC_KSA_NAME
 from kinetic.credentials import invalidate_credential_cache
+from kinetic.debug import DEBUG_WAIT_TIMEOUT, DEBUGPY_PORT
 from kinetic.job_status import JobStatus
 
 
@@ -26,6 +27,7 @@ def submit_k8s_job(
   spot=False,
   requirements_uri=None,
   fuse_volume_specs=None,
+  debug=False,
 ):
   """Submit a Kubernetes Job to GKE cluster.
 
@@ -57,6 +59,7 @@ def submit_k8s_job(
     namespace=namespace,
     requirements_uri=requirements_uri,
     fuse_volume_specs=fuse_volume_specs,
+    debug=debug,
   )
 
   # Submit job
@@ -310,6 +313,7 @@ def _create_job_spec(
   namespace,
   requirements_uri=None,
   fuse_volume_specs=None,
+  debug=False,
 ):
   """Create Kubernetes Job specification.
 
@@ -336,6 +340,19 @@ def _create_job_spec(
     client.V1EnvVar(name="GCS_BUCKET", value=bucket_name),
   ]
 
+  if debug:
+    env_vars.extend(
+      [
+        client.V1EnvVar(name="KINETIC_DEBUG", value="1"),
+        client.V1EnvVar(name="PYTHONBREAKPOINT", value="debugpy.breakpoint"),
+        client.V1EnvVar(
+          name="KINETIC_DEBUG_WAIT_TIMEOUT",
+          value=str(DEBUG_WAIT_TIMEOUT),
+        ),
+        client.V1EnvVar(name="KINETIC_DEBUG_PORT", value=str(DEBUGPY_PORT)),
+      ]
+    )
+
   # Container arguments: context, payload, result, [requirements]
   container_args = [
     f"gs://{bucket_name}/{job_id}/context.zip",
@@ -346,19 +363,26 @@ def _create_job_spec(
     container_args.append(requirements_uri)
 
   # Container specification
-  container = client.V1Container(
-    name="kinetic-worker",
-    image=container_uri,
-    command=["python3", "-u", "/app/remote_runner.py"],
-    args=container_args,
-    env=env_vars,
-    resources=client.V1ResourceRequirements(
+  container_kwargs = {
+    "name": "kinetic-worker",
+    "image": container_uri,
+    "command": ["python3", "-u", "/app/remote_runner.py"],
+    "args": container_args,
+    "env": env_vars,
+    "resources": client.V1ResourceRequirements(
       limits={k: str(v) for k, v in accel_config["resource_limits"].items()},
       requests={
         k: str(v) for k, v in accel_config["resource_requests"].items()
       },
     ),
-  )
+  }
+
+  if debug:
+    container_kwargs["ports"] = [
+      client.V1ContainerPort(container_port=DEBUGPY_PORT, name="debugpy"),
+    ]
+
+  container = client.V1Container(**container_kwargs)
 
   # GCS FUSE CSI volumes (lazy-mounted from GCS via the CSI driver).
   fuse_annotations, fuse_volumes, fuse_mounts = (
@@ -401,10 +425,11 @@ def _create_job_spec(
   )
 
   # Job specification
+  ttl = 7200 if debug else 600  # 2 hours for debug, 10 minutes normally
   job_spec = client.V1JobSpec(
     template=pod_template,
     backoff_limit=0,  # No retries - fail immediately
-    ttl_seconds_after_finished=600,  # Auto-cleanup after 10 minutes
+    ttl_seconds_after_finished=ttl,
   )
 
   # Complete Job object

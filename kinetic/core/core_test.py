@@ -172,6 +172,121 @@ class TestExecuteOnBackendDefaults(absltest.TestCase):
       self.assertEqual(backend.namespace, "custom-ns")
 
 
+class TestDebugRequiresInteractiveTerminal(absltest.TestCase):
+  """run(debug=True) requires a TTY so the user can attach a debugger."""
+
+  def test_run_debug_raises_when_stdin_not_tty(self):
+    mock_handle = MagicMock()
+    with (
+      mock.patch.dict(os.environ, {"KINETIC_PROJECT": "proj"}, clear=False),
+      mock.patch(
+        "kinetic.core.core.submit_remote",
+        return_value=mock_handle,
+      ),
+      mock.patch(
+        "kinetic.core.core.JobContext.from_params",
+        return_value=MagicMock(),
+      ),
+      mock.patch("sys.stdin.isatty", return_value=False),
+    ):
+      # Ensure the override env var is not set.
+      os.environ.pop("KINETIC_NO_TTY_DEBUG", None)
+
+      @run(accelerator="cpu", debug=True)
+      def func():
+        pass
+
+      with self.assertRaisesRegex(
+        RuntimeError, "debug=True requires an interactive terminal"
+      ):
+        func()
+
+      # The debug attach path must not have been invoked.
+      mock_handle.debug_attach.assert_not_called()
+
+  def test_run_debug_allowed_when_stdin_is_tty(self):
+    mock_handle = MagicMock()
+    mock_handle.result.return_value = 7
+    with (
+      mock.patch.dict(os.environ, {"KINETIC_PROJECT": "proj"}, clear=False),
+      mock.patch(
+        "kinetic.core.core.submit_remote",
+        return_value=mock_handle,
+      ),
+      mock.patch(
+        "kinetic.core.core.JobContext.from_params",
+        return_value=MagicMock(),
+      ),
+      mock.patch("sys.stdin.isatty", return_value=True),
+      mock.patch("kinetic.core.core.cleanup_port_forward"),
+    ):
+
+      @run(accelerator="cpu", debug=True)
+      def func():
+        pass
+
+      result = func()
+
+      self.assertEqual(result, 7)
+      mock_handle.debug_attach.assert_called_once()
+
+  def test_run_debug_override_env_var_bypasses_tty_check(self):
+    mock_handle = MagicMock()
+    mock_handle.result.return_value = 7
+    with (
+      mock.patch.dict(
+        os.environ,
+        {"KINETIC_PROJECT": "proj", "KINETIC_NO_TTY_DEBUG": "1"},
+        clear=False,
+      ),
+      mock.patch(
+        "kinetic.core.core.submit_remote",
+        return_value=mock_handle,
+      ),
+      mock.patch(
+        "kinetic.core.core.JobContext.from_params",
+        return_value=MagicMock(),
+      ),
+      mock.patch("sys.stdin.isatty", return_value=False),
+      mock.patch("kinetic.core.core.cleanup_port_forward"),
+    ):
+
+      @run(accelerator="cpu", debug=True)
+      def func():
+        pass
+
+      result = func()
+
+      self.assertEqual(result, 7)
+      mock_handle.debug_attach.assert_called_once()
+
+  def test_run_without_debug_skips_tty_check(self):
+    """debug=False should not require a TTY even when stdin is piped."""
+    mock_handle = MagicMock()
+    mock_handle.result.return_value = 42
+    with (
+      mock.patch.dict(os.environ, {"KINETIC_PROJECT": "proj"}, clear=False),
+      mock.patch(
+        "kinetic.core.core.submit_remote",
+        return_value=mock_handle,
+      ),
+      mock.patch(
+        "kinetic.core.core.JobContext.from_params",
+        return_value=MagicMock(),
+      ),
+      mock.patch("sys.stdin.isatty", return_value=False),
+    ):
+
+      @run(accelerator="cpu")
+      def func():
+        pass
+
+      result = func()
+
+      self.assertEqual(result, 42)
+      mock_handle.debug_attach.assert_not_called()
+
+
 class TestSubmitOnBackend(absltest.TestCase):
   def test_run_calls_result_on_handle(self):
     """run() is submit() + result() — calls .result() on the returned handle."""

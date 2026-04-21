@@ -11,11 +11,13 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import traceback
 import zipfile
 
 import cloudpickle
 from absl import logging
+from google.cloud import exceptions as cloud_exceptions
 from google.cloud import storage
 from google.cloud.storage import transfer_manager
 
@@ -26,12 +28,22 @@ TEMP_DIR = tempfile.gettempdir()
 DATA_DIR = os.path.join(TEMP_DIR, "data")
 
 
+# Sentinel blob name written by the leader once it has finished
+# waiting for a debugger client and is about to call the user
+# function. Workers poll for this to stay in sync with the leader.
+_LEADER_READY_SENTINEL = ".leader_ready"
+
+# Extra seconds workers wait beyond the leader's attach timeout,
+# to cover GCS write latency and any processing after the leader's
+# wait_for_client() returns.
+_WORKER_WAIT_BUFFER_SECONDS = 60
+
+
 def main():
   """Main entry point for remote execution.
 
   Usage: python remote_runner.py <context_gcs> <payload_gcs> <result_gcs> [requirements_gcs]
   """
-
   if len(sys.argv) < 4:
     logging.error(
       "Usage: remote_runner.py <context_gcs> <payload_gcs> <result_gcs>"
@@ -80,6 +92,15 @@ def main():
     with open(payload_path, "rb") as f:
       payload = cloudpickle.load(f)
 
+    # Reconstruct client path parity for debugpy exact file mappings
+    working_dir_client = payload.get("working_dir")
+    if working_dir_client and not os.path.exists(working_dir_client):
+      try:
+        os.makedirs(os.path.dirname(working_dir_client), exist_ok=True)
+        os.symlink(workspace_dir, working_dir_client)
+      except Exception as e:
+        logging.warning("Failed to symlink client working dir: %s", e)
+
     func = payload["func"]
     args = payload["args"]
     kwargs = payload["kwargs"]
@@ -94,6 +115,25 @@ def main():
       resolve_volumes(volumes, storage_client)
     args, kwargs = resolve_data_refs(args, kwargs, storage_client)
 
+    # Start debugpy server if debug mode is enabled
+    is_debug = os.environ.get("KINETIC_DEBUG") == "1"
+    is_debug_worker = os.environ.get("KINETIC_DEBUG_WAIT_LEADER") == "1"
+    debugger_attached = False
+    if is_debug:
+      _install_debugger()
+      # Port is propagated from kinetic.debug.DEBUGPY_PORT via the pod spec
+      # so there's a single source of truth. Fall back to 5678 (debugpy's
+      # default and VS Code's auto-fill) if the env var is missing.
+      debug_port = int(os.environ.get("KINETIC_DEBUG_PORT", 5678))
+      debugger_attached = _start_debug_server(debug_port)
+      # Signal workers (if any) that the leader is about to call the
+      # user function, so they can proceed without racing ahead and
+      # hanging on the distributed runtime.
+      _upload_leader_ready_sentinel()
+    elif is_debug_worker:
+      # Pathways worker pod — wait for leader's sentinel before running.
+      _wait_for_leader_ready_sentinel()
+
     # Execute function and capture result
     logging.info("Executing %s()", func.__name__)
     result = None
@@ -101,6 +141,14 @@ def main():
     remote_traceback = None
 
     try:
+      if debugger_attached:
+        import debugpy
+
+        # === KINETIC DEBUG ===
+        # The debugger will pause on the next line.
+        # Press Step Into (F11) to enter your function, or
+        # Step Over (F10) to run it without stepping.
+        debugpy.breakpoint()
       result = func(*args, **kwargs)
       logging.info("Function completed successfully")
     except BaseException as e:
@@ -180,6 +228,172 @@ def _install_requirements(storage_client, requirements_gcs):
       f"stderr:\n{result.stderr}"
     )
   logging.info("User requirements installed successfully")
+
+
+def _upload_leader_ready_sentinel():
+  """Write a GCS sentinel telling Pathways workers the leader is ready."""
+  bucket_name = os.environ.get("GCS_BUCKET")
+  job_id = os.environ.get("JOB_ID")
+  if not bucket_name or not job_id:
+    logging.warning(
+      "GCS_BUCKET or JOB_ID not set; skipping leader-ready sentinel."
+    )
+    return
+  try:
+    blob = (
+      storage.Client()
+      .bucket(bucket_name)
+      .blob(f"{job_id}/{_LEADER_READY_SENTINEL}")
+    )
+    blob.upload_from_string("")
+    logging.info(
+      "Published leader-ready sentinel to gs://%s/%s/%s",
+      bucket_name,
+      job_id,
+      _LEADER_READY_SENTINEL,
+    )
+  except cloud_exceptions.GoogleCloudError as e:
+    logging.warning("Failed to publish leader-ready sentinel: %s", e)
+
+
+def _wait_for_leader_ready_sentinel():
+  """Poll GCS until the leader signals readiness, or time out.
+
+  Pathways worker pods call this before executing the user function.
+  Without it, workers race ahead of a paused leader and hang trying
+  to initialize JAX's distributed runtime.
+  """
+  bucket_name = os.environ.get("GCS_BUCKET")
+  job_id = os.environ.get("JOB_ID")
+  if not bucket_name or not job_id:
+    logging.warning("GCS_BUCKET or JOB_ID not set; skipping leader-ready wait.")
+    return
+
+  # Wait slightly longer than the leader's attach timeout so we don't
+  # fail the job due to normal GCS write latency at the deadline.
+  leader_timeout = int(
+    os.environ.get("KINETIC_DEBUG_WAIT_TIMEOUT", _DEBUG_WAIT_TIMEOUT_DEFAULT)
+  )
+  timeout = leader_timeout + _WORKER_WAIT_BUFFER_SECONDS
+  poll_interval = 5
+
+  logging.info(
+    "[DEBUG-WORKER] Waiting up to %ds for leader-ready sentinel at "
+    "gs://%s/%s/%s",
+    timeout,
+    bucket_name,
+    job_id,
+    _LEADER_READY_SENTINEL,
+  )
+
+  client = storage.Client()
+  bucket = client.bucket(bucket_name)
+  blob_name = f"{job_id}/{_LEADER_READY_SENTINEL}"
+
+  deadline = time.monotonic() + timeout
+  while time.monotonic() < deadline:
+    try:
+      if bucket.blob(blob_name).exists(client=client):
+        logging.info("[DEBUG-WORKER] Leader is ready, proceeding.")
+        return
+    except cloud_exceptions.GoogleCloudError as e:
+      logging.warning("Error polling leader-ready sentinel: %s", e)
+    time.sleep(poll_interval)
+
+  raise RuntimeError(
+    f"Leader did not signal readiness within {timeout}s. The leader "
+    "pod may have crashed before starting debugpy, or GCS may be "
+    f"unreachable. Expected sentinel at "
+    f"gs://{bucket_name}/{blob_name}."
+  )
+
+
+def _install_debugger():
+  """Install debugpy via uv pip at pod startup."""
+  logging.info("Installing debugpy...")
+  result = subprocess.run(
+    ["uv", "pip", "install", "--system", "debugpy"],
+    capture_output=True,
+    text=True,
+  )
+  if result.returncode != 0:
+    raise RuntimeError(
+      f"Failed to install debugpy (exit {result.returncode}).\n"
+      f"stderr:\n{result.stderr}"
+    )
+  logging.info("debugpy installed successfully")
+
+
+# Fallback if KINETIC_DEBUG_WAIT_TIMEOUT env var is not set.
+# The pod spec normally propagates DEBUG_WAIT_TIMEOUT from
+# kinetic.debug as the env var, keeping both sides in sync.
+_DEBUG_WAIT_TIMEOUT_DEFAULT = 600
+
+
+def _start_debug_server(port):
+  """Start debugpy server and wait for client attachment.
+
+  Waits up to ``KINETIC_DEBUG_WAIT_TIMEOUT`` seconds (default 600) for
+  a debugger to attach. If no client connects in time, execution
+  proceeds without the debugger so the pod doesn't hang indefinitely.
+
+  Args:
+      port: TCP port for debugpy to listen on.
+
+  Returns:
+      True if a debugger client attached, False if timed out.
+  """
+  import threading
+
+  import debugpy
+
+  debugpy.listen(("0.0.0.0", port))
+
+  try:
+    # Signal readiness via a GCS sentinel so the local client can detect it.
+    # Use env vars set by the pod spec rather than parsing sys.argv.
+    bucket_name = os.environ.get("GCS_BUCKET")
+    job_id = os.environ.get("JOB_ID")
+    if not bucket_name or not job_id:
+      logging.warning("GCS_BUCKET or JOB_ID not set; skipping debug sentinel.")
+    else:
+      blob = storage.Client().bucket(bucket_name).blob(f"{job_id}/.debug_ready")
+      blob.upload_from_string("")
+      logging.info(
+        "Published debugpy GCS sentinel to gs://%s/%s/.debug_ready",
+        bucket_name,
+        job_id,
+      )
+  except cloud_exceptions.GoogleCloudError as e:
+    logging.warning("Failed to publish debug readiness sentinel to GCS: %s", e)
+
+  logging.info("[DEBUGPY] Ready \u2014 listening on 0.0.0.0:%d", port)
+
+  timeout = int(
+    os.environ.get("KINETIC_DEBUG_WAIT_TIMEOUT", _DEBUG_WAIT_TIMEOUT_DEFAULT)
+  )
+  logging.info("[DEBUGPY] Waiting up to %ds for debugger to attach...", timeout)
+
+  # debugpy.wait_for_client() has no timeout parameter, so we use a
+  # background thread + Event to implement one.
+  attached = threading.Event()
+
+  def _wait():
+    debugpy.wait_for_client()
+    attached.set()
+
+  waiter = threading.Thread(target=_wait, daemon=True)
+  waiter.start()
+
+  if attached.wait(timeout=timeout):
+    logging.info("[DEBUGPY] Debugger attached!")
+    return True
+
+  logging.warning(
+    "[DEBUGPY] No debugger attached after %ds \u2014 proceeding without debugger.",
+    timeout,
+  )
+  return False
 
 
 def resolve_volumes(

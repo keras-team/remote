@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import functools
 import os
+import sys
+import warnings
 from typing import Any, Callable
 
 from kinetic.backend.execution import (
@@ -13,6 +15,7 @@ from kinetic.backend.execution import (
 from kinetic.constants import DEFAULT_CLUSTER_NAME, get_default_namespace
 from kinetic.core import accelerators
 from kinetic.data import Data
+from kinetic.debug import cleanup_port_forward
 from kinetic.jobs import JobHandle
 
 
@@ -52,6 +55,26 @@ def _capture_env(capture_env_vars):
   return env_vars
 
 
+def _require_interactive_terminal():
+  """Raise if stdin is not a TTY and KINETIC_NO_TTY_DEBUG is not set.
+
+  ``run(debug=True)`` blocks waiting for a VS Code debugger to attach.
+  Without a TTY (CI, cron, nohup, piped input), no one can attach and
+  the job hangs for ``DEBUG_WAIT_TIMEOUT`` before falling through.
+  Fail fast with a clear message instead.  Set
+  ``KINETIC_NO_TTY_DEBUG=1`` to override (useful for automated tests).
+  """
+  if os.environ.get("KINETIC_NO_TTY_DEBUG") == "1":
+    return
+  if not sys.stdin.isatty():
+    raise RuntimeError(
+      "debug=True requires an interactive terminal but stdin is not a TTY. "
+      "Either remove debug=True, switch to kinetic.submit(debug=True) and "
+      "call handle.debug_attach() from an interactive session, or set "
+      "KINETIC_NO_TTY_DEBUG=1 to override."
+    )
+
+
 def _resolve_backend_name(accelerator, backend, spot=False):
   """Resolve the backend from explicit config or accelerator type."""
   if backend is not None:
@@ -83,14 +106,23 @@ def _make_decorator(
   spot,
   sync,
   output_dir,
+  debug,
 ):
   """Build a decorator that submits the wrapped function for remote execution.
 
   Args:
     sync: If True, block on result (`run()` semantics).
       If False, return a `JobHandle` immediately (`submit()` semantics).
+    debug: If True, enable debugpy remote debugging.
   """
   _validate_volumes(volumes)
+
+  if debug and spot:
+    warnings.warn(
+      "debug=True with spot=True is not recommended — your debug "
+      "session may be interrupted by preemption.",
+      stacklevel=3,
+    )
 
   def decorator(func):
     @functools.wraps(func)
@@ -121,6 +153,7 @@ def _make_decorator(
         cluster_name=resolved_cluster,
         volumes=volumes,
         spot=spot,
+        debug=debug,
         output_dir=output_dir,
         base_image_repo=base_image_repo,
       )
@@ -135,7 +168,17 @@ def _make_decorator(
         )
 
       handle = submit_remote(ctx, backend_inst)
-      return handle.result(stream_logs=True) if sync else handle
+
+      if sync:
+        if debug:
+          _require_interactive_terminal()
+          pf_proc = handle.debug_attach(working_dir=ctx.working_dir)
+          try:
+            return handle.result(stream_logs=False, cleanup=False)
+          finally:
+            cleanup_port_forward(pf_proc)
+        return handle.result(stream_logs=True)
+      return handle
 
     return wrapper
 
@@ -155,6 +198,7 @@ def run(
   volumes: dict[str, Data] | None = None,
   spot: bool = False,
   output_dir: str | None = None,
+  debug: bool = False,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
   """Execute function on remote TPU/GPU.
 
@@ -185,6 +229,9 @@ def run(
     output_dir: GCS directory where job outputs should be saved.
       Propagated to the remote worker as the `KINETIC_OUTPUT_DIR`
       environment variable. Defaults to `gs://{bucket_name}/outputs/{job_id}`.
+    debug: If True, enable debugpy remote debugging. The pod will start
+      a debugpy server and wait for a VS Code debugger to attach before
+      executing the function. Port-forwarding is set up automatically.
   """
   return _make_decorator(
     accelerator,
@@ -200,6 +247,7 @@ def run(
     spot,
     sync=True,
     output_dir=output_dir,
+    debug=debug,
   )
 
 
@@ -216,6 +264,7 @@ def submit(
   volumes: dict[str, Data] | None = None,
   spot: bool = False,
   output_dir: str | None = None,
+  debug: bool = False,
 ) -> Callable[[Callable[..., Any]], Callable[..., JobHandle]]:
   """Submit function for remote execution, returning a `JobHandle`.
 
@@ -240,4 +289,5 @@ def submit(
     spot,
     sync=False,
     output_dir=output_dir,
+    debug=debug,
   )

@@ -327,6 +327,70 @@ class TestCreateLwsSpec(absltest.TestCase):
     )
 
 
+class TestCreateLwsSpecDebug(absltest.TestCase):
+  """Debug mode must split leader and worker templates with distinct env.
+
+  Regression test for the multi-host race where workers ran the user
+  function immediately and hung on JAX distributed init while the
+  leader was paused at debugpy.breakpoint().
+  """
+
+  def _make_spec(self, **overrides):
+    defaults = {
+      "job_name": "keras-pathways-abc",
+      "container_uri": "img:tag",
+      "accel_config": {
+        "resource_limits": {},
+        "resource_requests": {},
+        "tolerations": [],
+        "jax_platform": "cpu",
+      },
+      "job_id": "abc",
+      "bucket_name": "my-bucket",
+      "num_workers": 3,
+      "namespace": "default",
+    }
+    defaults.update(overrides)
+    return _create_lws_spec(**defaults)
+
+  def _env(self, template):
+    return {
+      e["name"]: e["value"] for e in template["spec"]["containers"][0]["env"]
+    }
+
+  def test_debug_separates_leader_and_worker_contracts(self):
+    spec = self._make_spec(debug=True)
+    lws = spec["spec"]["leaderWorkerTemplate"]
+
+    # Templates must be distinct objects; the base pod template must
+    # not be shared or modifying one leaks into the other.
+    self.assertIsNot(lws["leaderTemplate"], lws["workerTemplate"])
+
+    leader_env = self._env(lws["leaderTemplate"])
+    worker_env = self._env(lws["workerTemplate"])
+
+    # Leader runs debugpy.
+    self.assertEqual(leader_env.get("KINETIC_DEBUG"), "1")
+    leader_ports = lws["leaderTemplate"]["spec"]["containers"][0].get(
+      "ports", []
+    )
+    self.assertTrue(any(p.get("name") == "debugpy" for p in leader_ports))
+
+    # Worker must wait for the leader, not run debugpy.
+    self.assertEqual(worker_env.get("KINETIC_DEBUG_WAIT_LEADER"), "1")
+    self.assertNotIn("KINETIC_DEBUG", worker_env)
+    worker_ports = lws["workerTemplate"]["spec"]["containers"][0].get(
+      "ports", []
+    )
+    self.assertFalse(any(p.get("name") == "debugpy" for p in worker_ports))
+
+  def test_non_debug_has_no_debug_contract(self):
+    spec = self._make_spec(debug=False)
+    env = self._env(spec["spec"]["leaderWorkerTemplate"]["leaderTemplate"])
+    self.assertNotIn("KINETIC_DEBUG", env)
+    self.assertNotIn("KINETIC_DEBUG_WAIT_LEADER", env)
+
+
 class TestSubmitPathwaysJob(absltest.TestCase):
   def setUp(self):
     super().setUp()
