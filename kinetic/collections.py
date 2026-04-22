@@ -109,10 +109,6 @@ class BatchHandle:
     default=None, repr=False, compare=False
   )
 
-  # ------------------------------------------------------------------
-  # Observation
-  # ------------------------------------------------------------------
-
   def statuses(self) -> list[tuple[int, JobStatus]]:
     """Return `(index, status)` for each submitted job."""
     return [
@@ -133,10 +129,6 @@ class BatchHandle:
     return len(seen) >= total_submitted and (
       len(seen) + total_errors >= len(self.jobs)
     )
-
-  # ------------------------------------------------------------------
-  # Blocking helpers
-  # ------------------------------------------------------------------
 
   def wait(self, *, timeout: float | None = None) -> None:
     """Block until all jobs reach a terminal state."""
@@ -414,11 +406,6 @@ class BatchHandle:
           )
 
 
-# ------------------------------------------------------------------
-# Manifest child loading (shared by attach_batch and poll loop)
-# ------------------------------------------------------------------
-
-
 def _load_child_handle(
   bucket_name: str,
   child: dict,
@@ -450,11 +437,6 @@ def _load_child_handle(
       idx,
     )
     return None
-
-
-# ------------------------------------------------------------------
-# Manifest polling for reattached partial batches
-# ------------------------------------------------------------------
 
 
 def _manifest_poll_loop(
@@ -510,11 +492,6 @@ def _manifest_poll_loop(
         break
   finally:
     handle._submission_complete.set()
-
-
-# ------------------------------------------------------------------
-# Submission loop
-# ------------------------------------------------------------------
 
 
 def _cancel_active(handle: BatchHandle, active_indices: set[int]) -> None:
@@ -872,11 +849,6 @@ def map(
     thread.start()
 
   return handle
-
-
-# ------------------------------------------------------------------
-# Public API — attach_batch
-# ------------------------------------------------------------------
 
 
 def attach_batch(
