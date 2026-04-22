@@ -1,7 +1,7 @@
-# Async Collections
+# Batched Jobs
 
 `@kinetic.submit()` is the tool for a single long-running job. When you
-need to run the **same function over many inputs** — a hyperparameter
+need to run the **same function over many inputs**, such as a hyperparameter
 sweep, one job per dataset shard, an evaluation grid — wiring that up
 by hand means a loop that calls `submit()`, your own bookkeeping for
 which handles are still live, your own error aggregation, your own
