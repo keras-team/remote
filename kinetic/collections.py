@@ -332,13 +332,13 @@ class BatchHandle:
     `NOT_FOUND` (e.g. after cleanup) are excluded because the
     status is ambiguous — use `statuses()` for finer control.
 
-    After ``results()`` has been called, this returns the cached
+    After `results()` has been called, this returns the cached
     failure list from that collection pass, so it remains accurate
     even if cleanup has deleted K8s resources.
 
     See Also:
-      ``submission_failures``: returns per-input errors for inputs
-      that failed at submission time (``jobs[idx]`` is ``None``).
+      `submission_failures`: returns per-input errors for inputs
+      that failed at submission time (`jobs[idx]` is `None`).
     """
     with self._lock:
       if self._cached_failures is not None:
@@ -354,9 +354,9 @@ class BatchHandle:
     """Return a copy of per-input submission errors (index -> exception).
 
     These are inputs where the submission itself failed (e.g. validation
-    error, network error).  The corresponding ``jobs[idx]`` slot is
-    ``None``.  These errors are included in ``results()`` output but are
-    **not** reflected by ``failures()`` which only inspects live job
+    error, network error).  The corresponding `jobs[idx]` slot is
+    `None`.  These errors are included in `results()` output but are
+    **not** reflected by `failures()` which only inspects live job
     statuses.
     """
     with self._lock:
@@ -414,7 +414,7 @@ def _load_child_handle(
 ) -> tuple[int, JobHandle] | None:
   """Download and reconstruct a single child handle.
 
-  Returns ``(group_index, handle)`` on success, or ``None`` if the
+  Returns `(group_index, handle)` on success, or `None` if the
   child has an invalid index or the download fails.
   """
   idx = child["group_index"]
@@ -448,10 +448,10 @@ def _manifest_poll_loop(
   poll_interval: float,
   timeout: float | None,
 ) -> None:
-  """Poll GCS manifest until all children appear, then set ``_submission_complete``.
+  """Poll GCS manifest until all children appear, then set `_submission_complete`.
 
-  Used by ``attach_batch()`` when the manifest shows fewer children
-  than ``total_expected``, indicating the original ``map()`` is still
+  Used by `attach_batch()` when the manifest shows fewer children
+  than `total_expected`, indicating the original `map()` is still
   submitting.
   """
   deadline = None if timeout is None else time.monotonic() + timeout
@@ -547,8 +547,8 @@ class _SubmissionState:
   def needs_active_polling(self) -> bool:
     """True when the loop must poll active jobs itself.
 
-    When all jobs are submitted with no retries and ``fail_fast``
-    is off, the caller uses ``wait()``/``results()`` to observe
+    When all jobs are submitted with no retries and `fail_fast`
+    is off, the caller uses `wait()`/`results()` to observe
     terminal states, so the submission loop can exit early.
     """
     if not self.active:
@@ -566,8 +566,8 @@ def _submit_available(state: _SubmissionState) -> None:
   """Submit pending jobs up to the concurrency limit.
 
   On per-input errors the exception is recorded in
-  ``handle._submission_errors`` and, when ``fail_fast`` is set,
-  ``trigger_fail_fast`` is called.
+  `handle._submission_errors` and, when `fail_fast` is set,
+  `trigger_fail_fast` is called.
   """
   handle = state.handle
 
@@ -678,14 +678,14 @@ def _submission_loop(
   """Core submission and retry loop.
 
   Mutates *handle.jobs* and *manifest* in place.  Runs in the calling
-  thread (``max_concurrent=None`` and ``retries=0``) or in a background
+  thread (`max_concurrent=None` and `retries=0`) or in a background
   thread otherwise.
 
   Each iteration follows three phases:
 
   1. **Submit** — launch pending jobs up to the concurrency limit.
   2. **Poll**  — check active jobs for terminal states, retry or
-     trigger ``fail_fast`` as needed.
+     trigger `fail_fast` as needed.
   3. **Sleep** — back off before the next poll cycle.
   """
   state = _SubmissionState(
@@ -863,8 +863,8 @@ def attach_batch(
   Downloads the group manifest from GCS, reconstructs `JobHandle`
   objects for each child, and returns a fully usable `BatchHandle`.
 
-  If the manifest has fewer children than ``total_expected`` (i.e.
-  the original ``map()`` is still submitting), the returned handle
+  If the manifest has fewer children than `total_expected` (i.e.
+  the original `map()` is still submitting), the returned handle
   polls the manifest in a background thread until all children
   appear or *poll_timeout* is reached.
 
@@ -875,7 +875,7 @@ def attach_batch(
     poll_interval: Seconds between manifest polls when the batch
       is partially submitted.
     poll_timeout: Maximum seconds to poll for remaining children.
-      ``None`` means poll indefinitely.
+      `None` means poll indefinitely.
 
   Returns:
     A hydrated `BatchHandle` ready for `results()`, etc.
