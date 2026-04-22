@@ -378,11 +378,12 @@ class JobHandle:
         if on_status_change is not None and observed_status != previous_status:
           try:
             on_status_change(observed_status)
-          except Exception:
+          except Exception as exc:
             logging.exception(
-              "on_status_change callback raised for job %s at status %s",
+              "on_status_change callback raised for job %s at status %s: %s",
               self.job_id,
               observed_status.value,
+              exc,
             )
         previous_status = observed_status
         if observed_status in _TERMINAL_STATUSES:
