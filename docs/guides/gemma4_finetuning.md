@@ -78,6 +78,8 @@ Four things are worth understanding before reading the code:
 
 **Custom weight loading.** The Kaggle preset stores weights across 6 sharded H5 files described by a `model.weights.json` manifest. Keras's built-in `load_weights()` on the full `CausalLM` prepends a `backbone/` prefix that mismatches every path in the manifest. Loading via `model.backbone.load_weights()` avoids that prefix, but Keras ≤ 3.14 has a bug in `ShardedH5IOStore`: after switching to a different shard file, the internal `current_shard_path` pointer is not updated. When a subsequent `keys()` call restores to the stale path, layers whose weights span multiple shards — every MoE expert bank and the token embedding — fail to load, producing a "received 0 variables" error. The solution is to bypass `ShardedH5IOStore` entirely and read the H5 files directly with h5py, pre-sharding each tensor with `jax.device_put` before assigning it to avoid a memory spike on device 0. The complete loader is implemented as `_load_sharded_weights()` in [`examples/gemma4_finetuning.py`](../../examples/gemma4_finetuning/gemma4_finetuning.py).
 
+> **TODO:** remove `_load_sharded_weights` once Keras exposes a public loading path that handles the `backbone/` prefix correctly and fixes the `ShardedH5IOStore` shard-switching bug.
+
 The code below assumes `_load_sharded_weights` and `_make_layout_map` are defined as in [`examples/gemma4_finetuning.py`](../../examples/gemma4_finetuning/gemma4_finetuning.py).
 
 ```python
