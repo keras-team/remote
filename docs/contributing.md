@@ -128,5 +128,8 @@ To release a new version of the package to PyPI, follow these steps:
    ```bash
    TWINE_USERNAME=__token__ TWINE_PASSWORD=pypi-... python3 -m twine upload dist/*
    ```
-
+5. Create a new release on GitHub using the `gh` CLI, e.g.:
+   ```bash
+   gh release create 0.0.2
+   ```
 
