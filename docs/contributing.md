@@ -108,3 +108,25 @@ pip install .[docs]
 # Build and serve docs locally:
 sphinx-autobuild docs /tmp/docs
 ```
+
+## Releases
+
+To release a new version of the package to PyPI, follow these steps:
+
+1. Install the release dependencies:
+   ```bash
+   uv pip install -e ".[release]"
+   ```
+2. Bump the version in the following files:
+   - [pyproject.toml](../pyproject.toml)
+   - [version.py](../kinetic/version.py)
+3. Build the source distribution and wheel:
+   ```bash
+   python3 -m build
+   ```
+4. Upload the packages to PyPI using `twine`. To avoid `twine` hanging while waiting for interactive input, provide your credentials via environment variables (e.g. using an API token) or a `~/.pypirc` file:
+   ```bash
+   TWINE_USERNAME=__token__ TWINE_PASSWORD=pypi-... python3 -m twine upload dist/*
+   ```
+
+

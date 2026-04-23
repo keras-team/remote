@@ -1,6 +1,6 @@
 [project]
 name = "keras-kinetic"
-version = "0.0.1"
+version = "0.0.2"
 authors = [
     {name = "Keras team", email = "keras-users@googlegroups.com"},
 ]
@@ -52,6 +52,11 @@ dev = [
     "ruff",
     "keras-kinetic[cli]",
     "keras-kinetic[test]",
+    "keras-kinetic[release]",
+]
+release = [
+    "build",
+    "twine",
 ]
 demo = [
     "jax",
