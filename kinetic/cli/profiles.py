@@ -43,6 +43,10 @@ class Profile:
 
   Fields mirror the KINETIC_* env vars and InfraConfig so profile values
   can slot directly into the existing config precedence chain.
+
+  ``state_backend`` holds the raw user intent (None | "local" | "gcs" |
+  "gs://..."). It is normalized to a concrete Pulumi backend URL at
+  command time by ``kinetic.cli.infra.state_backend.normalize_state_backend_url``.
   """
 
   name: str
@@ -50,10 +54,15 @@ class Profile:
   zone: str
   cluster: str
   namespace: str = "default"
+  state_backend: str | None = None
 
   def to_dict(self):
     d = asdict(self)
     d.pop("name")
+    # Drop None state_backend so existing profile files round-trip
+    # byte-identically and new files stay minimal.
+    if d.get("state_backend") is None:
+      d.pop("state_backend", None)
     return d
 
 
@@ -115,6 +124,7 @@ def load_store():
         zone=fields["zone"],
         cluster=fields["cluster"],
         namespace=fields.get("namespace", "default"),
+        state_backend=fields.get("state_backend"),
       )
     except KeyError as e:
       raise ProfileError(

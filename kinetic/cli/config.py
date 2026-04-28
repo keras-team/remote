@@ -25,3 +25,6 @@ class InfraConfig:
   zone: str = DEFAULT_ZONE
   cluster_name: str = DEFAULT_CLUSTER_NAME
   node_pools: list[NodePoolConfig] = field(default_factory=list)
+  # Fully-resolved Pulumi backend URL (e.g. file:///... or gs://bucket).
+  # None falls back to the local file backend at constants.STATE_DIR.
+  state_backend_url: str | None = None
