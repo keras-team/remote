@@ -104,4 +104,5 @@ ignore = ["E501"]
 "examples/*" = ["T201", "NPY002"]
 "**/test_*.py" = ["T201"]
 "tests/**" = ["T201"]
+# kn:keep force-rebuild-v3
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Tunix SFT Guide Script
 
-Adapted for local execution outside of Google Colab.
+Adapted for local execution outside of Google Colab and launched on remote TPU v6e-8 slice via Kinetic.
 """
 
 import os
@@ -14,6 +14,10 @@ import shutil
 import dotenv
 from dotenv import load_dotenv
 load_dotenv()
+import kinetic.credentials
+kinetic.credentials.ensure_credentials = lambda *args, **kwargs: None
+
+
 
 # Monkey-patch etils.epath to ignore mode argument in mkdir
 import etils.epath as _epath
@@ -59,6 +63,8 @@ from tunix.sft import metrics_logger
 from tunix.sft import peft_trainer
 from tunix.sft import utils
 from tunix.sft.utils import show_hbm_usage
+
+import kinetic
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -107,154 +113,159 @@ def create_dir(path):
   except OSError as e:
     logging.error(f"Error creating directory '{path}': {e}")
 
-create_dir(FULL_CKPT_DIR)
-create_dir(LORA_CKPT_DIR)
-create_dir(PROFILING_DIR)
+@kinetic.run(accelerator="v6e-8", capture_env_vars=['KAGGLE_USERNAME', 'KAGGLE_KEY', 'HF_TOKEN'])
+def run_tuning():
+    create_dir(FULL_CKPT_DIR)
+    create_dir(LORA_CKPT_DIR)
+    create_dir(PROFILING_DIR)
 
-ignore_patterns = [
-    "*.pth",  # Ignore PyTorch .pth weight files
-]
-logging.info(f"Downloading {model_id} from Hugging Face...")
-local_model_path = snapshot_download(
-    repo_id=model_id, ignore_patterns=ignore_patterns
-)
-logging.info(f"Model successfully downloaded to: {local_model_path}")
-
-EOS_TOKENS = []
-generation_config_path = os.path.join(local_model_path, "generation_config.json")
-if os.path.exists(generation_config_path):
-  with open(generation_config_path, "r") as f:
-    generation_configs = json.load(f)
-  EOS_TOKENS = generation_configs.get("eos_token_id", [])
-  logging.info(f"Using EOS token IDs: {EOS_TOKENS}")
-
-logging.info("\n--- HBM Usage BEFORE Model Load ---")
-show_hbm_usage()
-
-MODEL_CP_PATH = local_model_path
-
-if "gemma-3-270m" in model_id:
-  model_config = gemma3_model_lib.ModelConfig.gemma3_270m()
-elif "gemma-3-1b" in model_id:
-  model_config = gemma3_model_lib.ModelConfig.gemma3_1b_it()
-else:
-  raise ValueError(f"Unsupported model: {model_id}")
-
-mesh = jax.make_mesh(*MESH, axis_types=(jax.sharding.AxisType.Auto,) * len(MESH[0]))
-with mesh:
-  base_model = params_safetensors_lib.create_model_from_safe_tensors(
-      MODEL_CP_PATH, (model_config), mesh
-  )
-
-tokenizer = tokenizer_lib.Tokenizer(tokenizer_path=GEMMA_TOKENIZER_PATH)
-if tokenizer.eos_id() not in EOS_TOKENS:
-  EOS_TOKENS.append(tokenizer.eos_id())
-  logging.info(f"Using EOS token IDs: {EOS_TOKENS}")
-
-sampler = sampler_lib.Sampler(
-    transformer=base_model,
-    tokenizer=tokenizer if "gemma" in model_id else tokenizer.tokenizer,
-    cache_config=sampler_lib.CacheConfig(
-        cache_size=256,
-        num_layers=model_config.num_layers,
-        num_kv_heads=model_config.num_kv_heads,
-        head_dim=model_config.head_dim,
-    ),
-)
-
-input_batch = [
-    "Translate this into French:\nHello, my name is Morgane.\n",
-    "Translate this into French:\nThis dish is delicious!\n",
-    "Translate this into French:\nI am a student.\n",
-    "Translate this into French:\nHow's the weather today?\n",
-]
-
-out_data = sampler(
-    input_strings=input_batch,
-    max_generation_steps=10,  # The number of steps performed when generating a response.
-    eos_tokens=EOS_TOKENS,
-)
-
-for input_string, out_string in zip(input_batch, out_data.text):
-  logging.info(f"----------------------")
-  logging.info(f"Prompt:\n{input_string}")
-  logging.info(f"Output:\n{out_string}")
-
-def get_lora_model(base_model, mesh, quantize=False):
-  if quantize:
-    lora_provider = qwix.LoraProvider(
-        module_path=".*q_einsum|.*kv_einsum|.*gate_proj|.*down_proj|.*up_proj",
-        rank=RANK,
-        alpha=ALPHA,
-        weight_qtype="nf4",
-        tile_size=128,
+    ignore_patterns = [
+        "*.pth",  # Ignore PyTorch .pth weight files
+    ]
+    logging.info(f"Downloading {model_id} from Hugging Face...")
+    local_model_path = snapshot_download(
+        repo_id=model_id, ignore_patterns=ignore_patterns
     )
-  else:
-    lora_provider = qwix.LoraProvider(
-        module_path=".*q_einsum|.*kv_einsum|.*gate_proj|.*down_proj|.*up_proj",
-        rank=RANK,
-        alpha=ALPHA,
+    logging.info(f"Model successfully downloaded to: {local_model_path}")
+
+    EOS_TOKENS = []
+    generation_config_path = os.path.join(local_model_path, "generation_config.json")
+    if os.path.exists(generation_config_path):
+      with open(generation_config_path, "r") as f:
+        generation_configs = json.load(f)
+      EOS_TOKENS = generation_configs.get("eos_token_id", [])
+      logging.info(f"Using EOS token IDs: {EOS_TOKENS}")
+
+    logging.info("\n--- HBM Usage BEFORE Model Load ---")
+    show_hbm_usage()
+
+    MODEL_CP_PATH = local_model_path
+
+    if "gemma-3-270m" in model_id:
+      model_config = gemma3_model_lib.ModelConfig.gemma3_270m()
+    elif "gemma-3-1b" in model_id:
+      model_config = gemma3_model_lib.ModelConfig.gemma3_1b_it()
+    else:
+      raise ValueError(f"Unsupported model: {model_id}")
+
+    mesh = jax.make_mesh(*MESH, axis_types=(jax.sharding.AxisType.Auto,) * len(MESH[0]))
+    with mesh:
+      base_model = params_safetensors_lib.create_model_from_safe_tensors(
+          MODEL_CP_PATH, (model_config), mesh
+      )
+
+    tokenizer = tokenizer_lib.Tokenizer(tokenizer_path=GEMMA_TOKENIZER_PATH)
+    if tokenizer.eos_id() not in EOS_TOKENS:
+      EOS_TOKENS.append(tokenizer.eos_id())
+      logging.info(f"Using EOS token IDs: {EOS_TOKENS}")
+
+    sampler = sampler_lib.Sampler(
+        transformer=base_model,
+        tokenizer=tokenizer if "gemma" in model_id else tokenizer.tokenizer,
+        cache_config=sampler_lib.CacheConfig(
+            cache_size=256,
+            num_layers=model_config.num_layers,
+            num_kv_heads=model_config.num_kv_heads,
+            head_dim=model_config.head_dim,
+        ),
     )
 
-  model_input = base_model.get_model_input()
-  lora_model = qwix.apply_lora_to_model(
-      base_model, lora_provider, **model_input
-  )
+    input_batch = [
+        "Translate this into French:\nHello, my name is Morgane.\n",
+        "Translate this into French:\nThis dish is delicious!\n",
+        "Translate this into French:\nI am a student.\n",
+        "Translate this into French:\nHow's the weather today?\n",
+    ]
 
-  with mesh:
-    state = nnx.state(lora_model)
-    pspecs = nnx.get_partition_spec(state)
-    sharded_state = jax.lax.with_sharding_constraint(state, pspecs)
-    nnx.update(lora_model, sharded_state)
+    out_data = sampler(
+        input_strings=input_batch,
+        max_generation_steps=10,  # The number of steps performed when generating a response.
+        eos_tokens=EOS_TOKENS,
+    )
 
-  return lora_model
+    for input_string, out_string in zip(input_batch, out_data.text):
+      logging.info(f"----------------------")
+      logging.info(f"Prompt:\n{input_string}")
+      logging.info(f"Output:\n{out_string}")
 
-# Create LoRA or QLoRA model based on USE_QUANTIZATION hyperparameter
-lora_model = get_lora_model(base_model, mesh=mesh, quantize=USE_QUANTIZATION)
+    def get_lora_model(base_model, mesh, quantize=False):
+      if quantize:
+        lora_provider = qwix.LoraProvider(
+            module_path=".*q_einsum|.*kv_einsum|.*gate_proj|.*down_proj|.*up_proj",
+            rank=RANK,
+            alpha=ALPHA,
+            weight_qtype="nf4",
+            tile_size=128,
+        )
+      else:
+        lora_provider = qwix.LoraProvider(
+            module_path=".*q_einsum|.*kv_einsum|.*gate_proj|.*down_proj|.*up_proj",
+            rank=RANK,
+            alpha=ALPHA,
+        )
 
-logging.info(f"Using {'QLoRA' if USE_QUANTIZATION else 'LoRA'} model")
+      model_input = base_model.get_model_input()
+      lora_model = qwix.apply_lora_to_model(
+          base_model, lora_provider, **model_input
+      )
 
-# Loads the training and validation datasets
-train_ds, validation_ds = data_lib.create_datasets(
-    dataset_name='mtnt/en-fr',
-    global_batch_size=BATCH_SIZE,
-    max_target_length=MAX_TARGET_LENGTH,
-    num_train_epochs=NUM_EPOCHS,
-    tokenizer=tokenizer,
-)
+      with mesh:
+        state = nnx.state(lora_model)
+        pspecs = nnx.get_partition_spec(state)
+        sharded_state = jax.lax.with_sharding_constraint(state, pspecs)
+        nnx.update(lora_model, sharded_state)
+
+      return lora_model
+
+    # Create LoRA or QLoRA model based on USE_QUANTIZATION hyperparameter
+    lora_model = get_lora_model(base_model, mesh=mesh, quantize=USE_QUANTIZATION)
+
+    logging.info(f"Using {'QLoRA' if USE_QUANTIZATION else 'LoRA'} model")
+
+    # Loads the training and validation datasets
+    train_ds, validation_ds = data_lib.create_datasets(
+        dataset_name='mtnt/en-fr',
+        global_batch_size=BATCH_SIZE,
+        max_target_length=MAX_TARGET_LENGTH,
+        num_train_epochs=NUM_EPOCHS,
+        tokenizer=tokenizer,
+    )
 
 
-def gen_model_input_fn(x: peft_trainer.TrainingInput):
-  pad_mask = x.input_tokens != tokenizer.pad_id()
-  positions = utils.build_positions_from_mask(pad_mask)
-  attention_mask = utils.make_causal_attn_mask(pad_mask)
-  return {
-      'input_tokens': x.input_tokens,
-      'input_mask': x.input_mask,
-      'positions': positions,
-      'attention_mask': attention_mask,
-  }
+    def gen_model_input_fn(x: peft_trainer.TrainingInput):
+      pad_mask = x.input_tokens != tokenizer.pad_id()
+      positions = utils.build_positions_from_mask(pad_mask)
+      attention_mask = utils.make_causal_attn_mask(pad_mask)
+      return {
+          'input_tokens': x.input_tokens,
+          'input_mask': x.input_mask,
+          'positions': positions,
+          'attention_mask': attention_mask,
+      }
 
 
-full_logging_options = metrics_logger.MetricsLoggerOptions(
-    log_dir="/tmp/tensorboard/full", flush_every_n_steps=20
-)
+    full_logging_options = metrics_logger.MetricsLoggerOptions(
+        log_dir="/tmp/tensorboard/full", flush_every_n_steps=20
+    )
 
-training_config = peft_trainer.TrainingConfig(
-    eval_every_n_steps=EVAL_EVERY_N_STEPS,
-    max_steps=MAX_STEPS,
-    metrics_logging_options=full_logging_options,
-    checkpoint_root_directory=FULL_CKPT_DIR,
-)
+    training_config = peft_trainer.TrainingConfig(
+        eval_every_n_steps=EVAL_EVERY_N_STEPS,
+        max_steps=MAX_STEPS,
+        metrics_logging_options=full_logging_options,
+        checkpoint_root_directory=FULL_CKPT_DIR,
+    )
 
-trainer = peft_trainer.PeftTrainer(
-    base_model, optax.adamw(1e-5), training_config
-).with_gen_model_input_fn(gen_model_input_fn)
+    trainer = peft_trainer.PeftTrainer(
+        base_model, optax.adamw(1e-5), training_config
+    ).with_gen_model_input_fn(gen_model_input_fn)
 
-logging.info("Starting fine-tuning...")
-with mesh:
-    trainer.train(train_ds, validation_ds)
+    logging.info("Starting fine-tuning...")
+    with mesh:
+        trainer.train(train_ds, validation_ds)
 
-if "WANDB_API_KEY" in os.environ and os.environ["WANDB_API_KEY"]:
-    wandb.init()
-    logging.info("Weights & Biases initialized successfully.")
+    if "WANDB_API_KEY" in os.environ and os.environ["WANDB_API_KEY"]:
+        wandb.init()
+        logging.info("Weights & Biases initialized successfully.")
+
+if __name__ == "__main__":
+    run_tuning()
