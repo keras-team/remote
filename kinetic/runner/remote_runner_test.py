@@ -745,7 +745,7 @@ class TestInstallRequirements(absltest.TestCase):
       ) as mock_run,
     ):
       mock_run.return_value = MagicMock(returncode=0, stderr="", stdout="")
-      _install_requirements(mock_client, "gs://bucket/requirements.txt")
+      _install_requirements(mock_client, "gs://bucket/requirements.txt", str(tmp))
 
     mock_run.assert_called_once()
     args = mock_run.call_args[0][0]
@@ -773,7 +773,7 @@ class TestInstallRequirements(absltest.TestCase):
         returncode=1, stderr="ERROR: package not found"
       )
       with self.assertRaisesRegex(RuntimeError, "Failed to install"):
-        _install_requirements(mock_client, "gs://bucket/requirements.txt")
+        _install_requirements(mock_client, "gs://bucket/requirements.txt", str(tmp))
 
   def test_empty_requirements_skipped(self):
     mock_client = MagicMock()
@@ -793,7 +793,7 @@ class TestInstallRequirements(absltest.TestCase):
         "kinetic.runner.remote_runner.subprocess.run",
       ) as mock_run,
     ):
-      _install_requirements(mock_client, "gs://bucket/requirements.txt")
+      _install_requirements(mock_client, "gs://bucket/requirements.txt", str(tmp))
 
     mock_run.assert_not_called()
 
@@ -861,7 +861,7 @@ class TestMainWithRequirements(absltest.TestCase):
       main()
 
     mock_install.assert_called_once_with(
-      mock_client, "gs://bucket/requirements.txt"
+      mock_client, "gs://bucket/requirements.txt", mock.ANY
     )
 
 

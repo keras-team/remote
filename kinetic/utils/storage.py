@@ -181,7 +181,8 @@ def download_result(
   _, bucket = _get_bucket(bucket_name, project)
 
   blob = bucket.blob(f"{job_id}/result.pkl")
-  local_path = os.path.join(tempfile.gettempdir(), f"result-{job_id}.pkl")
+  fd, local_path = tempfile.mkstemp(suffix=f"-{job_id}.pkl", prefix="result-")
+  os.close(fd)
   blob.download_to_filename(local_path)
   logging.info(
     "Downloaded result from gs://%s/%s/result.pkl", bucket_name, job_id

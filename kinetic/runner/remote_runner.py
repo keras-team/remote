@@ -23,9 +23,9 @@ from google.cloud.storage import transfer_manager
 
 _DOWNLOAD_BATCH_SIZE = 10000
 
-# Base temp directory for remote execution artifacts
-TEMP_DIR = tempfile.gettempdir()
-DATA_DIR = os.path.join(TEMP_DIR, "data")
+# Base temp directory for remote execution artifacts (placeholders)
+TEMP_DIR = None
+DATA_DIR = None
 
 
 # Sentinel blob name written by the leader once it has finished
@@ -58,11 +58,21 @@ def main():
 
   logging.info("Starting remote execution")
 
-  # Define local paths using tempfile
-  context_path = os.path.join(TEMP_DIR, "context.zip")
-  payload_path = os.path.join(TEMP_DIR, "payload.pkl")
-  result_path = os.path.join(TEMP_DIR, "result.pkl")
-  workspace_dir = os.path.join(TEMP_DIR, "workspace")
+  # Create secure temp directory and register cleanup
+  temp_dir = tempfile.mkdtemp(prefix="kinetic-run-")
+  import atexit
+  atexit.register(shutil.rmtree, temp_dir, ignore_errors=True)
+
+  global TEMP_DIR, DATA_DIR
+  TEMP_DIR = temp_dir
+  DATA_DIR = os.path.join(temp_dir, "data")
+
+  # Define local paths
+  context_path = os.path.join(temp_dir, "context.zip")
+  payload_path = os.path.join(temp_dir, "payload.pkl")
+  result_path = os.path.join(temp_dir, "result.pkl")
+  workspace_dir = os.path.join(temp_dir, "workspace")
+  data_dir = os.path.join(temp_dir, "data")
 
   try:
     storage_client = storage.Client()
@@ -74,7 +84,7 @@ def main():
 
     # Install user requirements at startup (prebuilt image mode)
     if requirements_gcs:
-      _install_requirements(storage_client, requirements_gcs)
+      _install_requirements(storage_client, requirements_gcs, temp_dir)
 
     # Extract context
     if os.path.exists(workspace_dir):
@@ -113,7 +123,7 @@ def main():
     volumes = payload.get("volumes", [])
     if volumes:
       resolve_volumes(volumes, storage_client)
-    args, kwargs = resolve_data_refs(args, kwargs, storage_client)
+    args, kwargs = resolve_data_refs(args, kwargs, storage_client, data_dir=data_dir)
 
     # Start debugpy server if debug mode is enabled
     is_debug = os.environ.get("KINETIC_DEBUG") == "1"
@@ -199,7 +209,7 @@ def main():
     sys.exit(1)
 
 
-def _install_requirements(storage_client, requirements_gcs):
+def _install_requirements(storage_client, requirements_gcs, temp_dir):
   """Download and install user requirements via `uv pip install`.
 
   Used in prebuilt image mode where user dependencies are not baked
@@ -208,8 +218,9 @@ def _install_requirements(storage_client, requirements_gcs):
   Args:
       storage_client: Cloud Storage client.
       requirements_gcs: GCS URI to the requirements.txt file.
+      temp_dir: Secure temporary directory path.
   """
-  requirements_path = os.path.join(TEMP_DIR, "user_requirements.txt")
+  requirements_path = os.path.join(temp_dir, "user_requirements.txt")
   _download_from_gcs(storage_client, requirements_gcs, requirements_path)
 
   if os.path.getsize(requirements_path) == 0:
@@ -436,7 +447,10 @@ def _resolve_fuse_single_file(mount_path: str) -> str | None:
 
 
 def resolve_data_refs(
-  args: tuple, kwargs: dict, storage_client: storage.Client
+  args: tuple,
+  kwargs: dict,
+  storage_client: storage.Client,
+  data_dir: str | None = None,
 ) -> tuple[tuple, dict]:
   """Recursively resolve data ref dicts in args/kwargs to local paths."""
   counter = 0
@@ -457,7 +471,7 @@ def resolve_data_refs(
       gcs_uri = obj["gcs_uri"]
       if gcs_uri in resolved_uris:
         return resolved_uris[gcs_uri]
-      local_dir = os.path.join(DATA_DIR, str(counter))
+      local_dir = os.path.join(data_dir or DATA_DIR, str(counter))
       counter += 1
       _download_data(obj, local_dir, storage_client)
       # Return file path for single files, directory path otherwise

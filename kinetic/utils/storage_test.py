@@ -85,7 +85,45 @@ class TestDownloadResult(_GcsTestBase):
 
   def test_returns_path_with_job_id(self):
     result = download_result("my-bucket", "job-xyz", project="proj")
-    self.assertIn("result-job-xyz.pkl", result)
+    self.assertIn("result-", result)
+    self.assertIn("job-xyz.pkl", result)
+
+  def test_download_result_symlink_exploit(self):
+    # 1. Prepare temp directory for the test
+    tmp_dir = _make_temp_path(self)
+
+    # Mock tempfile.gettempdir to return our test temp directory
+    with mock.patch(
+      "kinetic.utils.storage.tempfile.gettempdir", return_value=str(tmp_dir)
+    ):
+      # 2. Create a victim file that we want to protect
+      victim_file = tmp_dir / "victim.txt"
+      victim_content = "sensitive data"
+      victim_file.write_text(victim_content)
+
+      # 3. Create a symlink at the predicted path pointing to the victim file
+      job_id = "job-exploit"
+      predicted_path = tmp_dir / f"result-{job_id}.pkl"
+      os.symlink(victim_file, predicted_path)
+
+      # 4. Mock GCS download to simulate writing to the file
+      mock_bucket = self.mock_gcs.bucket.return_value
+      mock_blob = mock_bucket.blob.return_value
+
+      def mock_download(filename):
+        with open(filename, "w") as f:
+          f.write("attack payload")
+
+      mock_blob.download_to_filename.side_effect = mock_download
+
+      # 5. Call download_result
+      download_result("my-bucket", job_id, project="proj")
+
+      # 6. Verify if victim file was overwritten
+      # If vulnerable, victim_file content will be "attack payload"
+      # If secured, victim_file content should still be "sensitive data"
+      self.assertEqual(victim_file.read_text(), victim_content)
+
 
 
 class TestHandleStorage(_GcsTestBase):

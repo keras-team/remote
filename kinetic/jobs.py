@@ -6,6 +6,7 @@ for cross-session reattachment and `list_jobs()` for discovery.
 """
 
 import contextlib
+import os
 import subprocess
 import time
 from collections.abc import Callable
@@ -206,8 +207,14 @@ class JobHandle:
       self.job_id,
       project=self.project,
     )
-    with open(result_path, "rb") as f:
-      return cloudpickle.load(f)
+    try:
+      with open(result_path, "rb") as f:
+        return cloudpickle.load(f)
+    finally:
+      try:
+        os.remove(result_path)
+      except OSError as e:
+        logging.warning("Failed to remove temporary result file %s: %s", result_path, e)
 
   def _download_result_payload_with_backoff(
     self, deadline: float | None
