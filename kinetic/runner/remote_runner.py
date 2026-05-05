@@ -5,6 +5,7 @@ This script runs on the remote TPU/GPU and executes the user's function.
 Artifacts are downloaded from and uploaded to Cloud Storage (GCS).
 """
 
+import atexit
 import os
 import pickle
 import shutil
@@ -22,11 +23,6 @@ from google.cloud import storage
 from google.cloud.storage import transfer_manager
 
 _DOWNLOAD_BATCH_SIZE = 10000
-
-# Base temp directory for remote execution artifacts (placeholders)
-TEMP_DIR = None
-DATA_DIR = None
-
 
 # Sentinel blob name written by the leader once it has finished
 # waiting for a debugger client and is about to call the user
@@ -60,12 +56,7 @@ def main():
 
   # Create secure temp directory and register cleanup
   temp_dir = tempfile.mkdtemp(prefix="kinetic-run-")
-  import atexit
   atexit.register(shutil.rmtree, temp_dir, ignore_errors=True)
-
-  global TEMP_DIR, DATA_DIR
-  TEMP_DIR = temp_dir
-  DATA_DIR = os.path.join(temp_dir, "data")
 
   # Define local paths
   context_path = os.path.join(temp_dir, "context.zip")
@@ -123,7 +114,7 @@ def main():
     volumes = payload.get("volumes", [])
     if volumes:
       resolve_volumes(volumes, storage_client)
-    args, kwargs = resolve_data_refs(args, kwargs, storage_client, data_dir=data_dir)
+    args, kwargs = resolve_data_refs(args, kwargs, storage_client, data_dir)
 
     # Start debugpy server if debug mode is enabled
     is_debug = os.environ.get("KINETIC_DEBUG") == "1"
@@ -450,7 +441,7 @@ def resolve_data_refs(
   args: tuple,
   kwargs: dict,
   storage_client: storage.Client,
-  data_dir: str | None = None,
+  data_dir: str,
 ) -> tuple[tuple, dict]:
   """Recursively resolve data ref dicts in args/kwargs to local paths."""
   counter = 0
@@ -471,7 +462,7 @@ def resolve_data_refs(
       gcs_uri = obj["gcs_uri"]
       if gcs_uri in resolved_uris:
         return resolved_uris[gcs_uri]
-      local_dir = os.path.join(data_dir or DATA_DIR, str(counter))
+      local_dir = os.path.join(data_dir, str(counter))
       counter += 1
       _download_data(obj, local_dir, storage_client)
       # Return file path for single files, directory path otherwise
