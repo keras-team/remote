@@ -219,7 +219,9 @@ class TestResolveDataRefs(absltest.TestCase):
       "mount_path": None,
     }
 
-    args, kwargs = resolve_data_refs((ref, 42), {}, mock_client, str(tmp / "data"))
+    args, kwargs = resolve_data_refs(
+      (ref, 42), {}, mock_client, str(tmp / "data")
+    )
 
     self.assertIsInstance(args[0], str)
     self.assertEqual(args[1], 42)
@@ -238,7 +240,9 @@ class TestResolveDataRefs(absltest.TestCase):
       "mount_path": None,
     }
 
-    args, _ = resolve_data_refs(([ref, "other"],), {}, mock_client, str(tmp / "data"))
+    args, _ = resolve_data_refs(
+      ([ref, "other"],), {}, mock_client, str(tmp / "data")
+    )
 
     self.assertIsInstance(args[0][0], str)
     self.assertEqual(args[0][1], "other")
