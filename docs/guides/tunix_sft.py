@@ -73,13 +73,15 @@ model_id = "google/gemma-3-270m-it"
 GEMMA_TOKENIZER_PATH = "gs://gemma-data/tokenizers/tokenizer_gemma3.model"
 
 # Data
-BATCH_SIZE = 64 # Adjust based on TPU memory & model size.
+BATCH_SIZE = 32 # Adjust based on TPU memory & model size.
 MAX_TARGET_LENGTH = 256 # Adjusted based on your TPU memory and model size.
 
 # Model Setup
 # Adjust mesh based on your TPU memory and model size.
 NUM_TPUS = len(jax.devices())
 if NUM_TPUS == 8:
+  MESH_COUNTS = (1, 4)
+elif NUM_TPUS == 4:
   MESH_COUNTS = (1, 4)
 elif NUM_TPUS == 1:
   MESH_COUNTS = (1, 1)
@@ -113,7 +115,7 @@ def create_dir(path):
   except OSError as e:
     logging.error(f"Error creating directory '{path}': {e}")
 
-@kinetic.run(accelerator="v6e-8", capture_env_vars=['KAGGLE_USERNAME', 'KAGGLE_KEY', 'HF_TOKEN'])
+@kinetic.run(accelerator="tpu-v5litepod", capture_env_vars=['KAGGLE_USERNAME', 'KAGGLE_KEY', 'HF_TOKEN', 'WANDB_MODE'])
 def run_tuning():
     create_dir(FULL_CKPT_DIR)
     create_dir(LORA_CKPT_DIR)
