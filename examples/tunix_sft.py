@@ -19,7 +19,8 @@ kinetic.credentials.ensure_credentials = lambda *args, **kwargs: None
 
 
 
-# Monkey-patch etils.epath to ignore mode argument in mkdir
+# Monkey-patch etils.epath to ignore mode argument in mkdir.
+# This is a workaround for permission issues in some environments when creating directories.
 import etils.epath as _epath
 _orig_mkdir = _epath.Path.mkdir
 def safe_mkdir(self, mode=0o777, parents=False, exist_ok=False):
@@ -78,11 +79,14 @@ MAX_TARGET_LENGTH = 256 # Adjusted based on your TPU memory and model size.
 
 # Model Setup
 # Adjust mesh based on your TPU memory and model size.
+# MESH_COUNTS defines the number of devices along each axis of the mesh.
+# The axes are named ("fsdp", "tp") where fsdp is Fully Sharded Data Parallel
+# and tp is Tensor Parallel.
 NUM_TPUS = len(jax.devices())
 if NUM_TPUS == 8:
-  MESH_COUNTS = (1, 4)
+  MESH_COUNTS = (1, 4) # 1 for fsdp, 4 for tp
 elif NUM_TPUS == 4:
-  MESH_COUNTS = (1, 4)
+  MESH_COUNTS = (1, 4) # Use all 4 devices for tensor parallel
 elif NUM_TPUS == 1:
   MESH_COUNTS = (1, 1)
 else:
@@ -190,8 +194,11 @@ def run_tuning():
       logging.info(f"Prompt:\n{input_string}")
       logging.info(f"Output:\n{out_string}")
 
+    # Define a helper function to apply LoRA (or QLoRA) to the model.
+    # This uses the 'qwix' library to inject low-rank adapters into specified layers.
     def get_lora_model(base_model, mesh, quantize=False):
       if quantize:
+        # QLoRA uses 4-bit NormalFloat (nf4) quantization for base model weights
         lora_provider = qwix.LoraProvider(
             module_path=".*q_einsum|.*kv_einsum|.*gate_proj|.*down_proj|.*up_proj",
             rank=RANK,
@@ -200,6 +207,7 @@ def run_tuning():
             tile_size=128,
         )
       else:
+        # Standard LoRA keeps weights in original precision
         lora_provider = qwix.LoraProvider(
             module_path=".*q_einsum|.*kv_einsum|.*gate_proj|.*down_proj|.*up_proj",
             rank=RANK,
@@ -207,10 +215,12 @@ def run_tuning():
         )
 
       model_input = base_model.get_model_input()
+      # Apply LoRA to the base model
       lora_model = qwix.apply_lora_to_model(
           base_model, lora_provider, **model_input
       )
 
+      # Ensure the LoRA model parameters are sharded according to the mesh
       with mesh:
         state = nnx.state(lora_model)
         pspecs = nnx.get_partition_spec(state)
@@ -257,11 +267,16 @@ def run_tuning():
         checkpoint_root_directory=FULL_CKPT_DIR,
     )
 
+    # Initialize the PeftTrainer.
+    # NOTE: We are passing `base_model` here. Depending on PeftTrainer implementation,
+    # it might be expected to pass `lora_model` if it doesn't automatically discover
+    # the LoRA layers on the base model if it was modified in place.
     trainer = peft_trainer.PeftTrainer(
         base_model, optax.adamw(1e-5), training_config
     ).with_gen_model_input_fn(gen_model_input_fn)
 
     logging.info("Starting fine-tuning...")
+    # Run the training loop within the mesh context for distributed execution
     with mesh:
         trainer.train(train_ds, validation_ds)
 
