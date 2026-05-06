@@ -45,7 +45,7 @@ python examples/fashion_mnist.py
 :class-container: sd-text-left
 
 :::{grid-item-card} Fashion-MNIST on a TPU
-:link: examples/fashion_mnist
+:link: examples/fashion_mnist.md
 :class-card: sd-shadow-sm
 :class-body: sd-fs-6
 :class-title: sd-fs-5
@@ -61,7 +61,7 @@ stream a real result back to your shell.
 :::
 
 :::{grid-item-card} Keras + JAX smoke test
-:link: examples/simple_demo
+:link: examples/simple_demo.md
 :class-card: sd-shadow-sm
 :class-body: sd-fs-6
 :class-title: sd-fs-5
@@ -85,7 +85,7 @@ ask for hardware.
 :class-container: sd-text-left
 
 :::{grid-item-card} Submit, monitor, and reattach
-:link: examples/example_async_jobs
+:link: examples/example_async_jobs.md
 :class-card: sd-shadow-sm
 :class-body: sd-fs-6
 :class-title: sd-fs-5
@@ -101,7 +101,7 @@ Walks through every part of the detached-job API end-to-end: `submit()`,
 :::
 
 :::{grid-item-card} Ship local files into the job
-:link: examples/example_data_api
+:link: examples/example_data_api.md
 :class-card: sd-shadow-sm
 :class-body: sd-fs-6
 :class-title: sd-fs-5
@@ -117,7 +117,7 @@ to know whether the bytes started on your laptop or in GCS.
 :::
 
 :::{grid-item-card} Resumable JAX training with Orbax
-:link: examples/example_checkpoint
+:link: examples/example_checkpoint.md
 :class-card: sd-shadow-sm
 :class-body: sd-fs-6
 :class-title: sd-fs-5
@@ -134,7 +134,7 @@ same function and seeing it skip already-completed steps.
 :::
 
 :::{grid-item-card} Resumable Keras training
-:link: examples/example_keras_checkpoint
+:link: examples/example_keras_checkpoint.md
 :class-card: sd-shadow-sm
 :class-body: sd-fs-6
 :class-title: sd-fs-5
@@ -151,7 +151,7 @@ save/load code.
 :::
 
 :::{grid-item-card} Parallel hyperparameter sweep
-:link: examples/example_collections
+:link: examples/example_collections.md
 :class-card: sd-shadow-sm
 :class-body: sd-fs-6
 :class-title: sd-fs-5
@@ -167,7 +167,7 @@ job that inevitably fails halfway through.
 :::
 
 :::{grid-item-card} Mix accelerators in one driver
-:link: examples/example_gke
+:link: examples/example_gke.md
 :class-card: sd-shadow-sm
 :class-body: sd-fs-6
 :class-title: sd-fs-5
@@ -190,7 +190,7 @@ actually serve.
 :class-container: sd-text-left
 
 :::{grid-item-card} Multi-host JAX on Pathways
-:link: examples/pathways_example
+:link: examples/pathways_example.md
 :class-card: sd-shadow-sm
 :class-body: sd-fs-6
 :class-title: sd-fs-5
@@ -207,7 +207,7 @@ trust them with a real workload.
 :::
 
 :::{grid-item-card} Distributed Gemma 2B fine-tune
-:link: examples/gemma_sft_pathways_distributed
+:link: examples/gemma_sft_pathways_distributed.md
 :class-card: sd-shadow-sm
 :class-body: sd-fs-6
 :class-title: sd-fs-5
@@ -224,7 +224,7 @@ weights from Kaggle and runs on Pathways.
 :::
 
 :::{grid-item-card} Single-TPU Gemma 3 fine-tune
-:link: examples/gemma3_sft_demo
+:link: examples/gemma3_sft_demo.md
 :class-card: sd-shadow-sm
 :class-body: sd-fs-6
 :class-title: sd-fs-5
@@ -240,7 +240,7 @@ example of forwarding Kaggle credentials into the remote pod.
 :::
 
 :::{grid-item-card} Tunix SFT Example
-:link: examples/tunix_sft
+:link: examples/tunix_sft.md
 :class-card: sd-shadow-sm
 :class-body: sd-fs-6
 :class-title: sd-fs-5
