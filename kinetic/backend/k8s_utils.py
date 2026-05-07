@@ -28,6 +28,45 @@ GCSFUSE_CSI_DRIVER = "gcsfuse.csi.storage.gke.io"
 GCSFUSE_VOLUMES_ANNOTATION = "gke-gcsfuse/volumes"
 GCSFUSE_DEFAULT_MOUNT_OPTIONS = "implicit-dirs"
 
+_KINETIC_SECRET_NAME = "kinetic-security-key"
+_KINETIC_SECRET_KEY = "signing-key"
+
+
+def get_security_secret(namespace: str = "default") -> str:
+  """Retrieve the cluster-wide signing key from the Kubernetes Secret.
+
+  This Secret is managed by Pulumi during cluster provisioning.
+  Returns the base64-encoded key.
+  """
+  v1 = core_v1()
+  try:
+    secret = v1.read_namespaced_secret(_KINETIC_SECRET_NAME, namespace)
+    if _KINETIC_SECRET_KEY not in secret.data:
+      raise RuntimeError(
+        f"Signing key '{_KINETIC_SECRET_KEY}' not found in Secret data for "
+        f"'{_KINETIC_SECRET_NAME}' in namespace '{namespace}'."
+      )
+    return secret.data[_KINETIC_SECRET_KEY]
+  except ApiException as e:
+    if e.status == 404:
+      raise RuntimeError(
+        f"Signing key Secret '{_KINETIC_SECRET_NAME}' not found in namespace "
+        f"'{namespace}'. Please ensure you have run 'kinetic up' with the "
+        "latest changes to provision the cluster security resources."
+      ) from e
+    raise
+
+
+def get_security_secret_env_source(
+  namespace: str = "default",
+) -> client.V1EnvVarSource:
+  """Return a V1EnvVarSource pointing to the kinetic-security-key Secret."""
+  return client.V1EnvVarSource(
+    secret_key_ref=client.V1SecretKeySelector(
+      name=_KINETIC_SECRET_NAME, key=_KINETIC_SECRET_KEY
+    )
+  )
+
 
 def build_gcs_fuse_volumes(
   fuse_volume_specs: list[dict] | None,

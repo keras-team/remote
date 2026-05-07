@@ -449,6 +449,15 @@ def _create_lws_spec(
     },
     {"name": "MEGASCALE_NUM_SLICES", "value": str(num_workers + 1)},
     {"name": "TPU_WORKER_ID", "value": "$(LWS_WORKER_INDEX)"},
+    {
+      "name": "KINETIC_SECRET",
+      "valueFrom": {
+        "secretKeyRef": {
+          "name": "kinetic-security-key",
+          "key": "signing-key",
+        }
+      },
+    },
   ]
 
   tolerations = []

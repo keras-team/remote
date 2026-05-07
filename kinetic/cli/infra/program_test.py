@@ -15,6 +15,7 @@ with mock.patch.dict(
     "pulumi_command": mock.MagicMock(),
     "pulumi_gcp": mock.MagicMock(),
     "pulumi_kubernetes": mock.MagicMock(),
+    "pulumi_random": mock.MagicMock(),
   },
 ):
   from kinetic.cli.infra import program
@@ -101,6 +102,7 @@ class TestGpuDriverConditional(absltest.TestCase):
       mock.patch.object(program, "pulumi"),
       mock.patch.object(program, "command"),
       mock.patch.object(program, "gcp"),
+      mock.patch.object(program, "random"),
       mock.patch.object(program, "k8s") as k8s_mock,
     ):
       program.create_program(config)()
@@ -155,6 +157,7 @@ class TestForceDestroy(parameterized.TestCase):
       mock.patch.object(program, "pulumi"),
       mock.patch.object(program, "command"),
       mock.patch.object(program, "gcp") as gcp_mock,
+      mock.patch.object(program, "random"),
       mock.patch.object(program, "k8s"),
     ):
       program.create_program(config)()
@@ -171,6 +174,7 @@ class TestForceDestroy(parameterized.TestCase):
       mock.patch.object(program, "pulumi") as pulumi_mock,
       mock.patch.object(program, "command"),
       mock.patch.object(program, "gcp"),
+      mock.patch.object(program, "random"),
       mock.patch.object(program, "k8s"),
     ):
       program.create_program(config)()

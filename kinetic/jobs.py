@@ -36,7 +36,7 @@ from kinetic.debug import (
   wait_for_debug_server,
 )
 from kinetic.job_status import JobStatus  # re-export
-from kinetic.utils import storage
+from kinetic.utils import security, storage
 
 _BACKEND_CLIENTS = {
   "gke": gke_client,
@@ -208,8 +208,8 @@ class JobHandle:
       project=self.project,
     )
     try:
-      with open(result_path, "rb") as f:
-        return cloudpickle.load(f)
+      data = security.verify_file(result_path, namespace=self.namespace)
+      return cloudpickle.loads(data)
     finally:
       try:
         os.remove(result_path)

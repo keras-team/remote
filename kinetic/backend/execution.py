@@ -437,7 +437,9 @@ def _process_data_args(
   return ref_map, fuse_specs
 
 
-def _prepare_artifacts(ctx: JobContext, tmpdir: str) -> None:
+def _prepare_artifacts(
+  ctx: JobContext, tmpdir: str, namespace: str | None = None
+) -> None:
   """Package function payload and working directory context."""
   logging.info("Packaging function and context...")
   if ctx.working_dir is None:
@@ -468,6 +470,7 @@ def _prepare_artifacts(ctx: JobContext, tmpdir: str) -> None:
     ctx.payload_path,
     volumes=volume_refs or None,
     working_dir=ctx.working_dir,
+    namespace=namespace,
   )
   logging.info("Payload serialized to %s", ctx.payload_path)
 
@@ -565,7 +568,7 @@ def prepare_execution(ctx: JobContext, backend: BaseK8sBackend) -> None:
   backend.validate_preflight(ctx)
 
   with tempfile.TemporaryDirectory() as tmpdir:
-    _prepare_artifacts(ctx, tmpdir)
+    _prepare_artifacts(ctx, tmpdir, namespace=backend.namespace)
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
       build_future = pool.submit(_build_container, ctx)
       upload_future = pool.submit(_upload_artifacts, ctx)

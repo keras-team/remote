@@ -4,13 +4,16 @@ Defines all GCP resources needed for kinetic: API services,
 Artifact Registry, GKE cluster, and optional accelerator node pools.
 """
 
+import base64
 import json
+import secrets
 from collections.abc import Callable
 
 import pulumi
 import pulumi_command as command
 import pulumi_gcp as gcp
 import pulumi_kubernetes as k8s
+import pulumi_random as random
 
 from kinetic.cli.config import InfraConfig, NodePoolConfig
 from kinetic.cli.constants import (
@@ -433,6 +436,29 @@ def _create_k8s_resources(
       file=NVIDIA_DRIVER_DAEMONSET_URL,
       opts=pulumi.ResourceOptions(provider=k8s_provider),
     )
+
+  # Automated signing key for payload integrity (CWE-502).
+  # Using RandomPassword to generate a stable 32-byte (256-bit) key.
+  # We use RandomPassword because it handles special characters and is stable
+  # in Pulumi state.
+  signing_key = random.RandomPassword(
+    "kinetic-security-key-val",
+    length=32,
+    special=True,
+    opts=pulumi.ResourceOptions(provider=k8s_provider),
+  )
+
+  k8s.core.v1.Secret(
+    "kinetic-security-key",
+    metadata=k8s.meta.v1.ObjectMetaArgs(
+      name="kinetic-security-key",
+      namespace="default",
+    ),
+    string_data={
+      "signing-key": signing_key.result,
+    },
+    opts=pulumi.ResourceOptions(provider=k8s_provider),
+  )
 
 
 def _create_accelerator_pools(

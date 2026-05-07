@@ -338,6 +338,10 @@ def _create_job_spec(
     ),
     client.V1EnvVar(name="JOB_ID", value=job_id),
     client.V1EnvVar(name="GCS_BUCKET", value=bucket_name),
+    client.V1EnvVar(
+      name="KINETIC_SECRET",
+      value_from=k8s_utils.get_security_secret_env_source(namespace=namespace),
+    ),
   ]
 
   if debug:

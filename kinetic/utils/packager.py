@@ -13,6 +13,7 @@ from typing import Any
 import cloudpickle
 
 from kinetic.data import Data
+from kinetic.utils import security
 
 # Type alias for a position path through nested args, e.g. ("arg", 0, "key").
 PositionPath = tuple[str | int, ...]
@@ -60,6 +61,7 @@ def save_payload(
   output_path: str,
   volumes: list[dict[str, Any]] | None = None,
   working_dir: str | None = None,
+  namespace: str | None = None,
 ) -> None:
   """Serialize a function call payload with cloudpickle.
 
@@ -74,6 +76,7 @@ def save_payload(
       output_path: Destination path for the pickle file.
       volumes: Optional list of volume data-ref dicts.
       working_dir: Optional client-side working directory to preserve.
+      namespace: Optional Kubernetes namespace to fetch signing key from.
   """
   payload: dict[str, Any] = {
     "func": func,
@@ -87,6 +90,8 @@ def save_payload(
     payload["working_dir"] = working_dir
   with open(output_path, "wb") as f:
     cloudpickle.dump(payload, f)
+
+  security.sign_file(output_path, namespace=namespace)
 
 
 def extract_data_refs(

@@ -22,6 +22,8 @@ from google.cloud import exceptions as cloud_exceptions
 from google.cloud import storage
 from google.cloud.storage import transfer_manager
 
+from kinetic.utils import security
+
 _DOWNLOAD_BATCH_SIZE = 10000
 
 # Sentinel blob name written by the leader once it has finished
@@ -90,8 +92,8 @@ def main():
 
     # Load and deserialize payload
     logging.info("Loading function payload")
-    with open(payload_path, "rb") as f:
-      payload = cloudpickle.load(f)
+    data = security.verify_file(payload_path)
+    payload = cloudpickle.loads(data)
 
     # Reconstruct client path parity for debugpy exact file mappings
     working_dir_client = payload.get("working_dir")
@@ -174,6 +176,7 @@ def main():
     try:
       with open(result_path, "wb") as f:
         cloudpickle.dump(result_payload, f)
+      security.sign_file(result_path)
     except (pickle.PicklingError, TypeError) as serialize_err:
       logging.error("Failed to serialize result: %s", serialize_err)
       fallback_payload = {
@@ -186,6 +189,7 @@ def main():
       }
       with open(result_path, "wb") as f:
         cloudpickle.dump(fallback_payload, f)
+      security.sign_file(result_path)
 
     # Upload result to Cloud Storage
     logging.info("Uploading result...")

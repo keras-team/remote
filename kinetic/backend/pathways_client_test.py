@@ -140,7 +140,10 @@ class TestCreateLwsSpec(absltest.TestCase):
     container = spec["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"][
       "containers"
     ][0]
-    env = {e["name"]: e["value"] for e in container["env"]}
+    env = {
+      e["name"]: e.get("value", "__VALUE_FROM__") for e in container["env"]
+    }
+
     self.assertEqual(env["KERAS_BACKEND"], "jax")
     self.assertEqual(env["JAX_PLATFORMS"], "tpu")
     self.assertEqual(env["JOB_ID"], "j1")
@@ -226,7 +229,10 @@ class TestCreateLwsSpec(absltest.TestCase):
     container = spec["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"][
       "containers"
     ][0]
-    env = {e["name"]: e["value"] for e in container["env"]}
+    env = {
+      e["name"]: e.get("value", "__VALUE_FROM__") for e in container["env"]
+    }
+
     self.assertEqual(env["MEGASCALE_NUM_SLICES"], "1")
 
   def test_multiple_workers(self):
@@ -235,7 +241,10 @@ class TestCreateLwsSpec(absltest.TestCase):
     container = spec["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"][
       "containers"
     ][0]
-    env = {e["name"]: e["value"] for e in container["env"]}
+    env = {
+      e["name"]: e.get("value", "__VALUE_FROM__") for e in container["env"]
+    }
+
     self.assertEqual(env["MEGASCALE_NUM_SLICES"], "8")
 
   def test_no_fuse_no_volumes_or_annotations(self):
@@ -354,9 +363,14 @@ class TestCreateLwsSpecDebug(absltest.TestCase):
     return _create_lws_spec(**defaults)
 
   def _env(self, template):
-    return {
-      e["name"]: e["value"] for e in template["spec"]["containers"][0]["env"]
-    }
+    env = {}
+    for e in template["spec"]["containers"][0]["env"]:
+      if "value" in e:
+        env[e["name"]] = e["value"]
+      elif "valueFrom" in e:
+        # For tests, we just record that it has a valueFrom
+        env[e["name"]] = "__VALUE_FROM__"
+    return env
 
   def test_debug_separates_leader_and_worker_contracts(self):
     spec = self._make_spec(debug=True)
