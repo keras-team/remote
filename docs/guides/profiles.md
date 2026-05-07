@@ -1,10 +1,11 @@
 # Profiles
 
 A **profile** bundles the four settings that determine where a Kinetic
-job runs — project, zone, cluster, and namespace — under a single name.
-Instead of re-exporting `KINETIC_*` environment variables for each
-cluster you target, you save a profile once and switch between them
-with a single command.
+job runs — project, zone, cluster, and namespace (see
+[Configuration](../configuration.md) for what each one controls) —
+under a single name. Instead of re-exporting `KINETIC_*` environment
+variables for each cluster you target, you save a profile once and
+switch between them with a single command.
 
 Profiles are optional and additive. If you have never run
 `kinetic profile create`, the existing env-var and prompt flow is
@@ -14,13 +15,16 @@ unchanged.
 
 - You work with more than one cluster (for example, a dev cluster and a
   team-shared GPU cluster).
+- You want to chase spot capacity across zones or regions — keep a
+  profile per (zone, cluster) pair and switch when one runs dry.
 - You move between projects or namespaces often enough that exporting
   env vars manually is slowing you down.
 - Multiple people share a machine or dotfiles and need clean switching
   between their own configurations.
 
 For single-cluster setups, plain `KINETIC_*` env vars are still the
-simplest path.
+simplest path — see [Configuration](../configuration.md) for the full
+list and what each one does.
 
 ## Quick start
 
@@ -106,6 +110,11 @@ env var, or `default`) — run it any time you want to see which layer
 won.
 
 ## Storage
+
+Profiles are local and per-user — they live on your machine only and
+are not synced across teammates or across machines. If a workflow
+needs to be reproducible by others, document it with `KINETIC_*` env
+vars (or CLI flags) rather than relying on a shared profile name.
 
 Profiles live in a single JSON file at `~/.kinetic/profiles.json`:
 
