@@ -3,7 +3,7 @@
 import click
 from rich.table import Table
 
-from kinetic.cli.options import infra_options
+from kinetic.cli.options import common_options
 from kinetic.cli.output import banner, console, warning
 from kinetic.core.accelerators import (
   GPUS,
@@ -27,19 +27,19 @@ def _get_provisioned_names(node_pools):
 
 
 @click.command("accelerators")
-@infra_options
+@common_options
 @click.option(
   "--live",
   is_flag=True,
   help="Check cluster for provisioned (hot) accelerators.",
 )
-def accelerators(project, zone, cluster_name, state_backend, live):
+def accelerators(project, zone, cluster_name, live):
   """List supported accelerator types and their configurations."""
   banner("kinetic Accelerators")
 
   provisioned = set()
   if live:
-    provisioned = _load_provisioned(project, zone, cluster_name, state_backend)
+    provisioned = _load_provisioned(project, zone, cluster_name)
 
   _print_gpu_table(provisioned, show_status=live)
   _print_tpu_table(provisioned, show_status=live)
@@ -52,18 +52,12 @@ def accelerators(project, zone, cluster_name, state_backend, live):
   console.print()
 
 
-def _load_provisioned(project, zone, cluster_name, state_backend):
+def _load_provisioned(project, zone, cluster_name):
   """Load provisioned accelerator names from the cluster."""
   from kinetic.cli.infra.state import load_state
 
   try:
-    state = load_state(
-      project,
-      zone,
-      cluster_name,
-      allow_missing=True,
-      state_backend=state_backend,
-    )
+    state = load_state(project, zone, cluster_name, allow_missing=True)
     if state.stack is not None and state.node_pools:
       return _get_provisioned_names(state.node_pools)
   except (RuntimeError, FileNotFoundError) as e:

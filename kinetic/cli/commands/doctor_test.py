@@ -97,6 +97,8 @@ def _sdk_patches(
   cluster_status=2,  # 2=RUNNING
   node_pools=None,
   quotas=None,
+  state_bucket_exists=True,
+  pulumi_stack_files=None,
 ):
   """Return a dict of mock.patch context managers for all SDK clients.
 
@@ -177,7 +179,10 @@ def _sdk_patches(
     return_value=ar_client,
   )
 
-  # Storage — buckets
+  # Storage — buckets (jobs/builds via get_bucket; Pulumi state via
+  # client.bucket(...).exists() + client.list_blobs(...))
+  if pulumi_stack_files is None:
+    pulumi_stack_files = ["test-project-test-cluster.json"]
   storage_client = mock.MagicMock()
   if buckets_ok:
     storage_client.get_bucket.return_value = SimpleNamespace(name="bucket")
@@ -185,6 +190,13 @@ def _sdk_patches(
     storage_client.get_bucket.side_effect = google_exceptions.NotFound(
       "not found"
     )
+  state_bucket_mock = mock.MagicMock()
+  state_bucket_mock.exists.return_value = state_bucket_exists
+  storage_client.bucket.return_value = state_bucket_mock
+  storage_client.list_blobs.return_value = [
+    SimpleNamespace(name=f".pulumi/stacks/kinetic/{f}")
+    for f in pulumi_stack_files
+  ]
   patches["storage"] = mock.patch(
     f"{_MODULE}.storage.Client", return_value=storage_client
   )
@@ -397,14 +409,18 @@ def _enter_patches(
       stack: contextlib.ExitStack to register patches in.
       sdk_overrides: kwargs forwarded to _sdk_patches().
       run_overrides: kwargs forwarded to _make_run_side_effect().
-      pulumi_dir_exists: Whether the Pulumi state dir exists.
-      pulumi_files: Files returned by os.listdir for the stacks dir.
+      pulumi_dir_exists: Whether the GCS state bucket exists.
+      pulumi_files: Pulumi stack object filenames inside
+          ``.pulumi/stacks/kinetic/``. Defaults to one matching the test
+          project + cluster.
       which_fn: Override for shutil.which. Defaults to _all_tools_which.
   """
-  sdk = _sdk_patches(**(sdk_overrides or {}))
+  overrides = dict(sdk_overrides or {})
+  overrides.setdefault("state_bucket_exists", pulumi_dir_exists)
+  if pulumi_files is not None:
+    overrides["pulumi_stack_files"] = pulumi_files
+  sdk = _sdk_patches(**overrides)
   run_se = _make_run_side_effect(**(run_overrides or {}))
-  if pulumi_files is None:
-    pulumi_files = ["test-project-test-cluster.json"]
 
   stack.enter_context(
     mock.patch(
@@ -415,12 +431,7 @@ def _enter_patches(
     mock.patch(f"{_MODULE}.subprocess.run", side_effect=run_se)
   )
   stack.enter_context(_mock_adc_pass())
-  stack.enter_context(
-    mock.patch(f"{_MODULE}.os.path.isdir", return_value=pulumi_dir_exists)
-  )
-  stack.enter_context(
-    mock.patch(f"{_MODULE}.os.listdir", return_value=pulumi_files)
-  )
+
   mock_kube = stack.enter_context(mock.patch(f"{_MODULE}._check_kubeconfig"))
   for p in sdk.values():
     stack.enter_context(p)
@@ -651,7 +662,7 @@ class DoctorNoPulumiStateTest(absltest.TestCase):
     super().setUp()
     self.runner = CliRunner()
 
-  def test_no_state_dir(self):
+  def test_no_state_bucket(self):
     with contextlib.ExitStack() as stack:
       mock_kube = _enter_patches(stack, pulumi_dir_exists=False)
       mock_kube.return_value = CheckResult(
@@ -661,7 +672,7 @@ class DoctorNoPulumiStateTest(absltest.TestCase):
 
     self.assertEqual(result.exit_code, 0, result.output)
     self.assertIn("WARN", result.output)
-    self.assertIn("State directory not found", result.output)
+    self.assertIn("State bucket not found", result.output)
 
   def test_wrong_stack_shows_available(self):
     with contextlib.ExitStack() as stack:

@@ -4,7 +4,7 @@ import click
 
 from kinetic.cli.config import InfraConfig, NodePoolConfig
 from kinetic.cli.infra.state import apply_preview, apply_update, load_state
-from kinetic.cli.options import infra_options
+from kinetic.cli.options import common_options
 from kinetic.cli.output import (
   banner,
   console,
@@ -21,7 +21,7 @@ def pool():
 
 
 @pool.command("add")
-@infra_options
+@common_options
 @click.option(
   "--accelerator",
   required=True,
@@ -51,7 +51,6 @@ def pool_add(
   project,
   zone,
   cluster_name,
-  state_backend,
   accelerator,
   min_nodes,
   yes,
@@ -85,7 +84,7 @@ def pool_add(
     new_pool_name, accel_config, min_nodes=min_nodes, reservation=reservation
   )
 
-  state = load_state(project, zone, cluster_name, state_backend=state_backend)
+  state = load_state(project, zone, cluster_name)
   all_pools = state.node_pools + [new_pool]
 
   console.print(f"\nAdding pool [bold]{new_pool_name}[/bold] ({accelerator})")
@@ -100,7 +99,6 @@ def pool_add(
     cluster_name=state.cluster_name,
     node_pools=all_pools,
     force_destroy=state.force_destroy,
-    state_backend_url=state.state_backend_url,
   )
 
   if preview:
@@ -123,7 +121,7 @@ def pool_add(
 
 
 @pool.command("remove")
-@infra_options
+@common_options
 @click.argument("pool_name")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
 @click.option(
@@ -131,13 +129,11 @@ def pool_add(
   is_flag=True,
   help="Preview infrastructure changes without applying them",
 )
-def pool_remove(
-  project, zone, cluster_name, state_backend, pool_name, yes, preview
-):
+def pool_remove(project, zone, cluster_name, pool_name, yes, preview):
   """Remove an accelerator node pool from the cluster."""
   banner("kinetic Pool Remove")
 
-  state = load_state(project, zone, cluster_name, state_backend=state_backend)
+  state = load_state(project, zone, cluster_name)
 
   remaining = [p for p in state.node_pools if p.name != pool_name]
   if len(remaining) == len(state.node_pools):
@@ -159,7 +155,6 @@ def pool_remove(
     cluster_name=state.cluster_name,
     node_pools=remaining,
     force_destroy=state.force_destroy,
-    state_backend_url=state.state_backend_url,
   )
 
   if preview:
@@ -182,18 +177,12 @@ def pool_remove(
 
 
 @pool.command("list")
-@infra_options
-def pool_list(project, zone, cluster_name, state_backend):
+@common_options
+def pool_list(project, zone, cluster_name):
   """List accelerator node pools on the cluster."""
   banner("kinetic Node Pools")
 
-  state = load_state(
-    project,
-    zone,
-    cluster_name,
-    allow_missing=True,
-    state_backend=state_backend,
-  )
+  state = load_state(project, zone, cluster_name, allow_missing=True)
 
   if state.stack is None:
     warning("No Pulumi stack found.")

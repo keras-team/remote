@@ -2,7 +2,6 @@
 
 import click
 
-from kinetic.cli import settings
 from kinetic.cli.commands.accelerators import accelerators
 from kinetic.cli.commands.build_base import build_base
 from kinetic.cli.commands.config import config
@@ -24,7 +23,6 @@ _PROFILE_TO_PARAM = {
   "zone": "zone",
   "cluster": "cluster_name",
   "namespace": "namespace",
-  "state_backend": "state_backend",
 }
 
 
@@ -61,29 +59,12 @@ def cli(ctx, profile_name):
   if ctx.invoked_subcommand == "profile":
     return
 
-  # Persisted global settings act as a fallback layer beneath any active
-  # profile — primarily so users without a profile can still configure
-  # state_backend once via `kinetic config set` and have it apply on
-  # every subsequent command.
-  try:
-    global_state_backend = settings.get("state_backend")
-  except settings.SettingsError as e:
-    error(str(e))
-    raise click.exceptions.Exit(1) from e
-
-  if active is None and not global_state_backend:
+  if active is None:
     return
 
-  defaults = {}
-  if active is not None:
-    defaults = {
-      param: getattr(active, field)
-      for field, param in _PROFILE_TO_PARAM.items()
-    }
-
-  if global_state_backend and not defaults.get("state_backend"):
-    defaults["state_backend"] = global_state_backend
-
+  defaults = {
+    param: getattr(active, field) for field, param in _PROFILE_TO_PARAM.items()
+  }
   ctx.default_map = _spread_defaults(cli, defaults)
 
 

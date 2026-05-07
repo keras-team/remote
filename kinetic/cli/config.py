@@ -29,6 +29,3 @@ class InfraConfig:
   # `kinetic down` can delete them even when non-empty. Set to False to
   # require manually emptying the buckets before teardown.
   force_destroy: bool = True
-  # Fully-resolved Pulumi backend URL (e.g. file:///... or gs://bucket).
-  # None falls back to the local file backend at constants.STATE_DIR.
-  state_backend_url: str | None = None

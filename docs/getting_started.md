@@ -87,12 +87,12 @@ kinetic up --project=my-project --accelerator=t4 --yes
 > down all resources and stop incurring costs. See the
 > [CLI Reference](cli) for the full set of commands.
 
-**Sharing infrastructure with teammates?** By default Kinetic stores
-Pulumi state on the local machine, so teammates can't see or modify
-each other's stacks. Switch the team to a shared GCS state backend
-with `kinetic config set state-backend gcs` — see
-[Shared state for team collaboration](configuration.md#shared-state-for-team-collaboration)
-for the full flow.
+**Sharing infrastructure with teammates?** Kinetic stores Pulumi
+state in a per-project GCS bucket (`gs://{project}-kinetic-state`),
+so any teammate with `roles/storage.objectAdmin` on the bucket sees
+the same stack. The first `kinetic up` creates the bucket; the first
+admin needs `roles/storage.admin` on the project. See
+[Pulumi state](configuration.md#pulumi-state) for the full IAM story.
 
 ## Run your first job
 

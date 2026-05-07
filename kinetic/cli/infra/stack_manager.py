@@ -1,25 +1,22 @@
 """Pulumi Automation API wrapper for kinetic."""
 
-import os
-
 import click
 import pulumi.automation as auto
 
 from kinetic.cli.config import NodePoolConfig
-from kinetic.cli.constants import (
-  PULUMI_ROOT,
-  RESOURCE_NAME_PREFIX,
-  STATE_DIR,
+from kinetic.cli.constants import PULUMI_ROOT, RESOURCE_NAME_PREFIX
+from kinetic.cli.infra.state_backend import (
+  ensure_gcs_backend,
+  state_backend_url,
 )
-from kinetic.cli.infra.state_backend import ensure_gcs_backend
 from kinetic.core import accelerators
 
 
 def get_stack(program_fn, config):
-  """Create or select a Pulumi stack on the configured backend.
+  """Create or select a Pulumi stack on the GCS backend for ``config.project``.
 
-  The backend URL is read from ``config.state_backend_url``. If unset,
-  falls back to the local file backend at ``STATE_DIR``.
+  The backend bucket is created on first use (idempotent), so any
+  state-touching command can be the first one a team member runs.
 
   Args:
       program_fn: Pulumi inline program callable.
@@ -28,17 +25,7 @@ def get_stack(program_fn, config):
   Returns:
       A pulumi.automation.Stack instance.
   """
-  backend_url = config.state_backend_url or f"file://{STATE_DIR}"
-  if backend_url.startswith("file://"):
-    # Only create the local state directory when actually using a file
-    # backend — GCS backends should not leave stray local dirs behind.
-    os.makedirs(STATE_DIR, exist_ok=True)
-  elif backend_url.startswith("gs://"):
-    # Best-effort bucket create on every state-touching command so the
-    # first admin doesn't have to run `up` separately. Pin the storage
-    # client to the kinetic project so the bucket lands under that
-    # project's IAM/billing/ownership.
-    ensure_gcs_backend(backend_url, project=config.project)
+  ensure_gcs_backend(config.project)
 
   # Auto-install the Pulumi CLI if not already present.
   try:
@@ -54,7 +41,7 @@ def get_stack(program_fn, config):
   project_settings = auto.ProjectSettings(
     name=RESOURCE_NAME_PREFIX,
     runtime="python",
-    backend=auto.ProjectBackend(url=backend_url),
+    backend=auto.ProjectBackend(url=state_backend_url(config.project)),
   )
 
   stack = auto.create_or_select_stack(

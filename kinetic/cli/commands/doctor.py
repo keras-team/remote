@@ -35,8 +35,8 @@ from kinetic.cli.constants import (
   KINETIC_KSA_NAME,
   LWS_INSTALL_URL,
   REQUIRED_APIS,
-  STATE_DIR,
 )
+from kinetic.cli.infra.state_backend import state_backend_url
 from kinetic.cli.options import common_options
 from kinetic.cli.output import LiveOutputPanel, banner, console
 from kinetic.constants import (
@@ -639,29 +639,42 @@ def _check_gcp_resources(has_project_access, project, zone, cluster_name):
 
 
 def _check_pulumi_state(project, cluster_name):
-  """Check Pulumi state directory for existing stacks."""
-  stacks_dir = os.path.join(STATE_DIR, ".pulumi", "stacks", "kinetic")
-  if not os.path.isdir(stacks_dir):
+  """Check the GCS state bucket for the expected stack object."""
+  bucket_name = f"{project}-kinetic-state"
+  backend_url = state_backend_url(project)
+  try:
+    client = storage.Client(project=project)
+    bucket = client.bucket(bucket_name)
+    if not bucket.exists():
+      return CheckResult(
+        "Pulumi state",
+        CheckStatus.WARN,
+        f"State bucket not found: {backend_url}",
+        f"Run: kinetic up --project {project}",
+      )
+    blobs = list(
+      client.list_blobs(bucket_name, prefix=".pulumi/stacks/kinetic/")
+    )
+  except Exception as e:  # noqa: BLE001 — diagnostic must keep running
     return CheckResult(
       "Pulumi state",
       CheckStatus.WARN,
-      f"State directory not found: {STATE_DIR}",
-      f"Run: kinetic up --project {project}",
+      f"Could not read state bucket {backend_url}: {e}",
+      "Check ADC and 'roles/storage.objectAdmin' on the bucket.",
     )
 
-  expected = f"{project}-{cluster_name}.json"
-  try:
-    files = [file for file in os.listdir(stacks_dir) if file.endswith(".json")]
-  except OSError:
-    files = []
-
-  if expected in files:
-    stack_name = f"{project}-{cluster_name}"
+  stack_files = [b.name for b in blobs if b.name.endswith(".json")]
+  expected = f".pulumi/stacks/kinetic/{project}-{cluster_name}.json"
+  if expected in stack_files:
     return CheckResult(
-      "Pulumi state", CheckStatus.PASS, f"Stack found: {stack_name}"
+      "Pulumi state",
+      CheckStatus.PASS,
+      f"Stack found: {project}-{cluster_name}",
     )
 
-  available = [file.removesuffix(".json") for file in files]
+  available = [
+    name.split("/")[-1].removesuffix(".json") for name in stack_files
+  ]
   if available:
     stacks_str = ", ".join(available)
     return CheckResult(
@@ -674,7 +687,7 @@ def _check_pulumi_state(project, cluster_name):
   return CheckResult(
     "Pulumi state",
     CheckStatus.WARN,
-    "No stacks found",
+    f"No stacks found in {backend_url}",
     f"Run: kinetic up --project {project}",
   )
 

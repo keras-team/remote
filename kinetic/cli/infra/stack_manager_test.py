@@ -1,4 +1,4 @@
-"""Tests for kinetic.cli.infra.stack_manager — backend URL routing."""
+"""Tests for kinetic.cli.infra.stack_manager."""
 
 from unittest import mock
 
@@ -8,14 +8,11 @@ from kinetic.cli.config import InfraConfig
 from kinetic.cli.infra import stack_manager
 
 
-class GetStackBackendRoutingTest(absltest.TestCase):
+class GetStackTest(absltest.TestCase):
   def setUp(self):
     super().setUp()
-    # Stub out everything Pulumi-related so the test only exercises the
-    # backend URL branching logic.
-    self.mock_makedirs = self.enterContext(
-      mock.patch.object(stack_manager.os, "makedirs")
-    )
+    # Stub out the Pulumi automation API so the test only exercises the
+    # backend wiring.
     self.mock_pulumi_cmd = self.enterContext(
       mock.patch.object(stack_manager.auto, "PulumiCommand")
     )
@@ -35,50 +32,22 @@ class GetStackBackendRoutingTest(absltest.TestCase):
       mock.patch.object(stack_manager, "ensure_gcs_backend")
     )
 
-  def test_local_default_does_not_call_ensure_gcs(self):
-    config = InfraConfig(project="p", zone="z", cluster_name="c")
+  def test_uses_per_project_gcs_bucket(self):
+    config = InfraConfig(project="kinetic-proj", zone="z", cluster_name="c")
 
     stack_manager.get_stack(lambda: None, config)
 
-    self.mock_ensure_gcs.assert_not_called()
-    self.mock_makedirs.assert_called_once()
-    backend_url_kwarg = self.mock_project_backend.call_args.kwargs["url"]
-    self.assertTrue(backend_url_kwarg.startswith("file://"))
-
-  def test_explicit_file_url(self):
-    config = InfraConfig(
-      project="p",
-      zone="z",
-      cluster_name="c",
-      state_backend_url="file:///tmp/custom",
-    )
-
-    stack_manager.get_stack(lambda: None, config)
-
-    self.mock_ensure_gcs.assert_not_called()
     self.assertEqual(
-      self.mock_project_backend.call_args.kwargs["url"], "file:///tmp/custom"
+      self.mock_project_backend.call_args.kwargs["url"],
+      "gs://kinetic-proj-kinetic-state",
     )
 
-  def test_gcs_url_calls_ensure_gcs_with_project(self):
-    config = InfraConfig(
-      project="kinetic-proj",
-      zone="z",
-      cluster_name="c",
-      state_backend_url="gs://team-state",
-    )
+  def test_ensures_bucket_with_project(self):
+    config = InfraConfig(project="kinetic-proj", zone="z", cluster_name="c")
 
     stack_manager.get_stack(lambda: None, config)
 
-    # Bucket is created under the kinetic project — not whatever ADC
-    # happens to default to.
-    self.mock_ensure_gcs.assert_called_once_with(
-      "gs://team-state", project="kinetic-proj"
-    )
-    self.mock_makedirs.assert_not_called()
-    self.assertEqual(
-      self.mock_project_backend.call_args.kwargs["url"], "gs://team-state"
-    )
+    self.mock_ensure_gcs.assert_called_once_with("kinetic-proj")
 
 
 if __name__ == "__main__":
