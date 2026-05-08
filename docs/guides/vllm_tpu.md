@@ -37,48 +37,8 @@ You can use `capture_env_vars` in the `@kinetic.run` decorator to pass these fro
 
 ## Example
 
-```python
-import os
-import kinetic
-
-@kinetic.run(
-    accelerator="tpu-v5litepod",
-    # Capture required environment variables
-    capture_env_vars=["HF_TOKEN", "JAX_PLATFORMS"],
-)
-def run_vllm_inference():
-    # Imports must happen inside the decorated function
-    from vllm import LLM, SamplingParams
-
-    # Configure environment for vLLM on TPU
-    os.environ["VLLM_TARGET_DEVICE"] = "tpu"
-    os.environ["VLLM_USE_V1"] = "0"
-    
-    # Optional: ensure JAX sees CPU if needed by vLLM internals
-    os.environ["JAX_PLATFORMS"] = "tpu,cpu"
-
-    model_id = "meta-llama/Llama-3.1-8B"
-
-    print(f"Initializing vLLM with model: {model_id}")
-    # Use tensor_parallel_size matching your TPU chip count (e.g., 4 for v5litepod-4)
-    llm = LLM(model=model_id, tensor_parallel_size=4, max_model_len=2048)
-
-    sampling_params = SamplingParams(temperature=0.8, top_p=0.95)
-
-    prompts = [
-        "Hello, my name is",
-        "The capital of France is",
-    ]
-
-    print("Generating completions...")
-    outputs = llm.generate(prompts, sampling_params)
-
-    for output in outputs:
-        print(f"\nPrompt: {output.prompt!r}")
-        print(f"Generated text: {output.outputs[0].text!r}")
-
-if __name__ == "__main__":
-    run_vllm_inference()
+```{literalinclude} ../../examples/vllm_demo.py
+:language: python
 ```
 
 ## Running the Example
