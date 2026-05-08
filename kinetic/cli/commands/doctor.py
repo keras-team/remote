@@ -640,8 +640,8 @@ def _check_gcp_resources(has_project_access, project, zone, cluster_name):
 
 def _check_pulumi_state(project, cluster_name):
   """Check the GCS state bucket for the expected stack object."""
-  bucket_name = f"{project}-kinetic-state"
   backend_url = state_backend_url(project)
+  bucket_name = backend_url.removeprefix("gs://")
   try:
     client = storage.Client(project=project)
     bucket = client.bucket(bucket_name)

@@ -11,17 +11,17 @@ need to re-export `KINETIC_*` env vars each time you switch.
 
 ## Environment variables
 
-Variable                     | Used by                   | Default                          | Description
----------------------------- | ------------------------- | -------------------------------- | --------------------------------------------------------------------------------
-`KINETIC_PROJECT`            | CLI + decorators          | _(required)_                     | GCP project ID. Falls back to `GOOGLE_CLOUD_PROJECT` if unset.
-`KINETIC_ZONE`               | CLI + decorators          | `us-central1-a`                  | GCP zone for jobs and clusters.
-`KINETIC_CLUSTER`            | CLI + decorators          | `kinetic-cluster`                | GKE cluster name.
-`KINETIC_NAMESPACE`          | CLI + decorators          | `default`                        | Kubernetes namespace.
-`KINETIC_BASE_IMAGE_REPO`    | Decorator (prebuilt mode) | `kinetic`                        | Repo for prebuilt base images. See [Execution Modes](guides/execution_modes.md).
-`KINETIC_OUTPUT_DIR`         | CLI + remote pod          | `gs://{bucket}/outputs/{job_id}` | Per-job durable artifact prefix. See [Checkpointing](guides/checkpointing.md).
-`KINETIC_RESERVATION`        | `kinetic pool add`        | _(unset)_                        | GCP capacity reservation to consume. Pool-level config, not a per-job setting.
-`KINETIC_LOG_LEVEL`          | Library                   | `INFO`                           | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `FATAL`.
-`KINETIC_DEBUG_WAIT_TIMEOUT` | Library + remote pod      | `600`                            | Seconds the remote pod waits for a debugger client to attach when `debug=True`. Applies on both sides (local `debug_attach()` and the pod's debugpy server).
+| Variable                     | Used by                   | Default                          | Description                                                                                                                                                  |
+| ---------------------------- | ------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `KINETIC_PROJECT`            | CLI + decorators          | _(required)_                     | GCP project ID. Falls back to `GOOGLE_CLOUD_PROJECT` if unset.                                                                                               |
+| `KINETIC_ZONE`               | CLI + decorators          | `us-central1-a`                  | GCP zone for jobs and clusters.                                                                                                                              |
+| `KINETIC_CLUSTER`            | CLI + decorators          | `kinetic-cluster`                | GKE cluster name.                                                                                                                                            |
+| `KINETIC_NAMESPACE`          | CLI + decorators          | `default`                        | Kubernetes namespace.                                                                                                                                        |
+| `KINETIC_BASE_IMAGE_REPO`    | Decorator (prebuilt mode) | `kinetic`                        | Repo for prebuilt base images. See [Execution Modes](guides/execution_modes.md).                                                                             |
+| `KINETIC_OUTPUT_DIR`         | CLI + remote pod          | `gs://{bucket}/outputs/{job_id}` | Per-job durable artifact prefix. See [Checkpointing](guides/checkpointing.md).                                                                               |
+| `KINETIC_RESERVATION`        | `kinetic pool add`        | _(unset)_                        | GCP capacity reservation to consume. Pool-level config, not a per-job setting.                                                                               |
+| `KINETIC_LOG_LEVEL`          | Library                   | `INFO`                           | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `FATAL`.                                                                                                                |
+| `KINETIC_DEBUG_WAIT_TIMEOUT` | Library + remote pod      | `600`                            | Seconds the remote pod waits for a debugger client to attach when `debug=True`. Applies on both sides (local `debug_attach()` and the pod's debugpy server). |
 
 Set them in your shell profile (`~/.bashrc`, `~/.zshrc`) so they
 persist across sessions:
@@ -36,15 +36,15 @@ export KINETIC_ZONE="us-central1-a"
 When the same setting can come from multiple sources, the highest one
 wins:
 
-Setting         | Decorator arg      | CLI flag                         | Env var                                         | Active [profile](guides/profiles.md) | Built-in default
---------------- | ------------------ | -------------------------------- | ----------------------------------------------- | ------------------------------------ | --------------------------------
-Project         | `project=`         | `--project`                      | `KINETIC_PROJECT` (then `GOOGLE_CLOUD_PROJECT`) | `project`                            | _(required)_
-Zone            | `zone=`            | `--zone`                         | `KINETIC_ZONE`                                  | `zone`                               | `us-central1-a`
-Cluster         | `cluster=`         | `--cluster`                      | `KINETIC_CLUSTER`                               | `cluster`                            | `kinetic-cluster`
-Namespace       | `namespace=`       | `--namespace`                    | `KINETIC_NAMESPACE`                             | `namespace`                          | `default`
-Output dir      | `output_dir=`      | `--output-dir`                   | `KINETIC_OUTPUT_DIR`                            | _(n/a)_                              | `gs://{bucket}/outputs/{job_id}`
-Base image repo | `base_image_repo=` | `kinetic build-base --repo`      | `KINETIC_BASE_IMAGE_REPO`                       | _(n/a)_                              | `kinetic`
-Reservation\*   | _(n/a)_            | `kinetic pool add --reservation` | `KINETIC_RESERVATION`                           | _(n/a)_                              | _(unset)_
+| Setting         | Decorator arg      | CLI flag                         | Env var                                         | Active [profile](guides/profiles.md) | Built-in default                 |
+| --------------- | ------------------ | -------------------------------- | ----------------------------------------------- | ------------------------------------ | -------------------------------- |
+| Project         | `project=`         | `--project`                      | `KINETIC_PROJECT` (then `GOOGLE_CLOUD_PROJECT`) | `project`                            | _(required)_                     |
+| Zone            | `zone=`            | `--zone`                         | `KINETIC_ZONE`                                  | `zone`                               | `us-central1-a`                  |
+| Cluster         | `cluster=`         | `--cluster`                      | `KINETIC_CLUSTER`                               | `cluster`                            | `kinetic-cluster`                |
+| Namespace       | `namespace=`       | `--namespace`                    | `KINETIC_NAMESPACE`                             | `namespace`                          | `default`                        |
+| Output dir      | `output_dir=`      | `--output-dir`                   | `KINETIC_OUTPUT_DIR`                            | _(n/a)_                              | `gs://{bucket}/outputs/{job_id}` |
+| Base image repo | `base_image_repo=` | `kinetic build-base --repo`      | `KINETIC_BASE_IMAGE_REPO`                       | _(n/a)_                              | `kinetic`                        |
+| Reservation\*   | _(n/a)_            | `kinetic pool add --reservation` | `KINETIC_RESERVATION`                           | _(n/a)_                              | _(unset)_                        |
 
 \* Reservation is a node-pool-level setting, not a per-job one. You bind
 a reservation to a pool when you create the pool with `kinetic pool add`,
@@ -86,11 +86,6 @@ enabled** and **uniform bucket-level access**, no public ACL.
 Multiple clusters in one project share the bucket but get separate
 stacks (named `{project}-{cluster}`), so a team running against the
 same GCP project automatically converges on one authoritative state.
-
-The bucket name and location are not configurable — there are no
-flags, env vars, or profile fields for the state backend. If you need
-the bucket to live somewhere else, fork the project. There is no
-local-file backend.
 
 ### IAM
 

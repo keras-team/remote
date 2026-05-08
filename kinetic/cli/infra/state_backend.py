@@ -32,7 +32,7 @@ def ensure_gcs_backend(project: str, *, location: str = "US") -> None:
   can still read/write state at the object level. Pulumi's first state
   read will surface a clean object-level error if access is wrong.
   """
-  bucket_name = f"{project}-kinetic-state"
+  bucket_name = state_backend_url(project).removeprefix("gs://")
   client = storage.Client(project=project)
   bucket = client.bucket(bucket_name)
   bucket.versioning_enabled = True
