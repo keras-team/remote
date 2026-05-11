@@ -486,12 +486,45 @@ def resolve_data_refs(
   return resolved_args, resolved_kwargs
 
 
+def _download_hf_data(uri: str, target_dir: str) -> None:
+  """Download data from Hugging Face Datasets to a local directory."""
+  try:
+    import datasets
+  except ImportError as e:
+    raise RuntimeError(
+      "The 'datasets' package is required to load 'hf://' URIs. "
+      "Please install it in your Kinetic base image or requirements."
+    ) from e
+
+  import urllib.parse
+
+  logging.info("Downloading Hugging Face dataset from %s", uri)
+
+  parsed = urllib.parse.urlparse(uri)
+  repo_id = parsed.netloc + parsed.path
+  query = urllib.parse.parse_qs(parsed.query)
+  split = query.get("split", [None])[0]
+  config_name = query.get("config_name", [None])[0]
+
+  ds = datasets.load_dataset(
+    repo_id,
+    name=config_name,
+    split=split,
+    cache_dir=os.path.join(target_dir, "_hf_cache"),
+  )
+  ds.save_to_disk(target_dir)
+
+
 def _download_data(
   ref: dict, target_dir: str, storage_client: storage.Client
 ) -> None:
-  """Download data from a GCS URI to a local directory."""
+  """Download data from a GCS URI (or HF URI) to a local directory."""
   os.makedirs(target_dir, exist_ok=True)
   gcs_uri = ref["gcs_uri"]
+
+  if gcs_uri.startswith("hf://"):
+    _download_hf_data(gcs_uri, target_dir)
+    return
 
   parts = gcs_uri.replace("gs://", "").split("/", 1)
   bucket_name = parts[0]

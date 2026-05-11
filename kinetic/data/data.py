@@ -75,17 +75,20 @@ class Data:
       # Local file
       Data("./config.json")
 
-      # GCS directory — trailing slash required
-      Data("gs://my-bucket/datasets/imagenet/")
+    # GCS directory — trailing slash required
+    Data("gs://my-bucket/datasets/imagenet/")
 
-      # GCS single object
-      Data("gs://my-bucket/datasets/weights.h5")
+    # GCS single object
+    Data("gs://my-bucket/datasets/weights.h5")
 
-      # FUSE-mounted directory (lazy loading)
-      Data("./large_dataset/", fuse=True)
+    # FUSE-mounted directory (lazy loading)
+    Data("./large_dataset/", fuse=True)
 
-      # FUSE-mounted GCS data
-      Data("gs://my-bucket/datasets/imagenet/", fuse=True)
+    # FUSE-mounted GCS data
+    Data("gs://my-bucket/datasets/imagenet/", fuse=True)
+
+    # Hugging Face Dataset (downloads on pod)
+    Data("hf://imdb?split=train")
   """
 
   def __init__(self, path: str, fuse: bool = False):
@@ -93,9 +96,16 @@ class Data:
       raise ValueError("Data path must not be empty")
     self._raw_path = path
     self._fuse = fuse
-    if self.is_gcs:
+
+    if self.is_hf and self._fuse:
+      raise ValueError(
+        "fuse=True is not supported for Hugging Face datasets (hf:// URIs)"
+      )
+
+    if self.is_gcs or self.is_hf:
       self._resolved_path = path
-      _warn_if_missing_trailing_slash(path)
+      if self.is_gcs:
+        _warn_if_missing_trailing_slash(path)
     else:
       self._resolved_path = os.path.abspath(os.path.expanduser(path))
       if not os.path.exists(self._resolved_path):
@@ -117,9 +127,15 @@ class Data:
     return self._raw_path.startswith("gs://")
 
   @property
+  def is_hf(self) -> bool:
+    return self._raw_path.startswith("hf://")
+
+  @property
   def is_dir(self) -> bool:
     if self.is_gcs:
       return self._raw_path.endswith("/")
+    if self.is_hf:
+      return True
     return os.path.isdir(self._resolved_path)
 
   def content_hash(self) -> str:
@@ -137,8 +153,8 @@ class Data:
     files are read and their resolved contents are hashed, so the
     hash reflects the actual data visible at runtime.
     """
-    if self.is_gcs:
-      raise ValueError("Cannot compute content hash for GCS URI")
+    if self.is_gcs or self.is_hf:
+      raise ValueError("Cannot compute content hash for cloud URI")
     if os.path.isdir(self._resolved_path):
       return self._content_hash_dir()
     return self._content_hash_file()

@@ -284,7 +284,7 @@ def upload_data(
 ) -> str:
   """Upload a Data object to GCS with content-based caching.
 
-  For GCS Data: returns the original URI (no upload).
+  For GCS/HF Data: returns the original URI (no upload).
   For local Data: computes content hash, uploads on cache miss.
 
   Args:
@@ -294,10 +294,13 @@ def upload_data(
       namespace_prefix: Namespace GCS prefix. Defaults to "default".
 
   Returns:
-      GCS URI where the data is available.
+      GCS URI or HF URI where the data is available.
   """
-  if data.is_gcs:
-    logging.info("Data already on GCS: %s", data.path)
+  if data.is_gcs or data.is_hf:
+    if data.is_gcs:
+      logging.info("Data already on GCS: %s", data.path)
+    else:
+      logging.info("Hugging Face dataset URI detected: %s", data.path)
     return data.path
 
   content_hash = data.content_hash()
