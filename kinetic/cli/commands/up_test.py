@@ -294,7 +294,7 @@ class UpCommandProfileSaveTest(absltest.TestCase):
     self.profiles_path = _isolate_profiles(self)
 
   def test_name_flag_overrides_default(self):
-    args = [*_CLI_ARGS, "--name", "my-profile"]
+    args = [*_CLI_ARGS, "--profile-name", "my-profile"]
     result = self.runner.invoke(up, args)
     self.assertEqual(result.exit_code, 0, result.output)
     data = json.loads(self.profiles_path.read_text())

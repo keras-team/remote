@@ -34,7 +34,7 @@ from kinetic.cli.prompts import resolve_project
   help="GCP project ID [env: KINETIC_PROJECT]",
 )
 @click.option(
-  "--name",
+  "--profile-name",
   "profile_name",
   default=None,
   help="Profile name to save (default: cluster name).",

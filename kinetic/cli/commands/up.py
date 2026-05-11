@@ -39,7 +39,7 @@ from kinetic.core.accelerators import generate_pool_name
   help="Minimum node count for accelerator node pools (default: 0, scale-to-zero)",
 )
 @click.option(
-  "--name",
+  "--profile-name",
   "profile_name",
   default=None,
   help="Profile name to save (default: cluster name).",

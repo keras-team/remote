@@ -198,9 +198,7 @@ def list_clusters(project):
     bucket = client.bucket(bucket_name)
     if not bucket.exists():
       return []
-    blobs = client.list_blobs(
-      bucket_name, prefix=".pulumi/stacks/kinetic/"
-    )
+    blobs = client.list_blobs(bucket_name, prefix=".pulumi/stacks/kinetic/")
     names = [b.name for b in blobs]
   except Exception:  # noqa: BLE001 — discovery is best-effort
     return []

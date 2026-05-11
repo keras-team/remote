@@ -40,9 +40,7 @@ def _patch_resolve_project(testcase, value="test-proj"):
 
 def _patch_list_clusters(testcase, clusters):
   testcase.enterContext(
-    mock.patch(
-      "kinetic.cli.commands.init.list_clusters", return_value=clusters
-    )
+    mock.patch("kinetic.cli.commands.init.list_clusters", return_value=clusters)
   )
 
 
@@ -102,7 +100,7 @@ class InitCreatePathTest(absltest.TestCase):
     self.up_mock.assert_called_once()
 
   def test_name_flag_forwarded_to_up(self):
-    result = self.runner.invoke(init, ["--name", "my-prof"])
+    result = self.runner.invoke(init, ["--profile-name", "my-prof"])
     self.assertEqual(result.exit_code, 0, msg=result.output)
     _, kwargs = self.up_mock.call_args
     self.assertEqual(kwargs.get("profile_name"), "my-prof")
@@ -148,7 +146,7 @@ class InitJoinPathTest(absltest.TestCase):
 
   def test_name_flag_overrides_cluster_name_in_join(self):
     _patch_list_clusters(self, ["dev-tpu"])
-    result = self.runner.invoke(init, ["--name", "mine"], input="\n")
+    result = self.runner.invoke(init, ["--profile-name", "mine"], input="\n")
     self.assertEqual(result.exit_code, 0, msg=result.output)
     data = json.loads(self.profiles_path.read_text())
     self.assertIn("mine", data["profiles"])
