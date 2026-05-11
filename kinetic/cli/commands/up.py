@@ -17,7 +17,7 @@ from kinetic.cli.output import (
   warning,
 )
 from kinetic.cli.prerequisites_check import check_all
-from kinetic.cli.profiles import Profile, upsert_profile
+from kinetic.cli.profiles import Profile, set_current, upsert_profile
 from kinetic.cli.prompts import prompt_accelerator, resolve_project
 from kinetic.core import accelerators
 from kinetic.core.accelerators import generate_pool_name
@@ -46,9 +46,11 @@ from kinetic.core.accelerators import generate_pool_name
 )
 @click.option(
   "--namespace",
+  envvar="KINETIC_NAMESPACE",
   default="default",
   show_default=True,
-  help="Kubernetes namespace to record in the saved profile.",
+  help="Kubernetes namespace to record in the saved profile "
+  "[env: KINETIC_NAMESPACE]",
 )
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
 @click.option(
@@ -164,6 +166,10 @@ def up(
       namespace=namespace,
     )
   )
+  # upsert_profile only auto-activates when the store is empty. After `up`
+  # the just-provisioned cluster is unambiguously the one the user is
+  # working with, so force-activate it regardless of prior 'current'.
+  set_current(saved_name)
 
   # Final summary
   console.print()

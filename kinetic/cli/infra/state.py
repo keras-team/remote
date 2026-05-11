@@ -193,11 +193,13 @@ def list_clusters(project):
   machine.
   """
   bucket_name = state_backend_url(project).removeprefix("gs://")
+  # Skip a bucket.exists() precheck: it requires storage.buckets.get on
+  # the bucket, which collaborators with only roles/storage.objectAdmin
+  # (the grant pattern in ensure_gcs_backend) do not have. list_blobs
+  # succeeds at object level and raises NotFound when the bucket is
+  # genuinely missing — both cases collapse to the same empty result.
   try:
     client = storage.Client(project=project)
-    bucket = client.bucket(bucket_name)
-    if not bucket.exists():
-      return []
     blobs = client.list_blobs(bucket_name, prefix=".pulumi/stacks/kinetic/")
     names = [b.name for b in blobs]
   except Exception:  # noqa: BLE001 — discovery is best-effort
@@ -242,6 +244,14 @@ def apply_destroy(config):
     success(
       f"Infrastructure destroy complete. {result.summary.resource_changes}"
     )
+    # Remove the now-empty stack from the backend so list_clusters() does
+    # not keep offering this cluster as a Join target in `kinetic init`.
+    # Best-effort: destroy already succeeded, so a removal failure is not
+    # fatal — just leaves a harmless stub the user can clean up later.
+    try:
+      stack.workspace.remove_stack(stack.name)
+    except auto.errors.CommandError as e:
+      warning(f"Stack metadata removal failed (state may linger): {e}")
     return True
   warning("Infrastructure destroy encountered an issue.")
   return False

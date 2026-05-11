@@ -12,9 +12,10 @@ import click
 from rich.table import Table
 
 from kinetic.cli.commands.up import up
-from kinetic.cli.constants import DEFAULT_ZONE
 from kinetic.cli.infra.post_deploy import configure_kubectl
+from kinetic.cli.infra.stack_manager import get_current_zone
 from kinetic.cli.infra.state import list_clusters, load_state
+from kinetic.cli.options import common_options
 from kinetic.cli.output import banner, console, success, warning
 from kinetic.cli.prerequisites_check import (
   check_gcloud,
@@ -22,26 +23,29 @@ from kinetic.cli.prerequisites_check import (
   check_gke_auth_plugin,
   check_kubectl,
 )
-from kinetic.cli.profiles import Profile, upsert_profile
+from kinetic.cli.profiles import Profile, set_current, upsert_profile
 from kinetic.cli.prompts import resolve_project
 
 
 @click.command()
-@click.option(
-  "--project",
-  envvar="KINETIC_PROJECT",
-  default=None,
-  help="GCP project ID [env: KINETIC_PROJECT]",
-)
+@common_options
 @click.option(
   "--profile-name",
   "profile_name",
   default=None,
   help="Profile name to save (default: cluster name).",
 )
+@click.option(
+  "--namespace",
+  envvar="KINETIC_NAMESPACE",
+  default="default",
+  show_default=True,
+  help="Kubernetes namespace to record in the saved profile "
+  "[env: KINETIC_NAMESPACE]",
+)
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompts.")
 @click.pass_context
-def init(ctx, project, profile_name, yes):
+def init(ctx, project, zone, cluster_name, profile_name, namespace, yes):
   """Onboard: detect environment, pick a cluster, save an active profile."""
   banner("kinetic init")
 
@@ -60,21 +64,37 @@ def init(ctx, project, profile_name, yes):
 
   # Phase 3: Pick + execute path.
   if _choose_join_path(report):
-    cluster_name, zone = _join_flow(project, report["local_clusters"])
-    saved = profile_name or cluster_name
+    chosen_cluster, chosen_zone = _join_flow(
+      project, report["local_clusters"], cluster_name
+    )
+    saved = profile_name or chosen_cluster
     upsert_profile(
       Profile(
         name=saved,
         project=project,
-        zone=zone,
-        cluster=cluster_name,
-        namespace="default",
+        zone=chosen_zone,
+        cluster=chosen_cluster,
+        namespace=namespace,
       )
     )
+    # upsert_profile only sets 'current' when the store is empty; force-
+    # activate so subsequent commands actually resolve to the new profile.
+    set_current(saved)
     _print_join_ready_screen(saved)
   else:
     # `up` handles provisioning AND profile save AND its own ready screen.
-    ctx.invoke(up, project=project, profile_name=profile_name, yes=yes)
+    # Forward all the user's resolved env/profile/flag values explicitly —
+    # ctx.invoke calls the callback directly and bypasses Click's envvar
+    # resolution, so anything not passed here is lost.
+    ctx.invoke(
+      up,
+      project=project,
+      zone=zone,
+      cluster_name=cluster_name,
+      profile_name=profile_name,
+      namespace=namespace,
+      yes=yes,
+    )
 
 
 def _detect(project_hint):
@@ -154,12 +174,18 @@ def _choose_join_path(report):
   return choice == "join"
 
 
-def _join_flow(project, clusters):
-  """Interactively select a local cluster and configure kubectl for it.
+def _join_flow(project, clusters, cluster_override):
+  """Select a Kinetic cluster and configure kubectl for it.
 
-  Returns (cluster_name, zone).
+  When ``cluster_override`` is provided and matches one of ``clusters``,
+  the picker is skipped. Returns ``(cluster_name, zone)``.
   """
-  if len(clusters) == 1:
+  if cluster_override and cluster_override in clusters:
+    cluster_name = cluster_override
+    console.print(
+      f"Using cluster [bold]{cluster_name}[/bold] (from --cluster)."
+    )
+  elif len(clusters) == 1:
     cluster_name = clusters[0]
     console.print(f"Joining cluster [bold]{cluster_name}[/bold].")
   else:
@@ -172,8 +198,14 @@ def _join_flow(project, clusters):
       default=clusters[0],
     )
 
-  # Infer zone from the matching Pulumi stack outputs; fall back to default.
-  zone = _infer_zone(project, cluster_name) or DEFAULT_ZONE
+  zone = _infer_zone(project, cluster_name)
+  if zone is None:
+    raise click.ClickException(
+      f"Could not determine zone for cluster '{cluster_name}'. "
+      "The Pulumi stack may be empty or its 'zone' output is missing. "
+      "Run 'kinetic profile create' manually with --zone, or re-provision "
+      "with 'kinetic up'."
+    )
 
   try:
     configure_kubectl(cluster_name, zone, project)
@@ -188,7 +220,7 @@ def _join_flow(project, clusters):
 
 
 def _infer_zone(project, cluster_name):
-  """Best-effort zone lookup from the cluster's Pulumi stack. None on failure."""
+  """Read the cluster's zone from its Pulumi stack outputs. None on failure."""
   try:
     state = load_state(
       project,
@@ -199,7 +231,9 @@ def _infer_zone(project, cluster_name):
     )
   except click.ClickException:
     return None
-  return state.zone
+  if state.stack is None:
+    return None
+  return get_current_zone(state.stack)
 
 
 def _print_join_ready_screen(profile_name):

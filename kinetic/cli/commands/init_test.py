@@ -51,6 +51,13 @@ def _patch_kubectl(testcase):
 
 
 def _patch_load_state_zone(testcase, zone):
+  """Make load_state() return a StackState whose stack outputs include `zone`.
+
+  init's _infer_zone reads the zone from stack outputs (not from
+  state.zone), so the mocked stack must expose `outputs()["zone"].value`.
+  """
+  stack = mock.MagicMock()
+  stack.outputs.return_value = {"zone": mock.MagicMock(value=zone)}
   testcase.enterContext(
     mock.patch(
       "kinetic.cli.commands.init.load_state",
@@ -58,6 +65,7 @@ def _patch_load_state_zone(testcase, zone):
         project="test-proj",
         zone=zone,
         cluster_name="c",
+        stack=stack,
       ),
     )
   )
@@ -168,6 +176,144 @@ class InitPrereqFailureTest(absltest.TestCase):
     self.assertIn("kinetic doctor", result.output)
     # No invocation of `up` when prereqs fail.
     self.up_mock.assert_not_called()
+
+
+class InitCreatePathForwardingTest(absltest.TestCase):
+  """Regression for Codex P1: ctx.invoke(up, ...) bypasses Click's envvar
+  resolution, so init must forward project/zone/cluster/namespace explicitly.
+  """
+
+  def setUp(self):
+    super().setUp()
+    self.runner = CliRunner()
+    _patch_prereqs(self)
+    _patch_resolve_project(self)
+    _patch_list_clusters(self, [])
+    self.up_mock = _patch_up(self)
+    self.profiles_path = _isolate_profiles(self)
+
+  def test_env_vars_flow_to_up(self):
+    env = {
+      "KINETIC_PROFILES_FILE": str(self.profiles_path),
+      "KINETIC_ZONE": "us-east1-b",
+      "KINETIC_CLUSTER": "team-x",
+      "KINETIC_NAMESPACE": "team-ns",
+    }
+    with mock.patch.dict("os.environ", env, clear=True):
+      result = self.runner.invoke(init, [])
+    self.assertEqual(result.exit_code, 0, msg=result.output)
+    self.up_mock.assert_called_once()
+    _, kwargs = self.up_mock.call_args
+    self.assertEqual(kwargs.get("zone"), "us-east1-b")
+    self.assertEqual(kwargs.get("cluster_name"), "team-x")
+    self.assertEqual(kwargs.get("namespace"), "team-ns")
+
+  def test_flags_flow_to_up(self):
+    result = self.runner.invoke(
+      init,
+      [
+        "--zone",
+        "europe-west4-a",
+        "--cluster",
+        "explicit",
+        "--namespace",
+        "flag-ns",
+      ],
+    )
+    self.assertEqual(result.exit_code, 0, msg=result.output)
+    _, kwargs = self.up_mock.call_args
+    self.assertEqual(kwargs.get("zone"), "europe-west4-a")
+    self.assertEqual(kwargs.get("cluster_name"), "explicit")
+    self.assertEqual(kwargs.get("namespace"), "flag-ns")
+
+
+class InitJoinZoneInferenceTest(absltest.TestCase):
+  """Regression for Codex P1: _infer_zone must read the actual zone from
+  stack outputs, not echo back the default we passed in.
+  """
+
+  def setUp(self):
+    super().setUp()
+    self.runner = CliRunner()
+    _patch_prereqs(self)
+    _patch_resolve_project(self)
+    self.kubectl_mock = mock.MagicMock()
+    self.enterContext(
+      mock.patch(
+        "kinetic.cli.commands.init.configure_kubectl", self.kubectl_mock
+      )
+    )
+    _patch_up(self)
+    self.profiles_path = _isolate_profiles(self)
+
+  def test_zone_comes_from_stack_outputs(self):
+    _patch_list_clusters(self, ["dev-tpu"])
+    _patch_load_state_zone(self, zone="asia-northeast1-a")
+    result = self.runner.invoke(init, [], input="\n")
+    self.assertEqual(result.exit_code, 0, msg=result.output)
+    # kubectl must be configured against the real zone, not DEFAULT_ZONE.
+    self.kubectl_mock.assert_called_once_with(
+      "dev-tpu", "asia-northeast1-a", "test-proj"
+    )
+    data = json.loads(self.profiles_path.read_text())
+    self.assertEqual(data["profiles"]["dev-tpu"]["zone"], "asia-northeast1-a")
+
+  def test_missing_zone_output_raises_actionable_error(self):
+    _patch_list_clusters(self, ["dev-tpu"])
+    stack = mock.MagicMock()
+    stack.outputs.return_value = {}  # 'zone' missing
+    self.enterContext(
+      mock.patch(
+        "kinetic.cli.commands.init.load_state",
+        return_value=StackState(
+          project="test-proj", zone="placeholder", cluster_name="c", stack=stack
+        ),
+      )
+    )
+    result = self.runner.invoke(init, [], input="\n")
+    self.assertNotEqual(result.exit_code, 0)
+    self.assertIn("zone", result.output.lower())
+
+
+class InitActivatesNewlySavedProfileTest(absltest.TestCase):
+  """Regression for Codex P2: upsert_profile alone does not activate a
+  newly saved profile when another profile is already current.
+  """
+
+  def setUp(self):
+    super().setUp()
+    self.runner = CliRunner()
+    _patch_prereqs(self)
+    _patch_resolve_project(self)
+    _patch_kubectl(self)
+    _patch_load_state_zone(self, zone="us-west4-a")
+    _patch_up(self)
+    self.profiles_path = _isolate_profiles(self)
+    # Pre-seed an existing active profile so upsert_profile's auto-activate
+    # heuristic (which only fires when 'current' is None) does NOT apply.
+    self.profiles_path.parent.mkdir(parents=True, exist_ok=True)
+    self.profiles_path.write_text(
+      json.dumps(
+        {
+          "current": "old",
+          "profiles": {
+            "old": {
+              "project": "p",
+              "zone": "z",
+              "cluster": "c",
+              "namespace": "n",
+            }
+          },
+        }
+      )
+    )
+
+  def test_join_path_activates_new_profile(self):
+    _patch_list_clusters(self, ["dev-tpu"])
+    result = self.runner.invoke(init, [], input="\n")
+    self.assertEqual(result.exit_code, 0, msg=result.output)
+    data = json.loads(self.profiles_path.read_text())
+    self.assertEqual(data["current"], "dev-tpu")
 
 
 if __name__ == "__main__":

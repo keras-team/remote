@@ -317,6 +317,32 @@ class UpCommandProfileSaveTest(absltest.TestCase):
     data = json.loads(self.profiles_path.read_text())
     self.assertEqual(data["current"], "kinetic-cluster")
 
+  def test_activates_new_profile_over_existing_current(self):
+    """Regression for Codex P2: upsert_profile alone leaves an existing
+    'current' pointer untouched, so `up` must explicitly set_current.
+    """
+    self.profiles_path.write_text(
+      json.dumps(
+        {
+          "current": "old",
+          "profiles": {
+            "old": {
+              "project": "p",
+              "zone": "z",
+              "cluster": "c",
+              "namespace": "n",
+            }
+          },
+        }
+      )
+    )
+    result = self.runner.invoke(up, _CLI_ARGS)
+    self.assertEqual(result.exit_code, 0, result.output)
+    data = json.loads(self.profiles_path.read_text())
+    self.assertEqual(data["current"], "kinetic-cluster")
+    # The previous profile is preserved, just no longer current.
+    self.assertIn("old", data["profiles"])
+
 
 if __name__ == "__main__":
   absltest.main()
