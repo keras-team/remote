@@ -5,7 +5,7 @@ import subprocess
 import click
 
 from kinetic.cli.config import InfraConfig, NodePoolConfig
-from kinetic.cli.constants import DEFAULT_CLUSTER_NAME, DEFAULT_ZONE
+from kinetic.cli.constants import DEFAULT_ZONE
 from kinetic.cli.infra.post_deploy import configure_kubectl
 from kinetic.cli.infra.state import apply_preview, apply_update, load_state
 from kinetic.cli.options import common_options, force_destroy_option
@@ -18,7 +18,11 @@ from kinetic.cli.output import (
 )
 from kinetic.cli.prerequisites_check import check_all
 from kinetic.cli.profiles import Profile, set_current, upsert_profile
-from kinetic.cli.prompts import prompt_accelerator, resolve_project
+from kinetic.cli.prompts import (
+  prompt_accelerator,
+  resolve_cluster_name,
+  resolve_project,
+)
 from kinetic.core import accelerators
 from kinetic.core.accelerators import generate_pool_name
 
@@ -79,7 +83,7 @@ def up(
   # Resolve configuration
   project = project or resolve_project()
   zone = zone or DEFAULT_ZONE
-  cluster_name = cluster_name or DEFAULT_CLUSTER_NAME
+  cluster_name = resolve_cluster_name(cluster_name)
 
   # Resolve accelerator (interactive if not provided)
   if accelerator and accelerator.strip().lower() == "cpu":

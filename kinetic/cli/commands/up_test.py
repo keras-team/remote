@@ -33,6 +33,8 @@ _CLI_ARGS = [
   "test-project",
   "--zone",
   "us-central2-b",
+  "--cluster",
+  "kinetic-cluster",
   "--accelerator",
   "cpu",
   "--yes",
@@ -159,6 +161,8 @@ class UpCommandPoolPreservationTest(absltest.TestCase):
       "test-project",
       "--zone",
       "us-central1-a",
+      "--cluster",
+      "kinetic-cluster",
       "--accelerator",
       "t4",
       "--yes",
@@ -190,6 +194,8 @@ class UpCommandPoolPreservationTest(absltest.TestCase):
       "test-project",
       "--zone",
       "us-central1-a",
+      "--cluster",
+      "kinetic-cluster",
       "--accelerator",
       "cpu",
       "--yes",
@@ -210,6 +216,8 @@ class UpCommandPoolPreservationTest(absltest.TestCase):
       "test-project",
       "--zone",
       "us-central1-a",
+      "--cluster",
+      "kinetic-cluster",
       "--accelerator",
       "t4",
       "--yes",
@@ -229,6 +237,8 @@ class UpCommandPoolPreservationTest(absltest.TestCase):
       "test-project",
       "--zone",
       "us-central1-a",
+      "--cluster",
+      "kinetic-cluster",
       "--accelerator",
       "t4",
       "--yes",
@@ -342,6 +352,54 @@ class UpCommandProfileSaveTest(absltest.TestCase):
     self.assertEqual(data["current"], "kinetic-cluster")
     # The previous profile is preserved, just no longer current.
     self.assertIn("old", data["profiles"])
+
+
+class UpCommandClusterNamePromptTest(absltest.TestCase):
+  """When neither --cluster nor KINETIC_CLUSTER is provided, `up` should
+  prompt the user with the default rather than silently consume it.
+  """
+
+  def setUp(self):
+    super().setUp()
+    self.runner = CliRunner()
+    self.mocks = _start_patches(self)
+    self.profiles_path = _isolate_profiles(self)
+
+  def _args_without_cluster(self):
+    return [
+      "--project",
+      "test-project",
+      "--zone",
+      "us-central2-b",
+      "--accelerator",
+      "cpu",
+      "--yes",
+    ]
+
+  def test_prompts_when_cluster_unspecified(self):
+    # Provide a custom name on stdin to verify the prompt is read.
+    result = self.runner.invoke(
+      up, self._args_without_cluster(), input="my-custom-cluster\n"
+    )
+    self.assertEqual(result.exit_code, 0, result.output)
+    self.assertIn("GKE cluster name", result.output)
+    config = self.mocks["apply_update"].call_args[0][0]
+    self.assertEqual(config.cluster_name, "my-custom-cluster")
+
+  def test_default_accepted_via_enter(self):
+    # Empty input → accept the suggested default.
+    result = self.runner.invoke(up, self._args_without_cluster(), input="\n")
+    self.assertEqual(result.exit_code, 0, result.output)
+    config = self.mocks["apply_update"].call_args[0][0]
+    self.assertEqual(config.cluster_name, "kinetic-cluster")
+
+  def test_cluster_flag_bypasses_prompt(self):
+    args = self._args_without_cluster() + ["--cluster", "from-flag"]
+    # No input on stdin — if the prompt fires, the test would error.
+    result = self.runner.invoke(up, args, input="")
+    self.assertEqual(result.exit_code, 0, result.output)
+    config = self.mocks["apply_update"].call_args[0][0]
+    self.assertEqual(config.cluster_name, "from-flag")
 
 
 if __name__ == "__main__":
