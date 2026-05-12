@@ -432,6 +432,8 @@ def _create_lws_spec(
   requirements_uri=None,
   fuse_volume_specs=None,
   debug=False,
+  payload_sha256=None,
+  context_sha256=None,
 ):
   """Create a LeaderWorkerSet manifest."""
 
@@ -459,12 +461,16 @@ def _create_lws_spec(
     tolerations.append(entry)
 
   container_args = [
-    f"gs://{bucket_name}/{job_id}/context.zip",
-    f"gs://{bucket_name}/{job_id}/payload.pkl",
-    f"gs://{bucket_name}/{job_id}/result.pkl",
+    "--context-gcs", f"gs://{bucket_name}/{job_id}/context.zip",
+    "--payload-gcs", f"gs://{bucket_name}/{job_id}/payload.pkl",
+    "--result-gcs", f"gs://{bucket_name}/{job_id}/result.pkl",
   ]
   if requirements_uri:
-    container_args.append(requirements_uri)
+    container_args.extend(["--requirements-gcs", requirements_uri])
+  if payload_sha256:
+    container_args.extend(["--payload-sha256", payload_sha256])
+  if context_sha256:
+    container_args.extend(["--context-sha256", context_sha256])
 
   pod_template = {
     "metadata": {
