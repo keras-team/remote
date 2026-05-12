@@ -63,8 +63,12 @@ def main():
   parser.add_argument("--payload-gcs", help="GCS URI for payload.pkl")
   parser.add_argument("--result-gcs", help="GCS URI for result.pkl")
   parser.add_argument("--requirements-gcs", help="GCS URI for requirements.txt")
-  parser.add_argument("--payload-sha256", help="Expected SHA-256 hash of payload")
-  parser.add_argument("--context-sha256", help="Expected SHA-256 hash of context")
+  parser.add_argument(
+    "--payload-sha256", help="Expected SHA-256 hash of payload"
+  )
+  parser.add_argument(
+    "--context-sha256", help="Expected SHA-256 hash of context"
+  )
 
   args_parsed, _ = parser.parse_known_args()
 
@@ -73,7 +77,9 @@ def main():
     context_gcs = args_parsed.positional[0]
     payload_gcs = args_parsed.positional[1]
     result_gcs = args_parsed.positional[2]
-    requirements_gcs = args_parsed.positional[3] if len(args_parsed.positional) > 3 else None
+    requirements_gcs = (
+      args_parsed.positional[3] if len(args_parsed.positional) > 3 else None
+    )
   else:
     context_gcs = args_parsed.context_gcs
     payload_gcs = args_parsed.payload_gcs
@@ -108,7 +114,7 @@ def main():
     if args_parsed.payload_sha256:
       logging.info("Verifying payload SHA-256...")
       _verify_sha256(payload_path, args_parsed.payload_sha256, "payload.pkl")
-    
+
     if args_parsed.context_sha256:
       logging.info("Verifying context SHA-256...")
       _verify_sha256(context_path, args_parsed.context_sha256, "context.zip")

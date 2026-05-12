@@ -124,11 +124,15 @@ class TestCreateLwsSpec(absltest.TestCase):
     self.assertEqual(
       container["args"],
       [
-        "--context-gcs", "gs://bkt/j1/context.zip",
-        "--payload-gcs", "gs://bkt/j1/payload.pkl",
-        "--result-gcs", "gs://bkt/j1/result.pkl",
+        "--context-gcs",
+        "gs://bkt/j1/context.zip",
+        "--payload-gcs",
+        "gs://bkt/j1/payload.pkl",
+        "--result-gcs",
+        "gs://bkt/j1/result.pkl",
       ],
     )
+
   def test_env_vars(self):
     spec = self._make_spec(
       accel_config=self._make_tpu_accel_config(),

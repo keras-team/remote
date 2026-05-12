@@ -461,9 +461,12 @@ def _create_lws_spec(
     tolerations.append(entry)
 
   container_args = [
-    "--context-gcs", f"gs://{bucket_name}/{job_id}/context.zip",
-    "--payload-gcs", f"gs://{bucket_name}/{job_id}/payload.pkl",
-    "--result-gcs", f"gs://{bucket_name}/{job_id}/result.pkl",
+    "--context-gcs",
+    f"gs://{bucket_name}/{job_id}/context.zip",
+    "--payload-gcs",
+    f"gs://{bucket_name}/{job_id}/payload.pkl",
+    "--result-gcs",
+    f"gs://{bucket_name}/{job_id}/result.pkl",
   ]
   if requirements_uri:
     container_args.extend(["--requirements-gcs", requirements_uri])
