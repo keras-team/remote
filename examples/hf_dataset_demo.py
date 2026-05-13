@@ -1,3 +1,12 @@
+"""Hugging Face Dataset Demo for Kinetic.
+
+This script demonstrates how to use Hugging Face datasets in a Kinetic job.
+It downloads the dataset on the remote pod and makes it available to your function.
+
+Note: To run this demo with a gated or private dataset, you must set the
+`HF_TOKEN` environment variable in your environment before running this script.
+"""
+
 import time
 
 import kinetic
