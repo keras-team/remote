@@ -232,7 +232,7 @@ class TestSavePayload(absltest.TestCase):
     vol_refs = [
       {
         "__data_ref__": True,
-        "gcs_uri": "gs://b/data-cache/abc",
+        "uri": "gs://b/data-cache/abc",
         "is_dir": True,
         "mount_path": "/data",
       }
@@ -347,7 +347,7 @@ class TestReplaceDataWithRefs(absltest.TestCase):
     f = tmp / "data.csv"
     f.write_text("data")
     d = Data(str(f))
-    ref = {"__data_ref__": True, "gcs_uri": "gs://b/p"}
+    ref = {"__data_ref__": True, "uri": "gs://b/p"}
     ref_map = {id(d): ref}
 
     new_args, new_kwargs = replace_data_with_refs((d, 42), {}, ref_map)
@@ -359,7 +359,7 @@ class TestReplaceDataWithRefs(absltest.TestCase):
     f = tmp / "data.csv"
     f.write_text("data")
     d = Data(str(f))
-    ref = {"__data_ref__": True, "gcs_uri": "gs://b/p"}
+    ref = {"__data_ref__": True, "uri": "gs://b/p"}
     ref_map = {id(d): ref}
 
     new_args, _ = replace_data_with_refs(([d, "other"],), {}, ref_map)
@@ -371,7 +371,7 @@ class TestReplaceDataWithRefs(absltest.TestCase):
     f = tmp / "data.csv"
     f.write_text("data")
     d = Data(str(f))
-    ref = {"__data_ref__": True, "gcs_uri": "gs://b/p"}
+    ref = {"__data_ref__": True, "uri": "gs://b/p"}
     ref_map = {id(d): ref}
 
     _, new_kwargs = replace_data_with_refs((), {"data": d, "lr": 0.01}, ref_map)
@@ -390,7 +390,7 @@ class TestReplaceDataWithRefs(absltest.TestCase):
     f = tmp / "data.csv"
     f.write_text("data")
     d = Data(str(f))
-    ref = {"__data_ref__": True, "gcs_uri": "gs://b/p"}
+    ref = {"__data_ref__": True, "uri": "gs://b/p"}
     ref_map = {id(d): ref}
 
     new_args, _ = replace_data_with_refs(({d},), {}, ref_map)
@@ -402,7 +402,7 @@ class TestReplaceDataWithRefs(absltest.TestCase):
     f = tmp / "data.csv"
     f.write_text("data")
     d = Data(str(f))
-    ref = {"__data_ref__": True, "gcs_uri": "gs://b/p"}
+    ref = {"__data_ref__": True, "uri": "gs://b/p"}
     ref_map = {id(d): ref}
 
     new_args, _ = replace_data_with_refs((frozenset({d}),), {}, ref_map)

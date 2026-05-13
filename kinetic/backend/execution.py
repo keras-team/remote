@@ -371,7 +371,11 @@ def _process_volumes(
     gcs_uri = storage.upload_data(ctx.bucket_name, data_obj, ctx.project)
     volume_refs.append(
       make_data_ref(
-        gcs_uri, data_obj.is_dir, mount_path=mount_path, fuse=data_obj.fuse
+        gcs_uri,
+        data_obj.is_dir,
+        mount_path=mount_path,
+        fuse=data_obj.fuse,
+        hf_trust_remote_code=data_obj.hf_trust_remote_code,
       )
     )
     if data_obj.fuse:
@@ -427,10 +431,18 @@ def _process_data_args(
         }
       )
       ref_map[id(data_obj)] = make_data_ref(
-        gcs_uri, data_obj.is_dir, mount_path=mount_path, fuse=True
+        gcs_uri,
+        data_obj.is_dir,
+        mount_path=mount_path,
+        fuse=True,
+        hf_trust_remote_code=data_obj.hf_trust_remote_code,
       )
     else:
-      ref_map[id(data_obj)] = make_data_ref(gcs_uri, data_obj.is_dir)
+      ref_map[id(data_obj)] = make_data_ref(
+        gcs_uri,
+        data_obj.is_dir,
+        hf_trust_remote_code=data_obj.hf_trust_remote_code,
+      )
     if not data_obj.is_gcs:
       _maybe_exclude(data_obj.path, caller_path, exclude_paths)
 

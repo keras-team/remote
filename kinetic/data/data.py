@@ -75,27 +75,33 @@ class Data:
       # Local file
       Data("./config.json")
 
-    # GCS directory — trailing slash required
-    Data("gs://my-bucket/datasets/imagenet/")
+      # GCS directory — trailing slash required
+      Data("gs://my-bucket/datasets/imagenet/")
 
-    # GCS single object
-    Data("gs://my-bucket/datasets/weights.h5")
+      # GCS single object
+      Data("gs://my-bucket/datasets/weights.h5")
 
-    # FUSE-mounted directory (lazy loading)
-    Data("./large_dataset/", fuse=True)
+      # FUSE-mounted directory (lazy loading)
+      Data("./large_dataset/", fuse=True)
 
-    # FUSE-mounted GCS data
-    Data("gs://my-bucket/datasets/imagenet/", fuse=True)
+      # FUSE-mounted GCS data
+      Data("gs://my-bucket/datasets/imagenet/", fuse=True)
 
-    # Hugging Face Dataset (downloads on pod)
-    Data("hf://imdb?split=train")
+      # Hugging Face Dataset (downloads on pod)
+      Data("hf://imdb?split=train")
+
+      # Hugging Face Dataset with remote code execution allowed
+      Data("hf://custom/repo", hf_trust_remote_code=True)
   """
 
-  def __init__(self, path: str, fuse: bool = False):
+  def __init__(
+    self, path: str, fuse: bool = False, hf_trust_remote_code: bool = False
+  ):
     if not path:
       raise ValueError("Data path must not be empty")
     self._raw_path = path
     self._fuse = fuse
+    self._hf_trust_remote_code = hf_trust_remote_code
 
     if self.is_hf and self._fuse:
       raise ValueError(
@@ -121,6 +127,10 @@ class Data:
   @property
   def fuse(self) -> bool:
     return self._fuse
+
+  @property
+  def hf_trust_remote_code(self) -> bool:
+    return self._hf_trust_remote_code
 
   @property
   def is_gcs(self) -> bool:
@@ -154,7 +164,9 @@ class Data:
     hash reflects the actual data visible at runtime.
     """
     if self.is_gcs or self.is_hf:
-      raise ValueError("Cannot compute content hash for cloud URI")
+      raise ValueError(
+        f"Cannot compute content hash for cloud URI: {self.path}"
+      )
     if os.path.isdir(self._resolved_path):
       return self._content_hash_dir()
     return self._content_hash_file()
@@ -246,10 +258,11 @@ def _warn_if_missing_trailing_slash(path: str) -> None:
 
 
 def make_data_ref(
-  gcs_uri: str,
+  uri: str,
   is_dir: bool,
   mount_path: str | None = None,
   fuse: bool = False,
+  hf_trust_remote_code: bool = False,
 ) -> dict[str, object]:
   """Create a serializable data reference dict.
 
@@ -258,10 +271,11 @@ def make_data_ref(
   """
   return {
     "__data_ref__": True,
-    "gcs_uri": gcs_uri,
+    "uri": uri,
     "is_dir": is_dir,
     "mount_path": mount_path,
     "fuse": fuse,
+    "hf_trust_remote_code": hf_trust_remote_code,
   }
 
 
