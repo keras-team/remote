@@ -10,6 +10,9 @@ ahead to [Run your first job](#run-your-first-job).
 - [uv](https://docs.astral.sh/uv/getting-started/installation/), used
   for the install command below.
 - Google Cloud SDK (`gcloud`): [install guide](https://cloud.google.com/sdk/docs/install).
+- `kubectl`: [install guide](https://kubernetes.io/docs/tasks/tools/).
+  Kinetic auto-installs the `gke-gcloud-auth-plugin` for you on first
+  use, but `kubectl` itself must already be on your `PATH`.
 - A Google Cloud project with [billing enabled](https://docs.cloud.google.com/billing/docs/how-to/modify-project).
 
 Authenticate with Google Cloud once:
@@ -22,11 +25,14 @@ gcloud auth application-default login
 ## Install
 
 ```bash
-uv pip install keras-kinetic
+uv pip install "keras-kinetic[cli]"
 ```
 
-This installs both the `@kinetic.run()` decorator and the `kinetic`
-CLI for managing infrastructure.
+The base `keras-kinetic` package installs the `@kinetic.run()`
+decorator. The `[cli]` extra adds the dependencies the `kinetic` CLI
+needs to provision and manage infrastructure (Click, Pulumi, the GCP
+plugins). Drop the `[cli]` extra only if you're running on a machine
+that just needs to submit jobs against an already-provisioned cluster.
 
 > **Note:** The [Pulumi](https://www.pulumi.com/) CLI (used for
 > infrastructure provisioning) is bundled and managed automatically.
@@ -42,26 +48,20 @@ kinetic init
 `kinetic init` checks your local tools, auth, and project, then routes
 you down one of two paths:
 
-- **Join** — if your shell has previously provisioned a cluster in
-  this project, `init` lists it and configures `kubectl` for you.
-- **Create** — if no local cluster is found, `init` calls
-  `kinetic up` to enable APIs, provision a GKE cluster with an
-  accelerator node pool, and wire up Docker / `kubectl` access.
+- **Join** — if any Kinetic clusters already exist in this GCP project
+  (provisioned by you or a teammate), `init` lists them, lets you pick
+  one, and configures `kubectl` for it. Cluster discovery reads the
+  project's shared state bucket
+  (`gs://{project}-kinetic-state`), so collaborators with access to
+  the bucket all see the same set.
+- **Create** — if no clusters exist yet, `init` calls `kinetic up` to
+  enable APIs, provision a GKE cluster with an accelerator node pool,
+  and wire up Docker / `kubectl` access.
 
 Either way, `init` ends by saving a **profile** (a named bundle of
 project, zone, cluster, and namespace) and setting it as active. Every
 subsequent `kinetic` command picks that up automatically — no
 `export KINETIC_*` needed.
-
-> **Joining a cluster someone else provisioned?** If the team cluster
-> isn't in your local Pulumi state yet, `init` won't find it. Create
-> the profile directly:
->
-> ```bash
-> kinetic profile create team-prod \
->   --project my-proj --zone us-central1-a --cluster team-cluster
-> kinetic profile use team-prod
-> ```
 
 To run `init` non-interactively, you can still pre-set the project:
 

@@ -38,10 +38,14 @@ Comprehensive documentation is available at: https://kinetic.readthedocs.io
 ## Install
 
 ```bash
-uv pip install keras-kinetic
+uv pip install "keras-kinetic[cli]"
 ```
 
-This installs both the decorator and the `kinetic` CLI.
+The base `keras-kinetic` package installs the `@kinetic.run()`
+decorator. The `[cli]` extra adds the dependencies the `kinetic` CLI
+needs to provision and manage infrastructure. Drop the `[cli]` extra
+only if you just need to submit jobs against an already-provisioned
+cluster.
 
 ## One-time setup
 
@@ -49,10 +53,11 @@ This installs both the decorator and the `kinetic` CLI.
 kinetic init
 ```
 
-This detects your local environment, then either joins a Kinetic
-cluster you've already provisioned or walks you through creating a new
-one. It ends by saving a profile that becomes your active context —
-subsequent commands pick up project, zone, and cluster automatically.
+This detects your local environment, then either joins an existing
+Kinetic cluster in the project (your own or a teammate's — discovery
+goes through the shared state bucket) or walks you through creating a
+new one. It ends by saving a profile that becomes your active context
+— subsequent commands pick up project, zone, and cluster automatically.
 
 Behind the scenes, the Create path runs `kinetic up` to enable APIs,
 provision a GKE cluster with an accelerator node pool, and configure
