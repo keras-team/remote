@@ -112,7 +112,7 @@ class TestDownloadData(absltest.TestCase):
 
     ref = {
       "__data_ref__": True,
-      "gcs_uri": "gs://bucket/prefix/hash",
+      "uri": "gs://bucket/prefix/hash",
       "is_dir": True,
     }
 
@@ -145,7 +145,7 @@ class TestDownloadData(absltest.TestCase):
 
     ref = {
       "__data_ref__": True,
-      "gcs_uri": "gs://bucket/prefix/hash",
+      "uri": "gs://bucket/prefix/hash",
       "is_dir": True,
     }
 
@@ -172,7 +172,7 @@ class TestDownloadData(absltest.TestCase):
 
     ref = {
       "__data_ref__": True,
-      "gcs_uri": "gs://bucket/prefix/hash",
+      "uri": "gs://bucket/prefix/hash",
       "is_dir": True,
     }
 
@@ -195,13 +195,49 @@ class TestDownloadData(absltest.TestCase):
 
     ref = {
       "__data_ref__": True,
-      "gcs_uri": "gs://bucket/prefix/hash",
+      "uri": "gs://bucket/prefix/hash",
       "is_dir": True,
     }
 
     _download_data(ref, str(target), mock_client)
 
     self.mock_download.assert_not_called()
+
+
+class TestDownloadHfData(absltest.TestCase):
+  def test_download_hf_data_respects_trust_remote_code(self):
+    mock_datasets = MagicMock()
+    mock_ds = MagicMock()
+    mock_datasets.load_dataset.return_value = mock_ds
+
+    uri = "hf://imdb?split=train"
+    target_dir = "/tmp/target"
+
+    with mock.patch.dict("sys.modules", {"datasets": mock_datasets}):
+      from kinetic.runner.remote_runner import _download_hf_data
+
+      _download_hf_data(uri, target_dir, trust_remote_code=True)
+
+    mock_datasets.load_dataset.assert_called_once()
+    kwargs = mock_datasets.load_dataset.call_args.kwargs
+    self.assertTrue(kwargs["trust_remote_code"])
+
+  def test_download_hf_data_ignores_query_param(self):
+    mock_datasets = MagicMock()
+    mock_ds = MagicMock()
+    mock_datasets.load_dataset.return_value = mock_ds
+
+    uri = "hf://imdb?split=train&trust_remote_code=true"
+    target_dir = "/tmp/target"
+
+    with mock.patch.dict("sys.modules", {"datasets": mock_datasets}):
+      from kinetic.runner.remote_runner import _download_hf_data
+
+      _download_hf_data(uri, target_dir, trust_remote_code=False)
+
+    mock_datasets.load_dataset.assert_called_once()
+    kwargs = mock_datasets.load_dataset.call_args.kwargs
+    self.assertFalse(kwargs["trust_remote_code"])
 
 
 class TestResolveDataRefs(absltest.TestCase):
@@ -214,7 +250,7 @@ class TestResolveDataRefs(absltest.TestCase):
 
     ref = {
       "__data_ref__": True,
-      "gcs_uri": "gs://b/p",
+      "uri": "gs://b/p",
       "is_dir": True,
       "mount_path": None,
     }
@@ -235,7 +271,7 @@ class TestResolveDataRefs(absltest.TestCase):
 
     ref = {
       "__data_ref__": True,
-      "gcs_uri": "gs://b/p",
+      "uri": "gs://b/p",
       "is_dir": True,
       "mount_path": None,
     }
@@ -252,7 +288,7 @@ class TestResolveDataRefs(absltest.TestCase):
 
     ref = {
       "__data_ref__": True,
-      "gcs_uri": "gs://b/prefix/hash",
+      "uri": "gs://b/prefix/hash",
       "is_dir": False,
       "mount_path": None,
     }
@@ -274,7 +310,7 @@ class TestResolveDataRefs(absltest.TestCase):
 
     ref = {
       "__data_ref__": True,
-      "gcs_uri": "gs://b/cache/hash",
+      "uri": "gs://b/cache/hash",
       "is_dir": True,
       "mount_path": None,
     }
@@ -313,7 +349,7 @@ class TestResolveDataRefs(absltest.TestCase):
 
     ref = {
       "__data_ref__": True,
-      "gcs_uri": "gs://b/p",
+      "uri": "gs://b/p",
       "is_dir": True,
       "mount_path": None,
     }
@@ -334,7 +370,7 @@ class TestResolveDataRefs(absltest.TestCase):
 
     ref = {
       "__data_ref__": True,
-      "gcs_uri": "gs://b/path/to/config.json",
+      "uri": "gs://b/path/to/config.json",
       "is_dir": False,
       "mount_path": str(mount_dir),
       "fuse": True,
@@ -349,7 +385,7 @@ class TestResolveDataRefs(absltest.TestCase):
     """FUSE-mounted directory ref returns the mount path unchanged."""
     ref = {
       "__data_ref__": True,
-      "gcs_uri": "gs://b/data/train/",
+      "uri": "gs://b/data/train/",
       "is_dir": True,
       "mount_path": "/tmp/fuse-data/0",
       "fuse": True,
@@ -363,7 +399,7 @@ class TestResolveDataRefs(absltest.TestCase):
     """Non-FUSE mounted ref returns the mount path unchanged."""
     ref = {
       "__data_ref__": True,
-      "gcs_uri": "gs://b/cache/hash",
+      "uri": "gs://b/cache/hash",
       "is_dir": False,
       "mount_path": "/data/config",
     }
@@ -386,7 +422,7 @@ class TestResolveVolumes(absltest.TestCase):
     refs = [
       {
         "__data_ref__": True,
-        "gcs_uri": "gs://b/cache/hash",
+        "uri": "gs://b/cache/hash",
         "is_dir": True,
         "mount_path": mount_path,
       }
@@ -409,13 +445,13 @@ class TestResolveVolumes(absltest.TestCase):
     refs = [
       {
         "__data_ref__": True,
-        "gcs_uri": "gs://b/h1",
+        "uri": "gs://b/h1",
         "is_dir": True,
         "mount_path": path1,
       },
       {
         "__data_ref__": True,
-        "gcs_uri": "gs://b/h2",
+        "uri": "gs://b/h2",
         "is_dir": True,
         "mount_path": path2,
       },
@@ -431,7 +467,7 @@ class TestResolveVolumes(absltest.TestCase):
     refs = [
       {
         "__data_ref__": True,
-        "gcs_uri": "gs://b/data/",
+        "uri": "gs://b/data/",
         "is_dir": True,
         "mount_path": "/data",
         "fuse": True,
@@ -455,14 +491,14 @@ class TestResolveVolumes(absltest.TestCase):
     refs = [
       {
         "__data_ref__": True,
-        "gcs_uri": "gs://b/fuse-data/",
+        "uri": "gs://b/fuse-data/",
         "is_dir": True,
         "mount_path": "/fuse-mount",
         "fuse": True,
       },
       {
         "__data_ref__": True,
-        "gcs_uri": "gs://b/download-data/",
+        "uri": "gs://b/download-data/",
         "is_dir": True,
         "mount_path": download_path,
       },
@@ -486,7 +522,7 @@ class TestResolveVolumes(absltest.TestCase):
     refs = [
       {
         "__data_ref__": True,
-        "gcs_uri": "gs://b/data/",
+        "uri": "gs://b/data/",
         "is_dir": True,
         "mount_path": mount_path,
       }
@@ -625,7 +661,7 @@ class TestMain(absltest.TestCase):
 
     ref = {
       "__data_ref__": True,
-      "gcs_uri": "gs://b/cache/hash",
+      "uri": "gs://b/cache/hash",
       "is_dir": True,
       "mount_path": None,
     }
@@ -657,7 +693,7 @@ class TestMain(absltest.TestCase):
     volume_refs = [
       {
         "__data_ref__": True,
-        "gcs_uri": "gs://b/cache/hash",
+        "uri": "gs://b/cache/hash",
         "is_dir": True,
         "mount_path": mount_path,
       }

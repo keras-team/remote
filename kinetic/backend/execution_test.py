@@ -424,7 +424,7 @@ class TestPrepareArtifacts(absltest.TestCase):
 
     payload = self._load_payload(ctx)
     self.assertTrue(payload["args"][0].get("__data_ref__"))
-    self.assertEqual(payload["args"][0]["gcs_uri"], "gs://bucket/input")
+    self.assertEqual(payload["args"][0]["uri"], "gs://bucket/input")
     self.assertEqual(payload["args"][1], "regular_arg")
 
   def test_volume_ref_in_payload(self):
@@ -445,7 +445,7 @@ class TestPrepareArtifacts(absltest.TestCase):
     self.assertLen(payload["volumes"], 1)
     vol_ref = payload["volumes"][0]
     self.assertTrue(vol_ref["__data_ref__"])
-    self.assertEqual(vol_ref["gcs_uri"], "gs://bucket/data")
+    self.assertEqual(vol_ref["uri"], "gs://bucket/data")
     self.assertEqual(vol_ref["mount_path"], "/mnt/data")
 
   def test_gcs_data_not_excluded_from_zip(self):

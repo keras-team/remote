@@ -14,6 +14,7 @@ import sys
 import tempfile
 import time
 import traceback
+import urllib.parse
 import zipfile
 
 import cloudpickle
@@ -411,11 +412,11 @@ def resolve_volumes(
     if ref.get("fuse"):
       logging.info(
         "Skipping download for FUSE-mounted volume: %s -> %s",
-        ref["gcs_uri"],
+        ref["uri"],
         mount_path,
       )
       continue
-    logging.info("Resolving volume: %s -> %s", ref["gcs_uri"], mount_path)
+    logging.info("Resolving volume: %s -> %s", ref["uri"], mount_path)
     _download_data(ref, mount_path, storage_client)
 
 
@@ -459,9 +460,9 @@ def resolve_data_refs(
           if resolved:
             return resolved
         return obj["mount_path"]
-      gcs_uri = obj["gcs_uri"]
-      if gcs_uri in resolved_uris:
-        return resolved_uris[gcs_uri]
+      uri = obj["uri"]
+      if uri in resolved_uris:
+        return resolved_uris[uri]
       local_dir = os.path.join(data_dir, str(counter))
       counter += 1
       _download_data(obj, local_dir, storage_client)
@@ -470,9 +471,9 @@ def resolve_data_refs(
         files = os.listdir(local_dir)
         if len(files) == 1:
           path = os.path.join(local_dir, files[0])
-          resolved_uris[gcs_uri] = path
+          resolved_uris[uri] = path
           return path
-      resolved_uris[gcs_uri] = local_dir
+      resolved_uris[uri] = local_dir
       return local_dir
     # Recurse into containers to find nested data refs
     if isinstance(obj, dict):
@@ -486,14 +487,76 @@ def resolve_data_refs(
   return resolved_args, resolved_kwargs
 
 
+def _download_hf_data(
+  uri: str, target_dir: str, trust_remote_code: bool = False
+) -> None:
+  """Download data from Hugging Face Datasets to a local directory."""
+  try:
+    import datasets
+  except ImportError as e:
+    raise RuntimeError(
+      "The 'datasets' package is required to load 'hf://' URIs. "
+      "Please install it in your Kinetic base image or requirements."
+    ) from e
+
+  logging.info("Downloading Hugging Face dataset from %s", uri)
+
+  parsed = urllib.parse.urlparse(uri)
+  repo_id = (parsed.netloc + parsed.path).strip("/")
+  query = urllib.parse.parse_qs(parsed.query)
+  split = query.get("split", [None])[0]
+  config_name = query.get("config_name", [None])[0]
+  revision = query.get("revision", [None])[0]
+
+  if trust_remote_code:
+    logging.warning(
+      "================================================================================\n"
+      "WARNING: trust_remote_code=True is enabled for Hugging Face dataset loading.\n"
+      "This allows execution of arbitrary code from the dataset repository.\n"
+      "Ensure you trust the repository %r before proceeding.\n"
+      "================================================================================",
+      repo_id,
+    )
+
+  # Use a temporary directory for the cache to ensure it is cleaned up after saving,
+  # preventing persistent disk accumulation (though it causes a transient 2x peak).
+  # This also avoids save_to_disk failing on a non-empty directory.
+  with tempfile.TemporaryDirectory(prefix="hf-cache-") as cache_dir:
+    ds = datasets.load_dataset(
+      repo_id,
+      name=config_name,
+      split=split,
+      revision=revision,
+      trust_remote_code=trust_remote_code,
+      cache_dir=cache_dir,
+    )
+    ds.save_to_disk(target_dir)
+
+    # Calculate total size of the saved dataset
+    total_size = 0
+    for dirpath, _, filenames in os.walk(target_dir):
+      for f in filenames:
+        total_size += os.path.getsize(os.path.join(dirpath, f))
+
+    logging.info("Saved HF dataset to %s (%d bytes)", target_dir, total_size)
+
+
 def _download_data(
   ref: dict, target_dir: str, storage_client: storage.Client
 ) -> None:
-  """Download data from a GCS URI to a local directory."""
+  """Download data from a GCS URI (or HF URI) to a local directory."""
   os.makedirs(target_dir, exist_ok=True)
-  gcs_uri = ref["gcs_uri"]
+  uri = ref["uri"]
 
-  parts = gcs_uri.replace("gs://", "").split("/", 1)
+  if uri.startswith("hf://"):
+    _download_hf_data(
+      uri,
+      target_dir,
+      trust_remote_code=ref.get("hf_trust_remote_code", False),
+    )
+    return
+
+  parts = uri.replace("gs://", "").split("/", 1)
   bucket_name = parts[0]
   prefix = parts[1].rstrip("/") if len(parts) > 1 else ""
   bucket = storage_client.bucket(bucket_name)
@@ -530,7 +593,7 @@ def _download_data(
 
   if total_downloaded:
     logging.info(
-      "Downloaded %d files from %s to %s", total_downloaded, gcs_uri, target_dir
+      "Downloaded %d files from %s to %s", total_downloaded, uri, target_dir
     )
 
 

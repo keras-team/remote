@@ -86,16 +86,32 @@ class Data:
 
       # FUSE-mounted GCS data
       Data("gs://my-bucket/datasets/imagenet/", fuse=True)
+
+      # Hugging Face Dataset (downloads on pod)
+      Data("hf://imdb?split=train")
+
+      # Hugging Face Dataset with remote code execution allowed
+      Data("hf://custom/repo", hf_trust_remote_code=True)
   """
 
-  def __init__(self, path: str, fuse: bool = False):
+  def __init__(
+    self, path: str, fuse: bool = False, hf_trust_remote_code: bool = False
+  ):
     if not path:
       raise ValueError("Data path must not be empty")
     self._raw_path = path
     self._fuse = fuse
-    if self.is_gcs:
+    self._hf_trust_remote_code = hf_trust_remote_code
+
+    if self.is_hf and self._fuse:
+      raise ValueError(
+        "fuse=True is not supported for Hugging Face datasets (hf:// URIs)"
+      )
+
+    if self.is_gcs or self.is_hf:
       self._resolved_path = path
-      _warn_if_missing_trailing_slash(path)
+      if self.is_gcs:
+        _warn_if_missing_trailing_slash(path)
     else:
       self._resolved_path = os.path.abspath(os.path.expanduser(path))
       if not os.path.exists(self._resolved_path):
@@ -113,13 +129,23 @@ class Data:
     return self._fuse
 
   @property
+  def hf_trust_remote_code(self) -> bool:
+    return self._hf_trust_remote_code
+
+  @property
   def is_gcs(self) -> bool:
     return self._raw_path.startswith("gs://")
+
+  @property
+  def is_hf(self) -> bool:
+    return self._raw_path.startswith("hf://")
 
   @property
   def is_dir(self) -> bool:
     if self.is_gcs:
       return self._raw_path.endswith("/")
+    if self.is_hf:
+      return True
     return os.path.isdir(self._resolved_path)
 
   def content_hash(self) -> str:
@@ -137,8 +163,10 @@ class Data:
     files are read and their resolved contents are hashed, so the
     hash reflects the actual data visible at runtime.
     """
-    if self.is_gcs:
-      raise ValueError("Cannot compute content hash for GCS URI")
+    if self.is_gcs or self.is_hf:
+      raise ValueError(
+        f"Cannot compute content hash for cloud URI: {self.path}"
+      )
     if os.path.isdir(self._resolved_path):
       return self._content_hash_dir()
     return self._content_hash_file()
@@ -230,10 +258,11 @@ def _warn_if_missing_trailing_slash(path: str) -> None:
 
 
 def make_data_ref(
-  gcs_uri: str,
+  uri: str,
   is_dir: bool,
   mount_path: str | None = None,
   fuse: bool = False,
+  hf_trust_remote_code: bool = False,
 ) -> dict[str, object]:
   """Create a serializable data reference dict.
 
@@ -242,10 +271,11 @@ def make_data_ref(
   """
   return {
     "__data_ref__": True,
-    "gcs_uri": gcs_uri,
+    "uri": uri,
     "is_dir": is_dir,
     "mount_path": mount_path,
     "fuse": fuse,
+    "hf_trust_remote_code": hf_trust_remote_code,
   }
 
 

@@ -92,6 +92,29 @@ class TestDataConstructor(absltest.TestCase):
     self.assertTrue(d.fuse)
     self.assertFalse(d.is_gcs)
 
+  def test_hf_trust_remote_code_default_false(self):
+    d = Data("gs://bucket/path/")
+    self.assertFalse(d.hf_trust_remote_code)
+
+  def test_hf_trust_remote_code_true(self):
+    d = Data("gs://bucket/path/", hf_trust_remote_code=True)
+    self.assertTrue(d.hf_trust_remote_code)
+
+  def test_hf_uri(self):
+    d = Data("hf://imdb?split=train")
+    self.assertTrue(d.is_hf)
+    self.assertFalse(d.is_gcs)
+    self.assertTrue(d.is_dir)
+    self.assertEqual(d.path, "hf://imdb?split=train")
+
+  def test_hf_uri_with_fuse_raises(self):
+    with self.assertRaises(ValueError) as cm:
+      Data("hf://imdb", fuse=True)
+    self.assertIn(
+      "fuse=True is not supported for Hugging Face datasets",
+      str(cm.exception),
+    )
+
 
 class TestContentHash(absltest.TestCase):
   def test_deterministic_file_hash(self):
@@ -167,6 +190,11 @@ class TestContentHash(absltest.TestCase):
 
   def test_gcs_uri_raises(self):
     d = Data("gs://bucket/data/")
+    with self.assertRaises(ValueError):
+      d.content_hash()
+
+  def test_hf_uri_raises(self):
+    d = Data("hf://imdb")
     with self.assertRaises(ValueError):
       d.content_hash()
 
@@ -353,7 +381,7 @@ class TestMakeDataRef(absltest.TestCase):
   def test_basic_ref(self):
     ref = make_data_ref("gs://b/prefix", True)
     self.assertTrue(ref["__data_ref__"])
-    self.assertEqual(ref["gcs_uri"], "gs://b/prefix")
+    self.assertEqual(ref["uri"], "gs://b/prefix")
     self.assertTrue(ref["is_dir"])
     self.assertIsNone(ref["mount_path"])
 
@@ -371,10 +399,18 @@ class TestMakeDataRef(absltest.TestCase):
     self.assertTrue(ref["fuse"])
     self.assertEqual(ref["mount_path"], "/data")
 
+  def test_hf_trust_remote_code_default_false(self):
+    ref = make_data_ref("gs://b/p", True)
+    self.assertFalse(ref.get("hf_trust_remote_code", False))
+
+  def test_with_hf_trust_remote_code_true(self):
+    ref = make_data_ref("gs://b/p", True, hf_trust_remote_code=True)
+    self.assertTrue(ref["hf_trust_remote_code"])
+
 
 class TestIsDataRef(absltest.TestCase):
   def test_valid_ref(self):
-    ref = {"__data_ref__": True, "gcs_uri": "gs://b/p", "is_dir": True}
+    ref = {"__data_ref__": True, "uri": "gs://b/p", "is_dir": True}
     self.assertTrue(is_data_ref(ref))
 
   def test_plain_dict(self):
