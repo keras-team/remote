@@ -162,6 +162,39 @@ def _raise_with_details(base_msg, core_v1, job_name, namespace):
   raise RuntimeError(msg)
 
 
+def _failed_worker_pod_names(core_v1, job_name, namespace):
+  """Return names of non-leader pods in the Failed phase."""
+  leader_pod_name = _get_leader_pod_name(job_name)
+  try:
+    pods = k8s_utils.list_job_pods(core_v1, job_name, namespace)
+  except ApiException:
+    return []
+  return [
+    pod.metadata.name
+    for pod in pods
+    if pod.metadata.name != leader_pod_name and pod.status.phase == "Failed"
+  ]
+
+
+def _raise_if_worker_failed(core_v1, job_name, namespace, success_msg):
+  """Raise if any worker pod failed, otherwise log ``success_msg``.
+
+  LWS reports the leader's status, but a worker pod can fail while the
+  leader still terminates cleanly. Treat any failed worker as a failed
+  job so callers see the real outcome instead of a false success.
+  """
+  failed = _failed_worker_pod_names(core_v1, job_name, namespace)
+  if failed:
+    names = ", ".join(failed)
+    _raise_with_details(
+      f"Pathways job {job_name} failed: worker pod(s) {names} failed",
+      core_v1,
+      job_name,
+      namespace,
+    )
+  logging.info(success_msg)
+
+
 def wait_for_job(job_id, namespace="default", timeout=3600, poll_interval=10):
   """Wait for Pathways Job (LeaderWorkerSet) to complete."""
   core_v1 = k8s_utils.core_v1()
@@ -189,7 +222,12 @@ def wait_for_job(job_id, namespace="default", timeout=3600, poll_interval=10):
           logged_running = True
 
         if pod.status.phase == "Succeeded":
-          logging.info(f"[REMOTE] Job {job_name} completed successfully")
+          _raise_if_worker_failed(
+            core_v1,
+            job_name,
+            namespace,
+            f"[REMOTE] Job {job_name} completed successfully",
+          )
           return "success"
 
         if pod.status.phase == "Failed":
@@ -224,7 +262,12 @@ def wait_for_job(job_id, namespace="default", timeout=3600, poll_interval=10):
         # Check current state
         if container_status.state.terminated:
           if container_status.state.terminated.exit_code == 0:
-            logging.info(f"[REMOTE] Job {job_name} completed successfully")
+            _raise_if_worker_failed(
+              core_v1,
+              job_name,
+              namespace,
+              f"[REMOTE] Job {job_name} completed successfully",
+            )
             return "success"
           else:
             _raise_with_details(
@@ -237,8 +280,11 @@ def wait_for_job(job_id, namespace="default", timeout=3600, poll_interval=10):
         # Check last state (in case it restarted)
         if container_status.last_state.terminated:
           if container_status.last_state.terminated.exit_code == 0:
-            logging.info(
-              f"[REMOTE] Job {job_name} completed successfully (restarted)"
+            _raise_if_worker_failed(
+              core_v1,
+              job_name,
+              namespace,
+              f"[REMOTE] Job {job_name} completed successfully (restarted)",
             )
             return "success"
           else:
