@@ -347,6 +347,7 @@ def _create_gke_cluster(
         enabled=True,
       ),
     ),
+    resource_labels={RESOURCE_NAME_PREFIX: "true"},
     cluster_autoscaling=gcp.container.ClusterClusterAutoscalingArgs(
       enabled=True,
       autoscaling_profile="OPTIMIZE_UTILIZATION",
