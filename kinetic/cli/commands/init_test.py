@@ -468,6 +468,70 @@ class InitTroubleshootPathTest(absltest.TestCase):
     _, kwargs = self.diag_mock.call_args
     self.assertEqual(kwargs.get("cluster_name"), "secret-cluster")
 
+  def test_troubleshoot_prefers_zone_from_saved_profile(self):
+    """A saved profile's zone short-circuits the slow Pulumi state read."""
+    _patch_list_clusters(self, ["dev-tpu"])
+    # Pre-seed a profile whose zone differs from load_state's mocked zone
+    # so we can tell which source won.
+    self.profiles_path.parent.mkdir(parents=True, exist_ok=True)
+    self.profiles_path.write_text(
+      json.dumps(
+        {
+          "current": None,
+          "profiles": {
+            "dev-tpu": {
+              "project": "test-proj",
+              "zone": "europe-west4-c",
+              "cluster": "dev-tpu",
+              "namespace": "default",
+            }
+          },
+        }
+      )
+    )
+    result = self.runner.invoke(init, [], input="troubleshoot\n\n")
+    self.assertEqual(result.exit_code, 0, msg=result.output)
+    _, kwargs = self.diag_mock.call_args
+    self.assertEqual(kwargs.get("zone"), "europe-west4-c")
+
+  def test_troubleshoot_passes_none_zone_when_no_profile_match(self):
+    """No matching profile → zone is None; run_diagnostics uses its default."""
+    _patch_list_clusters(self, ["dev-tpu"])
+    # No profile file written; troubleshoot must not touch Pulumi state.
+    result = self.runner.invoke(init, [], input="troubleshoot\n\n")
+    self.assertEqual(result.exit_code, 0, msg=result.output)
+    _, kwargs = self.diag_mock.call_args
+    self.assertIsNone(kwargs.get("zone"))
+
+  def test_troubleshoot_prints_target_and_redirect_hint(self):
+    """The header tells the user exactly what's being diagnosed and how to
+    point troubleshoot at a different stack."""
+    _patch_list_clusters(self, ["dev-tpu"])
+    self.profiles_path.parent.mkdir(parents=True, exist_ok=True)
+    self.profiles_path.write_text(
+      json.dumps(
+        {
+          "current": None,
+          "profiles": {
+            "dev-tpu": {
+              "project": "test-proj",
+              "zone": "us-west4-a",
+              "cluster": "dev-tpu",
+              "namespace": "default",
+            }
+          },
+        }
+      )
+    )
+    result = self.runner.invoke(init, [], input="troubleshoot\n\n")
+    self.assertEqual(result.exit_code, 0, msg=result.output)
+    self.assertIn("Troubleshooting target", result.output)
+    self.assertIn("test-proj", result.output)
+    self.assertIn("dev-tpu", result.output)
+    self.assertIn("us-west4-a", result.output)
+    self.assertIn("kinetic init", result.output)
+    self.assertIn("kinetic profile set", result.output)
+
 
 if __name__ == "__main__":
   absltest.main()

@@ -52,11 +52,14 @@ def cli(ctx, profile_name):
   # without re-resolving.
   ctx.obj["active_profile"] = active
 
-  # The 'profile' command group must not have profile defaults injected
-  # into its own options — we don't want 'profile create' to auto-fill
-  # from the currently-active profile. Skip default_map, but keep the
-  # resolved selection on ctx.obj above.
-  if ctx.invoked_subcommand == "profile":
+  # Skip default_map for commands where profile defaults would be wrong:
+  # - 'profile' manages profiles, so 'profile create' must not auto-fill
+  #   from the currently-active one.
+  # - 'init' is for onboarding/joining/creating clusters; pre-filling
+  #   cluster/zone/etc. from an existing profile blocks users from
+  #   targeting a different cluster without first deleting their profile.
+  # The resolved selection stays on ctx.obj above either way.
+  if ctx.invoked_subcommand in ("profile", "init"):
     return
 
   if active is None:

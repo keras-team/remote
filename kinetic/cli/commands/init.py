@@ -24,7 +24,13 @@ from kinetic.cli.prerequisites_check import (
   check_gke_auth_plugin,
   check_kubectl,
 )
-from kinetic.cli.profiles import Profile, set_current, upsert_profile
+from kinetic.cli.profiles import (
+  Profile,
+  ProfileError,
+  list_profiles,
+  set_current,
+  upsert_profile,
+)
 from kinetic.cli.prompts import resolve_project
 
 
@@ -355,12 +361,49 @@ def _troubleshoot_flow(project, clusters, cluster_override):
   via Click if any diagnostic FAILed so scripted callers can detect it.
   """
   cluster_name = _pick_cluster_for_troubleshoot(clusters, cluster_override)
-  # Best-effort zone inference; run_diagnostics falls back to the default
-  # zone (env or constants) when this returns None.
-  zone = _infer_zone(project, cluster_name) if cluster_name else None
+  zone = _zone_from_saved_profiles(project, cluster_name)
+  _print_troubleshoot_target(project, cluster_name, zone)
   ok = run_diagnostics(project=project, zone=zone, cluster_name=cluster_name)
   if not ok:
     raise click.exceptions.Exit(1)
+
+
+def _zone_from_saved_profiles(project, cluster_name):
+  """Return the saved zone for (project, cluster) from any profile, or None.
+
+  Profiles persist the zone they were created with, so a joined or
+  created cluster always has a zone available without any network I/O.
+  Clusters not in any profile (e.g. a teammate's that hasn't been joined
+  yet) return None — the troubleshoot header surfaces this, and the user
+  can re-run 'kinetic init' to join, or pass --zone explicitly.
+  """
+  if not project or not cluster_name:
+    return None
+  try:
+    _, profiles = list_profiles()
+  except ProfileError:
+    return None
+  for p in profiles:
+    if p.project == project and p.cluster == cluster_name:
+      return p.zone
+  return None
+
+
+def _print_troubleshoot_target(project, cluster_name, zone):
+  """Show which stack is being diagnosed and how to redirect."""
+  console.print()
+  console.print("[bold]Troubleshooting target[/bold]")
+  console.print(f"  Project:  {project or '[dim]not set[/dim]'}")
+  console.print(
+    f"  Cluster:  {cluster_name or '[dim]none (env-only checks)[/dim]'}"
+  )
+  console.print(f"  Zone:     {zone or '[dim]default[/dim]'}")
+  console.print()
+  console.print(
+    "[dim]To troubleshoot a different cluster, re-run 'kinetic init' and "
+    "join that cluster, or run 'kinetic profile set <name>' to switch the "
+    "active profile first.[/dim]"
+  )
 
 
 def _pick_cluster_for_troubleshoot(clusters, cluster_override):
