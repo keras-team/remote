@@ -12,7 +12,12 @@ from kinetic.backend.execution import (
   PathwaysBackend,
   submit_remote,
 )
-from kinetic.constants import DEFAULT_CLUSTER_NAME, get_default_namespace
+from kinetic.cli.profiles import resolve_active
+from kinetic.constants import (
+  DEFAULT_CLUSTER_NAME,
+  DEFAULT_ZONE,
+  get_required_project,
+)
 from kinetic.core import accelerators
 from kinetic.data import Data
 from kinetic.debug import cleanup_port_forward
@@ -73,6 +78,41 @@ def _require_interactive_terminal():
       "call handle.debug_attach() from an interactive session, or set "
       "KINETIC_NO_TTY_DEBUG=1 to override."
     )
+
+
+def _resolve_infra(*, project, zone, cluster, namespace):
+  """Resolve infra fields from kwargs, env vars, the active profile, and defaults.
+
+  Precedence per field: explicit kwarg > KINETIC_* env var > active profile
+  field > built-in default. Matches the CLI's `default_map` wiring in
+  `kinetic.cli.main` so the Python API and `kinetic` CLI behave the same.
+  """
+  profile = resolve_active()
+
+  def pick(explicit, env_var, profile_attr, default):
+    if explicit is not None:
+      return explicit
+    env_val = os.environ.get(env_var)
+    if env_val:
+      return env_val
+    if profile is not None:
+      return getattr(profile, profile_attr)
+    return default
+
+  resolved_project = pick(project, "KINETIC_PROJECT", "project", None)
+  if not resolved_project:
+    # Honor the legacy GOOGLE_CLOUD_PROJECT fallback only when no profile and
+    # no explicit value supplied a project.
+    resolved_project = get_required_project()
+
+  return {
+    "project": resolved_project,
+    "zone": pick(zone, "KINETIC_ZONE", "zone", DEFAULT_ZONE),
+    "cluster": pick(
+      cluster, "KINETIC_CLUSTER", "cluster", DEFAULT_CLUSTER_NAME
+    ),
+    "namespace": pick(namespace, "KINETIC_NAMESPACE", "namespace", "default"),
+  }
 
 
 def _resolve_backend_name(accelerator, backend, spot=False):
@@ -136,10 +176,9 @@ def _make_decorator(
           "Use 'gke', 'pathways', or None for auto-detection"
         )
 
-      resolved_cluster = cluster or os.environ.get(
-        "KINETIC_CLUSTER", DEFAULT_CLUSTER_NAME
+      infra = _resolve_infra(
+        project=project, zone=zone, cluster=cluster, namespace=namespace
       )
-      resolved_namespace = get_default_namespace(namespace)
 
       ctx = JobContext.from_params(
         func,
@@ -147,10 +186,10 @@ def _make_decorator(
         kwargs,
         accelerator,
         container_image,
-        zone,
-        project,
+        infra["zone"],
+        infra["project"],
         env_vars,
-        cluster_name=resolved_cluster,
+        cluster_name=infra["cluster"],
         volumes=volumes,
         spot=spot,
         debug=debug,
@@ -160,11 +199,11 @@ def _make_decorator(
 
       if resolved_backend == "pathways":
         backend_inst = PathwaysBackend(
-          cluster=resolved_cluster, namespace=resolved_namespace
+          cluster=infra["cluster"], namespace=infra["namespace"]
         )
       else:
         backend_inst = GKEBackend(
-          cluster=resolved_cluster, namespace=resolved_namespace
+          cluster=infra["cluster"], namespace=infra["namespace"]
         )
 
       handle = submit_remote(ctx, backend_inst)
@@ -214,14 +253,17 @@ def run(
       (e.g., `"mycompany/kinetic"`). Defaults to `KINETIC_BASE_IMAGE_REPO`
       env var, then `"kinetic"`. Only used when `container_image` is
       `"prebuilt"`.
-    zone: GCP zone (default: from KINETIC_ZONE or 'us-central1-a')
-    project: GCP project (default: from KINETIC_PROJECT)
+    zone: GCP zone. Falls back to KINETIC_ZONE, then the active profile's
+      zone (from ~/.kinetic/profiles.json), then 'us-central1-a'.
+    project: GCP project. Falls back to KINETIC_PROJECT, then the active
+      profile's project, then GOOGLE_CLOUD_PROJECT.
     capture_env_vars: List of environment variable names or patterns (ending in `*`)
       to propagate to the remote environment. Defaults to None.
-    cluster: GKE cluster name (default: from KINETIC_CLUSTER)
+    cluster: GKE cluster name. Falls back to KINETIC_CLUSTER, then the
+      active profile's cluster, then the built-in default.
     backend: Backend to use ('gke' or 'pathways')
-    namespace: Kubernetes namespace (default: None, resolved via
-      KINETIC_NAMESPACE env var or 'default')
+    namespace: Kubernetes namespace. Falls back to KINETIC_NAMESPACE, then
+      the active profile's namespace, then 'default'.
     volumes: Dict mapping absolute mount paths to Data objects, e.g.
       `{"/data": Data("./dataset/")}`. Data is downloaded to these
       paths on the pod before function execution.
