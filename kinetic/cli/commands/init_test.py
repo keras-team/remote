@@ -204,6 +204,16 @@ class InitPrereqFailureTest(absltest.TestCase):
     self.assertEqual(result.exit_code, 0, msg=result.output)
     self.diag_mock.assert_called_once()
 
+  def test_missing_prereq_path_honors_zone_override(self):
+    """`--zone` provided to init must reach diagnostics even when the
+    troubleshoot path is entered via the prereq-failure branch."""
+    result = self.runner.invoke(
+      init, ["--yes", "--zone", "asia-east1-a"], input="\n"
+    )
+    self.assertEqual(result.exit_code, 0, msg=result.output)
+    _, kwargs = self.diag_mock.call_args
+    self.assertEqual(kwargs.get("zone"), "asia-east1-a")
+
 
 class InitCreatePathForwardingTest(absltest.TestCase):
   """`ctx.invoke(up, ...)` bypasses Click's envvar resolution, so `init` must
@@ -502,6 +512,32 @@ class InitTroubleshootPathTest(absltest.TestCase):
     self.assertEqual(result.exit_code, 0, msg=result.output)
     _, kwargs = self.diag_mock.call_args
     self.assertIsNone(kwargs.get("zone"))
+
+  def test_troubleshoot_zone_flag_overrides_saved_profile(self):
+    """An explicit --zone wins over the saved-profile zone lookup."""
+    _patch_list_clusters(self, ["dev-tpu"])
+    self.profiles_path.parent.mkdir(parents=True, exist_ok=True)
+    self.profiles_path.write_text(
+      json.dumps(
+        {
+          "current": None,
+          "profiles": {
+            "dev-tpu": {
+              "project": "test-proj",
+              "zone": "europe-west4-c",
+              "cluster": "dev-tpu",
+              "namespace": "default",
+            }
+          },
+        }
+      )
+    )
+    result = self.runner.invoke(
+      init, ["--zone", "asia-east1-a"], input="troubleshoot\n\n"
+    )
+    self.assertEqual(result.exit_code, 0, msg=result.output)
+    _, kwargs = self.diag_mock.call_args
+    self.assertEqual(kwargs.get("zone"), "asia-east1-a")
 
   def test_troubleshoot_prints_target_header(self):
     """The header tells the user exactly what's being diagnosed."""

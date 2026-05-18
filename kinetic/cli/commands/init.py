@@ -64,7 +64,9 @@ def init(ctx, project, zone, cluster_name, profile_name, namespace, yes):
   # troubleshoot — it can run even when gcloud/auth are missing and is
   # the most useful next step.
   if not report["prereqs_ok"]:
-    _offer_troubleshoot_on_prereq_failure(report, cluster_name, yes=yes)
+    _offer_troubleshoot_on_prereq_failure(
+      report, cluster_name, zone=zone, yes=yes
+    )
     return
 
   project = report["project"]
@@ -90,7 +92,9 @@ def init(ctx, project, zone, cluster_name, profile_name, namespace, yes):
     set_current(saved)
     _print_join_ready_screen(saved)
   elif path == "troubleshoot":
-    _troubleshoot_flow(project, report["local_clusters"], cluster_name)
+    _troubleshoot_flow(
+      project, report["local_clusters"], cluster_name, zone_override=zone
+    )
   else:
     # `up` handles provisioning AND profile save AND its own ready screen.
     # Forward all the user's resolved env/profile/flag values explicitly —
@@ -331,7 +335,9 @@ def _print_join_ready_screen(profile_name):
   console.print()
 
 
-def _offer_troubleshoot_on_prereq_failure(report, cluster_override, *, yes):
+def _offer_troubleshoot_on_prereq_failure(
+  report, cluster_override, *, zone=None, yes
+):
   """Handle the prereq-failure branch: offer troubleshoot or exit.
 
   join/create both require working gcloud + kubectl + auth, so when prereqs
@@ -351,17 +357,22 @@ def _offer_troubleshoot_on_prereq_failure(report, cluster_override, *, yes):
     report.get("project"),
     report.get("local_clusters") or [],
     cluster_override,
+    zone_override=zone,
   )
 
 
-def _troubleshoot_flow(project, clusters, cluster_override):
+def _troubleshoot_flow(
+  project, clusters, cluster_override, *, zone_override=None
+):
   """Pick (or type) a cluster name and run diagnostics.
 
   Read-only — does not save a profile or modify kubectl. Exits non-zero
   via Click if any diagnostic FAILed so scripted callers can detect it.
+  An explicit ``zone_override`` (typically from ``--zone`` / KINETIC_ZONE)
+  wins over the saved-profile lookup so users can override.
   """
   cluster_name = _pick_cluster_for_troubleshoot(clusters, cluster_override)
-  zone = _zone_from_saved_profiles(project, cluster_name)
+  zone = zone_override or _zone_from_saved_profiles(project, cluster_name)
   _print_troubleshoot_target(project, cluster_name, zone)
   ok = run_diagnostics(project=project, zone=zone, cluster_name=cluster_name)
   if not ok:

@@ -794,6 +794,41 @@ class DoctorLwsMissingTest(absltest.TestCase):
     self.assertIn("WARN", result.output)
 
 
+class DoctorEnvOnlyTest(absltest.TestCase):
+  """`cluster_name=None` is the 'environment-only' mode used by init's
+  troubleshoot path when the user leaves the cluster prompt blank.
+
+  Regression: previously ``run_diagnostics`` quietly defaulted
+  cluster_name to ``get_default_cluster_name()``, so the cluster-specific
+  groups silently targeted the *default* cluster instead of skipping.
+  """
+
+  def setUp(self):
+    super().setUp()
+    self.runner = CliRunner()
+
+  def test_cluster_specific_groups_skip_when_no_cluster_name(self):
+    with contextlib.ExitStack() as stack:
+      _enter_patches(stack)
+      # Drop the default project/cluster so nothing leaks in from env.
+      stack.enter_context(
+        mock.patch(f"{_MODULE}.get_default_project", return_value=None)
+      )
+      result = self.runner.invoke(_diagnose_cli, [])
+
+    self.assertEqual(result.exit_code, 0, result.output)
+    # The cluster-name row is explicitly "not set", not a default value.
+    self.assertIn("Cluster name", result.output)
+    self.assertIn("environment-only", result.output)
+    # The cluster-specific groups all SKIP — no PASS/FAIL/WARN results
+    # for resources / infra / kubernetes that would imply we targeted
+    # the default cluster.
+    self.assertIn("SKIP", result.output)
+    # Sanity: env-only mode should not surface FAILs (otherwise the
+    # caller would treat empty cluster as broken).
+    self.assertNotIn("FAIL", result.output)
+
+
 class DoctorExitCodeTest(absltest.TestCase):
   """Exit code is 1 on any FAIL, 0 on only WARN/SKIP."""
 
