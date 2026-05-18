@@ -40,8 +40,12 @@ def clear_job_cursors(cursor_dir: Path | None, job_id: str) -> None:
 
 
 def _safe_name(name: str) -> str:
-  # Drop dots so a malicious job id like ".." cannot escape the streams dir.
-  # k8s names are restricted to DNS-1123 (no dots), so this is collision-safe.
+  # Strip path separators and dots so a malicious job id like "../foo" or
+  # "..\\foo" cannot escape the streams dir. DNS-1123 *subdomains* (used
+  # for some k8s resource names) do allow dots, so two distinct ids can
+  # in principle map to the same sanitized form (e.g. "a.b" and "a_b").
+  # For the cursor cache the worst case is a benign collision on dedup
+  # state, not a correctness bug.
   return "".join(c if c.isalnum() or c in "-_" else "_" for c in name)
 
 

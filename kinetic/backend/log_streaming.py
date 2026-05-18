@@ -52,11 +52,17 @@ _TIMESTAMP_PATTERN = re.compile(
   r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s(.*)$"
 )
 
-# urllib3 / stdlib errors that mean "connection died, try again"
+# urllib3 / stdlib errors that mean "connection died, try again". We list
+# the specific subclasses we want to retry on rather than the catch-all
+# ``urllib3.exceptions.HTTPError`` base: SSL errors, malformed URLs, and
+# unknown URL schemes are configuration bugs that retrying would just hide.
 _TRANSIENT_ERRORS = (
   urllib3.exceptions.ProtocolError,
   urllib3.exceptions.ReadTimeoutError,
-  urllib3.exceptions.HTTPError,
+  urllib3.exceptions.ConnectTimeoutError,
+  urllib3.exceptions.NewConnectionError,
+  urllib3.exceptions.NameResolutionError,
+  urllib3.exceptions.MaxRetryError,
   socket.timeout,
   http.client.IncompleteRead,
   ConnectionError,
