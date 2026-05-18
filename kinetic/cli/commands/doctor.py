@@ -1,9 +1,9 @@
-"""Diagnostic checks used by ``kinetic init``'s troubleshoot path.
+"""Diagnostic checks used by `kinetic init`'s troubleshoot path.
 
 Exposes :func:`run_diagnostics`, which inspects the local environment,
 GCP project, and Kubernetes cluster and prints a categorized report with
-fix hints. Used to be the ``kinetic doctor`` CLI command; rolled into
-``init`` so users have a single onboarding entry point.
+fix hints. Used to be the `kinetic doctor` CLI command; rolled into
+`init` so users have a single onboarding entry point.
 """
 
 import json
@@ -1476,7 +1476,7 @@ def _print_results(groups):
   """Render grouped results table and fix hints.
 
   Args:
-      groups: List of ``(section_name, [CheckResult, ...])`` tuples.
+      groups: List of `(section_name, [CheckResult, ...])` tuples.
   """
   all_results = [r for _, checks in groups for r in checks]
 
@@ -1570,7 +1570,7 @@ def run_diagnostics(project=None, zone=None, cluster_name=None):
   """Run all diagnostic check groups and render results.
 
   Returns True iff no FAIL results were produced. Intended to be called
-  from ``kinetic init``'s troubleshoot path; safe to invoke even when
+  from `kinetic init`'s troubleshoot path; safe to invoke even when
   prereqs are missing (the relevant groups SKIP cleanly).
   """
   project = project or get_default_project()
