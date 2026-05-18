@@ -267,6 +267,135 @@ class TestStreamPodLogs(absltest.TestCase):
     refresh.assert_called()
     fresh_core.read_namespaced_pod_log.assert_called()
 
+  def test_backoff_escalates_on_repeated_open_failures(self):
+    """Repeated transient failures with no progress must escalate backoff."""
+    mock_core = MagicMock()
+    mock_core.read_namespaced_pod_log.side_effect = (
+      urllib3.exceptions.ProtocolError("nope") for _ in range(50)
+    )
+    mock_core.read_namespaced_pod.return_value.status.phase = "Running"
+
+    backoff_calls = []
+    stop_event = threading.Event()
+
+    def fake_backoff(attempt):
+      backoff_calls.append(attempt)
+      if len(backoff_calls) >= 4:
+        stop_event.set()
+      return 0.0
+
+    with (
+      mock.patch("kinetic.backend.log_streaming.Console") as mock_console_cls,
+      mock.patch(
+        "kinetic.backend.log_streaming._backoff_seconds",
+        side_effect=fake_backoff,
+      ),
+    ):
+      mock_console_cls.return_value.is_terminal = False
+      _stream_pod_logs(mock_core, "pod-1", "default", stop_event=stop_event)
+
+    self.assertEqual(backoff_calls, [1, 2, 3, 4])
+
+  def test_backoff_resets_after_a_line_is_consumed(self):
+    """A stream that delivers at least one line clears the failure counter."""
+    mock_core = MagicMock()
+    good_resp = _make_resp([b"2024-01-01T12:00:00.000Z progress!\n"])
+
+    def open_side_effect(*args, **kwargs):
+      if mock_core.read_namespaced_pod_log.call_count == 1:
+        return good_resp
+      raise urllib3.exceptions.ProtocolError("nope")
+
+    mock_core.read_namespaced_pod_log.side_effect = open_side_effect
+    mock_core.read_namespaced_pod.return_value.status.phase = "Running"
+
+    backoff_calls = []
+    stop_event = threading.Event()
+
+    def fake_backoff(attempt):
+      backoff_calls.append(attempt)
+      if len(backoff_calls) >= 2:
+        stop_event.set()
+      return 0.0
+
+    with (
+      mock.patch(
+        "kinetic.backend.log_streaming.LiveOutputPanel"
+      ) as mock_panel_cls,
+      mock.patch(
+        "kinetic.backend.log_streaming._backoff_seconds",
+        side_effect=fake_backoff,
+      ),
+    ):
+      mock_panel = MagicMock()
+      mock_panel_cls.return_value.__enter__.return_value = mock_panel
+      mock_panel_cls.return_value.__exit__.return_value = False
+      _stream_pod_logs(mock_core, "pod-1", "default", stop_event=stop_event)
+
+    # After the successful first iteration the counter resets to 0, so the
+    # next reconnect waits the minimum backoff. A subsequent failure escalates.
+    self.assertEqual(backoff_calls, [0, 1])
+
+  def test_cursor_deleted_on_terminal_pod(self):
+    mock_core = MagicMock()
+    mock_core.read_namespaced_pod_log.return_value = _make_resp([])
+    mock_core.read_namespaced_pod.return_value.status.phase = "Succeeded"
+
+    with tempfile.TemporaryDirectory() as tmp:
+      cursor_path = Path(tmp) / "job" / "pod-1.json"
+      cursor = LogCursor(path=cursor_path)
+      cursor.record("2024-01-01T12:00:00.000Z", "h")
+      cursor.flush()
+      self.assertTrue(cursor_path.exists())
+
+      with mock.patch(
+        "kinetic.backend.log_streaming.Console"
+      ) as mock_console_cls:
+        mock_console_cls.return_value.is_terminal = False
+        _stream_pod_logs(
+          mock_core,
+          "pod-1",
+          "default",
+          cursor=cursor,
+          stop_event=threading.Event(),
+        )
+
+      self.assertFalse(
+        cursor_path.exists(),
+        "cursor file should be removed once the pod is terminal",
+      )
+
+  def test_cursor_kept_when_stop_event_set(self):
+    """A user-initiated stop should preserve the cursor for next time."""
+    mock_core = MagicMock()
+    mock_core.read_namespaced_pod_log.side_effect = (
+      urllib3.exceptions.ProtocolError("nope") for _ in range(50)
+    )
+    mock_core.read_namespaced_pod.return_value.status.phase = "Running"
+
+    with tempfile.TemporaryDirectory() as tmp:
+      cursor_path = Path(tmp) / "job" / "pod-1.json"
+      cursor = LogCursor(path=cursor_path)
+      cursor.record("2024-01-01T12:00:00.000Z", "h")
+      cursor.flush()
+
+      stop_event = threading.Event()
+      stop_event.set()  # ask for shutdown before the loop even runs
+
+      with mock.patch(
+        "kinetic.backend.log_streaming.Console"
+      ) as mock_console_cls:
+        mock_console_cls.return_value.is_terminal = False
+        _stream_pod_logs(
+          mock_core,
+          "pod-1",
+          "default",
+          cursor=cursor,
+          stop_event=stop_event,
+        )
+
+      self.assertTrue(cursor_path.exists())
+
   def test_reconnects_after_transient_protocol_error(self):
     mock_core = MagicMock()
     bad_resp = MagicMock()
@@ -487,6 +616,30 @@ class TestLogCursor(absltest.TestCase):
   def test_safe_name_strips_dots_to_prevent_traversal(self):
     p = cursor_path_for(Path("/tmp/streams"), "..", "pod-1")
     self.assertEqual(p, Path("/tmp/streams/__/pod-1.json"))
+
+  def test_cursor_file_is_user_only_readable(self):
+    with tempfile.TemporaryDirectory() as tmp:
+      path = Path(tmp) / "secure.json"
+      cursor = LogCursor(path=path, write_interval_s=0)
+      cursor.record("2024-01-01T12:00:00.000Z", "h")
+      cursor.flush()
+      mode = path.stat().st_mode & 0o777
+      self.assertEqual(mode, 0o600)
+
+  def test_delete_removes_cursor_file(self):
+    with tempfile.TemporaryDirectory() as tmp:
+      path = Path(tmp) / "to-delete.json"
+      cursor = LogCursor(path=path, write_interval_s=0)
+      cursor.record("2024-01-01T12:00:00.000Z", "h")
+      cursor.flush()
+      self.assertTrue(path.exists())
+      cursor.delete()
+      self.assertFalse(path.exists())
+
+  def test_delete_on_missing_file_is_safe(self):
+    with tempfile.TemporaryDirectory() as tmp:
+      cursor = LogCursor(path=Path(tmp) / "never-written.json")
+      cursor.delete()  # should not raise
 
   def test_clear_timestamp_resets_and_marks_dirty(self):
     with tempfile.TemporaryDirectory() as tmp:

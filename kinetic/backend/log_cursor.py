@@ -6,6 +6,7 @@ hashes. On reconnect (or in a fresh process), the streamer uses
 dedupe the inevitable second-granular overlap.
 """
 
+import contextlib
 import json
 import os
 import shutil
@@ -112,6 +113,14 @@ class LogCursor:
     if self._dirty:
       self._flush()
 
+  def delete(self) -> None:
+    """Remove the cursor file. Call when the pod is done with for good."""
+    self._dirty = False
+    if self._path is None or not self._path.exists():
+      return
+    with contextlib.suppress(OSError):
+      self._path.unlink()
+
   def _flush(self) -> None:
     if self._path is None:
       return
@@ -126,6 +135,9 @@ class LogCursor:
           }
         )
       )
+      # 0600 since the cursor lives under ~/.kinetic/ alongside other
+      # per-user state. Set on the temp file so the rename is atomic.
+      os.chmod(tmp, 0o600)
       os.replace(tmp, self._path)
       self._dirty = False
     except OSError:

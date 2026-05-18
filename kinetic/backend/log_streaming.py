@@ -107,8 +107,10 @@ def _is_pod_terminal(core_v1, pod_name: str, namespace: str) -> bool:
     return e.status == 404
   except Exception:
     return False
-  phase = getattr(getattr(pod, "status", None), "phase", None)
-  return phase in ("Succeeded", "Failed")
+  try:
+    return pod.status.phase in ("Succeeded", "Failed")
+  except AttributeError:
+    return False
 
 
 def _process_line(line: str, panel, cursor: LogCursor, dedup: bool) -> None:
@@ -134,22 +136,31 @@ def _consume_stream(
   cursor: LogCursor,
   stop_event: threading.Event,
   dedup: bool,
-) -> None:
-  """Drain one open log stream into the panel, raising on transport error."""
+) -> bool:
+  """Drain one open log stream into the panel, raising on transport error.
+
+  Returns True if at least one log line was processed. The caller uses this
+  signal to decide whether the stream made real progress, which resets the
+  reconnect backoff escalation.
+  """
   panel.set_subtitle(None)  # we're connected, clear any reconnect notice
   # Use an incremental decoder so multi-byte UTF-8 sequences that straddle
   # chunk boundaries are buffered instead of getting replaced with U+FFFD.
   decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
   buffer = ""
+  saw_line = False
   for chunk in resp.stream(decode_content=True):
     if stop_event.is_set():
-      return
+      return saw_line
     buffer += decoder.decode(chunk)
     while "\n" in buffer:
       line, buffer = buffer.split("\n", 1)
       _process_line(line, panel, cursor, dedup)
+      saw_line = True
   if buffer:
     _process_line(buffer, panel, cursor, dedup)
+    saw_line = True
+  return saw_line
 
 
 def _open_log_stream(
@@ -201,6 +212,7 @@ def _stream_pod_logs(
   if resume:
     cursor.load()
 
+  pod_gone = False
   title = f"Remote logs • {pod_name}"
   with LiveOutputPanel(
     title,
@@ -208,11 +220,12 @@ def _stream_pod_logs(
     target_console=Console(),
     show_subtitle=False,
   ) as panel:
-    attempt = 0
+    # Counts back-to-back failures with no progress. Reset only when the
+    # stream actually delivers a line, so repeated mid-stream drops still
+    # escalate the backoff schedule.
+    consecutive_failures = 0
     while not stop_event.is_set():
-      attempt += 1
       resp = None
-      transient = False
       since = (
         _truncate_to_second(cursor.since_time)
         if resume and cursor.since_time
@@ -222,64 +235,76 @@ def _stream_pod_logs(
         resp = _open_log_stream(core_v1, pod_name, namespace, since, resume)
       except ApiException as e:
         if e.status == 404:
-          break  # pod is gone
+          pod_gone = True
+          break
         if e.status == 410:
           # since_time too old, reset and retry without it
           cursor.clear_timestamp()
-          transient = True
         elif e.status in (401, 403):
           refreshed = _refresh_k8s_client()
           if refreshed is not None:
             core_v1 = refreshed
-          transient = True
-        elif 500 <= e.status < 600:
-          transient = True
-        else:
+        elif not 500 <= e.status < 600:
           logging.warning(
             "Pod log API returned %s for %s, giving up", e.status, pod_name
           )
           break
+        consecutive_failures += 1
       except _TRANSIENT_ERRORS:
-        transient = True
+        consecutive_failures += 1
       except Exception:
         logging.warning(
           "Unexpected error opening log stream for %s", pod_name, exc_info=True
         )
-        transient = True
+        consecutive_failures += 1
 
       if resp is not None:
-        attempt = 0  # connected, reset backoff
+        saw_progress = False
+        consume_failed = False
         try:
-          _consume_stream(resp, panel, cursor, stop_event, resume)
-        except _TRANSIENT_ERRORS:
-          transient = True
-        except ApiException:
-          transient = True
+          saw_progress = _consume_stream(
+            resp, panel, cursor, stop_event, resume
+          )
+        except (*_TRANSIENT_ERRORS, ApiException):
+          consume_failed = True
         except Exception:
           logging.warning(
             "Log stream from %s ended unexpectedly", pod_name, exc_info=True
           )
-          transient = True
+          consume_failed = True
         finally:
           with contextlib.suppress(Exception):
             resp.release_conn()
 
-        if not transient and _is_pod_terminal(core_v1, pod_name, namespace):
+        if saw_progress:
+          consecutive_failures = 0
+        if not consume_failed and _is_pod_terminal(
+          core_v1, pod_name, namespace
+        ):
           break
+        if consume_failed or not saw_progress:
+          consecutive_failures += 1
 
       if stop_event.is_set():
         break
 
-      wait = _backoff_seconds(max(1, attempt))
+      wait = _backoff_seconds(consecutive_failures)
       panel.set_subtitle(
         f"disconnected • reconnecting in {wait:.0f}s"
-        f" (attempt {max(1, attempt)})"
+        f" (attempt {consecutive_failures + 1})"
       )
       if stop_event.wait(wait):
         break
-    panel.set_subtitle(None)
 
-  cursor.flush()
+  # Cursor cleanup: the pod is done with for good (terminal or gone), so
+  # drop the on-disk cursor instead of leaving it for the next session.
+  # A stop_event exit keeps the cursor so the user can resume.
+  if pod_gone or (
+    not stop_event.is_set() and _is_pod_terminal(core_v1, pod_name, namespace)
+  ):
+    cursor.delete()
+  else:
+    cursor.flush()
 
 
 class LogStreamer:
