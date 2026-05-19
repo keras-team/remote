@@ -169,6 +169,14 @@ def _bind_sa_iam(
       role="roles/storage.objectAdmin",
       member=sa.email.apply(lambda e: f"serviceAccount:{e}"),
     )
+    # Orbax/TensorStore writes to GCS call storage.buckets.get for bucket
+    # metadata; objectAdmin alone doesn't grant it.
+    gcp.storage.BucketIAMMember(
+      f"{sa_prefix}-storage-{bucket_name}-bucket-reader",
+      bucket=bucket.name,
+      role="roles/storage.legacyBucketReader",
+      member=sa.email.apply(lambda e: f"serviceAccount:{e}"),
+    )
   gcp.artifactregistry.RepositoryIamMember(
     f"{sa_prefix}-ar-{ar_role.rsplit('.', 1)[-1]}",
     repository=repo.name,
