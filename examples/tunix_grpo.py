@@ -257,7 +257,6 @@ def get_lora_model(base_model, mesh):
 
 @kinetic.run(
   accelerator="v5e-1",
-  container_image="prebuilt",
   capture_env_vars=[
     "KAGGLE_USERNAME",
     "KAGGLE_KEY",
