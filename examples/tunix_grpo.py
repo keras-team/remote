@@ -38,6 +38,11 @@ MODEL_ID = "google/gemma-3-1b-it"
 GEMMA_TOKENIZER_PATH = "gs://gemma-data/tokenizers/tokenizer_gemma3.model"
 
 # ====== Data ======
+# NOTE: For a fully self-contained example, we let TFDS download the dataset
+# automatically on the remote worker. However, for production use or large
+# datasets, it is highly recommended to use the Kinetic Data API instead of
+# downloading every time. To do that, download the dataset locally first and then
+# pass `kinetic.Data(TRAIN_DATA_DIR)` to `run_grpo`.
 TRAIN_DATA_DIR = "./data/train"
 
 
@@ -59,11 +64,11 @@ EPSILON = 0.2
 
 # ====== Training ======
 TRAIN_MICRO_BATCH_SIZE = 1
-NUM_BATCHES = 10  # Reduced for quick verification
-NUM_TEST_BATCHES = 2  # Reduced for quick verification
+NUM_BATCHES = 10
+NUM_TEST_BATCHES = 2
 EVAL_EVERY_N_STEPS = 5
 NUM_EPOCHS = 1
-MAX_STEPS = 10  # Reduced for quick verification
+MAX_STEPS = 10
 
 LEARNING_RATE = 3e-6
 B1 = 0.9
